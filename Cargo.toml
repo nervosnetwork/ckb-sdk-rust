@@ -1,0 +1,2 @@
+[workspace]
+members = ["ckb-sdk", "ckb-sdk-types"]
