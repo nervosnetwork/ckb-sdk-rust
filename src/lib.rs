@@ -2,6 +2,7 @@ mod chain;
 mod error;
 mod types;
 mod util;
+// mod traits;
 
 pub mod bip32;
 pub mod constants;
