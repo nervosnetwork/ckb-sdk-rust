@@ -22,10 +22,10 @@ use std::io::Write;
 use std::str::FromStr;
 use std::{error, fmt};
 
-use super::keystore::{zeroize_privkey, zeroize_slice};
 use bitcoin_hashes::{hash160, sha512, Hash, HashEngine, Hmac, HmacEngine};
 use byteorder::{BigEndian, ByteOrder};
 use secp256k1::{self, PublicKey, Secp256k1, SecretKey};
+use super::util::{zeroize_privkey, zeroize_slice};
 
 macro_rules! impl_array_newtype {
     ($thing:ident, $ty:ty, $len:expr) => {
@@ -423,17 +423,17 @@ impl DerivationPath {
     /// Get an [Iterator] over the children of this [DerivationPath]
     /// starting with the given [ChildNumber].
     pub fn children_from(&self, cn: ChildNumber) -> DerivationPathIterator {
-        DerivationPathIterator::start_from(&self, cn)
+        DerivationPathIterator::start_from(self, cn)
     }
 
     /// Get an [Iterator] over the unhardened children of this [DerivationPath].
     pub fn normal_children(&self) -> DerivationPathIterator {
-        DerivationPathIterator::start_from(&self, ChildNumber::Normal { index: 0 })
+        DerivationPathIterator::start_from(self, ChildNumber::Normal { index: 0 })
     }
 
     /// Get an [Iterator] over the hardened children of this [DerivationPath].
     pub fn hardened_children(&self) -> DerivationPathIterator {
-        DerivationPathIterator::start_from(&self, ChildNumber::Hardened { index: 0 })
+        DerivationPathIterator::start_from(self, ChildNumber::Hardened { index: 0 })
     }
 }
 

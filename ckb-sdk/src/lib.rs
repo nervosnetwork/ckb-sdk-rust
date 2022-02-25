@@ -5,11 +5,12 @@ mod transaction;
 #[allow(clippy::mutable_key_type)]
 mod tx_helper;
 mod types;
+mod util;
 
 pub mod constants;
 pub mod pubsub;
 pub mod rpc;
-pub mod wallet;
+pub mod bip32;
 
 pub use chain::{calc_max_mature_number, GenesisInfo};
 pub use error::Error;

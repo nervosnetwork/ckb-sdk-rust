@@ -2,14 +2,10 @@ use std::io;
 
 use failure::Fail;
 
-use crate::wallet::KeyStoreError;
-
 #[derive(Debug, Fail)]
 pub enum Error {
     #[fail(display = "IO error: {}", _0)]
     Io(io::Error),
-    #[fail(display = "KeyStore error: {}", _0)]
-    KeyStore(KeyStoreError),
     #[fail(display = "Other error: {}", _0)]
     Other(String),
 }
