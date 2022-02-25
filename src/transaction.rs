@@ -21,14 +21,14 @@ use std::convert::TryInto;
 use crate::constants::MIN_SECP_CELL_CAPACITY;
 use crate::GenesisInfo;
 
-pub use ckb_sdk_types::transaction::{
+pub use ckb_mock_tx_types::{
     MockCellDep, MockInfo, MockInput, MockResourceLoader, MockTransaction, ReprMockCellDep,
     ReprMockInfo, ReprMockInput, ReprMockTransaction, Resource,
 };
 
 pub struct MockTransactionHelper<'a> {
     pub mock_tx: &'a mut MockTransaction,
-    live_cell_cache: HashMap<OutPoint, (CellOutput, Bytes, H256)>,
+    live_cell_cache: HashMap<OutPoint, (CellOutput, Bytes, Option<Byte32>)>,
 }
 
 impl<'a> MockTransactionHelper<'a> {
@@ -43,9 +43,9 @@ impl<'a> MockTransactionHelper<'a> {
         &mut self,
         input: &CellInput,
         live_cell_getter: C,
-    ) -> Result<(CellOutput, Bytes, H256), String>
+    ) -> Result<(CellOutput, Bytes, Option<Byte32>), String>
     where
-        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, H256)>, String>,
+        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, Option<Byte32>)>, String>,
     {
         let cell = match self.live_cell_cache.get(&input.previous_output()) {
             Some(cell) => cell.clone(),
@@ -69,7 +69,7 @@ impl<'a> MockTransactionHelper<'a> {
         mut live_cell_getter: C,
     ) -> Result<u64, String>
     where
-        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, H256)>, String>,
+        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, Option<Byte32>)>, String>,
     {
         let mut input_total: u64 = 0;
         let mut first_input_cell = None;
@@ -128,7 +128,7 @@ impl<'a> MockTransactionHelper<'a> {
         mut live_cell_getter: C,
     ) -> Result<(), String>
     where
-        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, H256)>, String>,
+        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, Option<Byte32>)>, String>,
     {
         let tx = self.mock_tx.core_transaction();
         let mut cell_deps = tx.cell_deps().into_iter().collect::<HashSet<_>>();
@@ -225,7 +225,7 @@ impl<'a> MockTransactionHelper<'a> {
     ) -> Result<(), String>
     where
         S: Fn(&H160, &H256, &rpc_types::Transaction) -> Result<[u8; 65], String>,
-        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, H256)>, String>,
+        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, Option<Byte32>)>, String>,
     {
         let tx = self.mock_tx.core_transaction();
         let mut witnesses: Vec<_> = tx.witnesses().into_iter().collect();
@@ -309,7 +309,7 @@ impl<'a> MockTransactionHelper<'a> {
     ) -> Result<(), String>
     where
         S: Fn(&H160, &H256, &rpc_types::Transaction) -> Result<[u8; 65], String>,
-        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, H256)>, String>,
+        C: FnMut(OutPoint) -> Result<Option<(CellOutput, Bytes, Option<Byte32>)>, String>,
     {
         self.add_change_output(target_lock, &mut live_cell_getter)?;
         self.fill_deps(genesis_info, &mut live_cell_getter)?;

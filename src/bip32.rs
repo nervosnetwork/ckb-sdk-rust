@@ -22,10 +22,10 @@ use std::io::Write;
 use std::str::FromStr;
 use std::{error, fmt};
 
+use super::util::{zeroize_privkey, zeroize_slice};
 use bitcoin_hashes::{hash160, sha512, Hash, HashEngine, Hmac, HmacEngine};
 use byteorder::{BigEndian, ByteOrder};
 use secp256k1::{self, PublicKey, Secp256k1, SecretKey};
-use super::util::{zeroize_privkey, zeroize_slice};
 
 macro_rules! impl_array_newtype {
     ($thing:ident, $ty:ty, $len:expr) => {

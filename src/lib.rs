@@ -7,10 +7,10 @@ mod tx_helper;
 mod types;
 mod util;
 
+pub mod bip32;
 pub mod constants;
 pub mod pubsub;
 pub mod rpc;
-pub mod bip32;
 
 pub use chain::{calc_max_mature_number, GenesisInfo};
 pub use error::Error;
