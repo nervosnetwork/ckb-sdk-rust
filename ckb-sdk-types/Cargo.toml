@@ -5,6 +5,8 @@ authors = ["Linfeng Qian <thewawar@gmail.com>", "Nervos Core Dev <dev@nervos.org
 edition = "2018"
 license = "MIT"
 description = "ckb-sdk common types"
+homepage = "https://github.com/TheWaWaR/ckb-sdk"
+repository = "https://github.com/TheWaWaR/ckb-sdk"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -13,8 +15,3 @@ serde_derive = "1.0"
 ckb-types = "=0.101.3"
 ckb-traits = "=0.101.3"
 ckb-jsonrpc-types = "=0.101.3"
-ckb-hash = "=0.101.3"
-ckb-error = "=0.101.3"
-
-[dev-dependencies]
-ckb-crypto = { version = "=0.101.3", features = ["secp"] }

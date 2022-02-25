@@ -494,9 +494,6 @@ dependencies = [
 name = "ckb-sdk-types"
 version = "0.101.3"
 dependencies = [
- "ckb-crypto",
- "ckb-error",
- "ckb-hash",
  "ckb-jsonrpc-types",
  "ckb-traits",
  "ckb-types",
