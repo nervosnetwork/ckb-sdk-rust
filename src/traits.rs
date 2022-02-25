@@ -3,7 +3,8 @@
 
 use ckb_types::{
     bytes::Bytes,
-    packed::{CellOutput, OutPoint, Transaction, Header},
+    core::TransactionView,
+    packed::{CellOutput, Header, OutPoint, Transaction},
     H256,
 };
 use thiserror::Error;
@@ -17,6 +18,10 @@ pub enum WalletError {
     InvalidMessage(String),
     #[error("get transaction dependency failed: `{0}`")]
     TxDep(#[from] TxDepProviderError),
+
+    // maybe hardware wallet error or io error
+    #[error("other error: `{0}`")]
+    Other(#[from] Box<dyn std::error::Error>),
 }
 
 /// A wallet abstraction, support wallet type:
@@ -35,7 +40,7 @@ pub trait Wallet {
         &self,
         id: Bytes,
         message: Bytes,
-        tx: Transaction,
+        tx: TransactionView,
         // This is mainly for hardware wallet.
         tx_dep_provider: &mut dyn TransactionDependencyProvider,
     ) -> Result<Bytes, WalletError>;
@@ -49,8 +54,8 @@ pub trait Wallet {
 pub enum TxDepProviderError {
     #[error("the resource is not found in the provider")]
     NotFound,
-    #[error("internal error: `{0}`")]
-    Internal(#[from] Box<dyn std::error::Error>),
+    #[error("other error: `{0}`")]
+    Other(#[from] Box<dyn std::error::Error>),
 }
 
 /// Provider dependency information of a transaction:
@@ -59,9 +64,9 @@ pub enum TxDepProviderError {
 ///   * header_deps
 pub trait TransactionDependencyProvider {
     // For verify certain cell belong to certain transaction
-    fn get_tx(&self, tx_hash: H256) -> Result<Transaction, TxDepProviderError>;
+    fn get_tx(&mut self, tx_hash: H256) -> Result<Transaction, TxDepProviderError>;
     // For get the cell information of inputs or cell_deps
-    fn get_cell(&self, out_point: OutPoint) -> Result<CellOutput, TxDepProviderError>;
+    fn get_cell(&mut self, out_point: OutPoint) -> Result<CellOutput, TxDepProviderError>;
     // For get the header information of header_deps
-    fn get_header(&self, block_hash: H256) -> Result<Header, TxDepProviderError>;
+    fn get_header(&mut self, block_hash: H256) -> Result<Header, TxDepProviderError>;
 }

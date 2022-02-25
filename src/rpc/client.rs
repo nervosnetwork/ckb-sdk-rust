@@ -1,10 +1,9 @@
 use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockTemplate, BlockView,
     CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, ExtraLoggerConfig, HeaderView,
-    JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode,
-    Script, Timestamp, Transaction, TransactionProof, TransactionWithStatus, TxPoolInfo, Uint64,
-    PeerSyncState,
-    Version,
+    JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, PeerSyncState, RawTxPool,
+    RemoteNode, Script, Timestamp, Transaction, TransactionProof, TransactionWithStatus,
+    TxPoolInfo, Uint64, Version,
 };
 use ckb_types::H256;
 use thiserror::Error;
