@@ -1,17 +1,15 @@
 mod chain;
-mod error;
 mod types;
 mod util;
-// mod traits;
 
 pub mod bip32;
 pub mod constants;
 pub mod pubsub;
 pub mod rpc;
+pub mod traits;
 
 pub use chain::{calc_max_mature_number, GenesisInfo};
-pub use error::Error;
-pub use rpc::HttpRpcClient;
+pub use rpc::{HttpRpcClient, RpcError};
 pub use types::{
     Address, AddressPayload, AddressType, CodeHashIndex, HumanCapacity, NetworkType, OldAddress,
     OldAddressFormat, Since, SinceType,

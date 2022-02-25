@@ -1,3 +1,3 @@
 mod client;
 
-pub use client::HttpRpcClient;
+pub use client::{HttpRpcClient, RpcError};
