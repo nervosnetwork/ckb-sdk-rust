@@ -31,22 +31,22 @@ pub enum WalletError {
 ///    * Hardware wallet
 pub trait Wallet {
     // typecial id are blake160(pubkey) and keccak256(pubkey)[12..20]
-    fn match_id(&self, id: Bytes) -> bool;
+    fn match_id(&self, id: &[u8]) -> bool;
 
     // `message` type is Bytes, because different algorithm have different length of message.
     //   * secp256k1 => 256bits
     //   * RSA       => 512bits (when key size is 1024bits)
     fn sign(
         &self,
-        id: Bytes,
+        id: &[u8],
         message: Bytes,
-        tx: TransactionView,
+        tx: &TransactionView,
         // This is mainly for hardware wallet.
         tx_dep_provider: &mut dyn TransactionDependencyProvider,
     ) -> Result<Bytes, WalletError>;
 
     // Verify a signature
-    fn verify(&self, id: Bytes, message: Bytes, signature: Bytes) -> Result<bool, WalletError>;
+    fn verify(&self, id: &[u8], message: Bytes, signature: Bytes) -> Result<bool, WalletError>;
 }
 
 /// Transaction dependency provider errors
