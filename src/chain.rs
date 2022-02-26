@@ -8,11 +8,23 @@ use ckb_types::{
     prelude::*,
     U256,
 };
+use thiserror::Error;
 
 use crate::constants::{
     DAO_OUTPUT_LOC, MULTISIG_GROUP_OUTPUT_LOC, MULTISIG_OUTPUT_LOC, SIGHASH_GROUP_OUTPUT_LOC,
     SIGHASH_OUTPUT_LOC,
 };
+
+/// Parse GenesisInfo errors
+#[derive(Error, Debug)]
+pub enum ParseGenesisInfoError {
+    #[error("invalid block number, expected: 0, got: `{0}`")]
+    InvalidBlockNumber(u64),
+    #[error("data not found: `{0}`")]
+    DataHashNotFound(String),
+    #[error("type not found: `{0}`")]
+    TypeHashNotFound(String),
+}
 
 #[derive(Debug, Clone)]
 pub struct GenesisInfo {
@@ -27,13 +39,10 @@ pub struct GenesisInfo {
 }
 
 impl GenesisInfo {
-    pub fn from_block(genesis_block: &BlockView) -> Result<GenesisInfo, String> {
+    pub fn from_block(genesis_block: &BlockView) -> Result<GenesisInfo, ParseGenesisInfoError> {
         let header = genesis_block.header();
         if header.number() != 0 {
-            return Err(format!(
-                "Convert to GenesisInfo failed, block number {} > 0",
-                header.number()
-            ));
+            return Err(ParseGenesisInfoError::InvalidBlockNumber(header.number()));
         }
 
         let mut sighash_data_hash = None;
@@ -104,17 +113,23 @@ impl GenesisInfo {
             .collect::<Vec<_>>();
 
         let sighash_data_hash = sighash_data_hash
-            .ok_or_else(|| "No data hash(sighash) found in txs[0][1]".to_owned())?;
+            .ok_or_else(|| "No data hash(sighash) found in txs[0][1]".to_owned())
+            .map_err(ParseGenesisInfoError::DataHashNotFound)?;
         let sighash_type_hash = sighash_type_hash
-            .ok_or_else(|| "No type hash(sighash) found in txs[0][1]".to_owned())?;
+            .ok_or_else(|| "No type hash(sighash) found in txs[0][1]".to_owned())
+            .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
         let multisig_data_hash = multisig_data_hash
-            .ok_or_else(|| "No data hash(multisig) found in txs[0][4]".to_owned())?;
+            .ok_or_else(|| "No data hash(multisig) found in txs[0][4]".to_owned())
+            .map_err(ParseGenesisInfoError::DataHashNotFound)?;
         let multisig_type_hash = multisig_type_hash
-            .ok_or_else(|| "No type hash(multisig) found in txs[0][4]".to_owned())?;
-        let dao_data_hash =
-            dao_data_hash.ok_or_else(|| "No data hash(dao) found in txs[0][2]".to_owned())?;
-        let dao_type_hash =
-            dao_type_hash.ok_or_else(|| "No type hash(dao) found in txs[0][2]".to_owned())?;
+            .ok_or_else(|| "No type hash(multisig) found in txs[0][4]".to_owned())
+            .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
+        let dao_data_hash = dao_data_hash
+            .ok_or_else(|| "No data hash(dao) found in txs[0][2]".to_owned())
+            .map_err(ParseGenesisInfoError::DataHashNotFound)?;
+        let dao_type_hash = dao_type_hash
+            .ok_or_else(|| "No type hash(dao) found in txs[0][2]".to_owned())
+            .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
         Ok(GenesisInfo {
             header,
             out_points,
