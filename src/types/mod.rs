@@ -1,6 +1,7 @@
 ///! Basic ckb sdk types
 mod address;
 mod human_capacity;
+mod script_id;
 mod since;
 
 use serde_derive::{Deserialize, Serialize};
@@ -10,6 +11,7 @@ pub use address::{
     Address, AddressPayload, AddressType, CodeHashIndex, OldAddress, OldAddressFormat,
 };
 pub use human_capacity::HumanCapacity;
+pub use script_id::ScriptId;
 pub use since::{Since, SinceType};
 
 use crate::constants::{

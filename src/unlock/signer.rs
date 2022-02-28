@@ -123,18 +123,18 @@ pub trait ScriptSigner {
 }
 
 /// Signer for secp256k1 sighash all lock script
-pub struct Secp256k1SighashSigner<'a> {
+pub struct Secp256k1SighashSigner {
     // Can be: SecpCkbRawKeyWallet, HardwareWallet
-    wallet: &'a mut dyn Wallet,
+    wallet: Box<dyn Wallet>,
 }
 
-impl<'a> Secp256k1SighashSigner<'a> {
-    pub fn new(wallet: &'a mut dyn Wallet) -> Secp256k1SighashSigner<'a> {
+impl Secp256k1SighashSigner {
+    pub fn new(wallet: Box<dyn Wallet>) -> Secp256k1SighashSigner {
         Secp256k1SighashSigner { wallet }
     }
 }
 
-impl<'a> ScriptSigner for Secp256k1SighashSigner<'a> {
+impl ScriptSigner for Secp256k1SighashSigner {
     fn match_args(&self, args: &[u8]) -> bool {
         self.wallet.match_id(args)
     }
@@ -161,7 +161,7 @@ impl<'a> ScriptSigner for Secp256k1SighashSigner<'a> {
         let id = script_group.script.args().raw_data();
         let signature = self
             .wallet
-            .sign(id.as_ref(), message, tx, tx_dep_provider)?;
+            .sign(id.as_ref(), message.as_ref(), tx, tx_dep_provider)?;
 
         // Put signature into witness
         let witness_data = witnesses[witness_idx].raw_data();
@@ -234,21 +234,26 @@ impl MultisigConfig {
     }
 }
 /// Signer for secp256k1 multisig all lock script
-pub struct Secp256k1MultisigSigner<'a> {
+pub struct Secp256k1MultisigSigner {
     // Can be: SecpCkbRawKeyWallet, HardwareWallet
-    wallet: &'a mut dyn Wallet,
+    wallet: Box<dyn Wallet>,
     config: MultisigConfig,
+    config_hash: [u8; 32],
 }
-impl<'a> Secp256k1MultisigSigner<'a> {
-    pub fn new(wallet: &'a mut dyn Wallet, config: MultisigConfig) -> Secp256k1MultisigSigner<'a> {
-        Secp256k1MultisigSigner { wallet, config }
+impl Secp256k1MultisigSigner {
+    pub fn new(wallet: Box<dyn Wallet>, config: MultisigConfig) -> Secp256k1MultisigSigner {
+        let config_hash = blake2b_256(config.to_witness_data());
+        Secp256k1MultisigSigner {
+            wallet,
+            config,
+            config_hash,
+        }
     }
 }
 
-impl<'a> ScriptSigner for Secp256k1MultisigSigner<'a> {
+impl ScriptSigner for Secp256k1MultisigSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        let expected_args = &blake2b_256(self.config.to_witness_data())[0..20];
-        expected_args == args
+        &self.config_hash[0..20] == args
             && self
                 .config
                 .sighash_addresses
@@ -285,7 +290,7 @@ impl<'a> ScriptSigner for Secp256k1MultisigSigner<'a> {
             .filter(|id| self.wallet.match_id(id.as_bytes()))
             .map(|id| {
                 self.wallet
-                    .sign(id.as_bytes(), message.clone(), tx, tx_dep_provider)
+                    .sign(id.as_bytes(), message.as_ref(), tx, tx_dep_provider)
             })
             .collect::<Result<Vec<_>, WalletError>>()?;
         // Put signature into witness

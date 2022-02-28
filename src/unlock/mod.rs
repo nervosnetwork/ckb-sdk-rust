@@ -4,4 +4,4 @@ mod unlocker;
 pub use signer::{
     MultisigConfig, ScriptSigner, Secp256k1MultisigSigner, Secp256k1SighashSigner, SignError,
 };
-pub use unlocker::{ScriptUnlocker, UnlockError};
+pub use unlocker::{ScriptUnlocker, ScriptUnlockerManager, Secp256k1SighashUnlocker, UnlockError};

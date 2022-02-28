@@ -39,14 +39,14 @@ pub trait Wallet {
     fn sign(
         &self,
         id: &[u8],
-        message: Bytes,
+        message: &[u8],
         tx: &TransactionView,
         // This is mainly for hardware wallet.
         tx_dep_provider: &mut dyn TransactionDependencyProvider,
     ) -> Result<Bytes, WalletError>;
 
     // Verify a signature
-    fn verify(&self, id: &[u8], message: Bytes, signature: Bytes) -> Result<bool, WalletError>;
+    fn verify(&self, id: &[u8], message: &[u8], signature: Bytes) -> Result<bool, WalletError>;
 }
 
 /// Transaction dependency provider errors
@@ -69,4 +69,19 @@ pub trait TransactionDependencyProvider {
     fn get_cell(&mut self, out_point: OutPoint) -> Result<CellOutput, TxDepProviderError>;
     // For get the header information of header_deps
     fn get_header(&mut self, block_hash: H256) -> Result<Header, TxDepProviderError>;
+}
+
+#[derive(Default, Clone)]
+pub struct EmptyTxDepProvider;
+
+impl TransactionDependencyProvider for EmptyTxDepProvider {
+    fn get_tx(&mut self, _tx_hash: H256) -> Result<Transaction, TxDepProviderError> {
+        Err(TxDepProviderError::NotFound)
+    }
+    fn get_cell(&mut self, _out_point: OutPoint) -> Result<CellOutput, TxDepProviderError> {
+        Err(TxDepProviderError::NotFound)
+    }
+    fn get_header(&mut self, _block_hash: H256) -> Result<Header, TxDepProviderError> {
+        Err(TxDepProviderError::NotFound)
+    }
 }
