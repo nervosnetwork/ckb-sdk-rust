@@ -4,7 +4,10 @@ use ckb_script::ScriptGroup;
 use ckb_types::{bytes::Bytes, core::TransactionView, packed::Byte32, prelude::*};
 use thiserror::Error;
 
-use super::signer::{ScriptSigner, Secp256k1MultisigSigner, Secp256k1SighashSigner, SignError};
+use super::signer::{
+    AnyoneCanPaySigner, ChequeSigner, ScriptSigner, Secp256k1MultisigSigner,
+    Secp256k1SighashSigner, SignError,
+};
 use crate::traits::{TransactionDependencyProvider, TxDepProviderError};
 use crate::types::ScriptId;
 
@@ -58,7 +61,7 @@ impl Secp256k1SighashUnlocker {
 }
 impl ScriptUnlocker for Secp256k1SighashUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
-        args.len() == 20 && self.signer.match_args(args.as_ref())
+        self.signer.match_args(args)
     }
 
     fn unlock(
@@ -95,11 +98,11 @@ impl ScriptUnlocker for Secp256k1MultisigUnlocker {
 }
 
 pub struct AnyoneCanPayUnlocker {
-    signer: Secp256k1SighashSigner,
+    signer: AnyoneCanPaySigner,
 }
 
 impl AnyoneCanPayUnlocker {
-    pub fn new(signer: Secp256k1SighashSigner) -> AnyoneCanPayUnlocker {
+    pub fn new(signer: AnyoneCanPaySigner) -> AnyoneCanPayUnlocker {
         AnyoneCanPayUnlocker { signer }
     }
     pub fn is_unlocked(
@@ -288,7 +291,7 @@ impl AnyoneCanPayUnlocker {
 }
 impl ScriptUnlocker for AnyoneCanPayUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
-        args.len() >= 20 && args.len() <= 22 && self.signer.match_args(&args[0..20])
+        self.signer.match_args(args)
     }
 
     fn unlock(
@@ -306,5 +309,37 @@ impl ScriptUnlocker for AnyoneCanPayUnlocker {
 }
 
 pub struct ChequeUnlocker {
-    signer: Secp256k1SighashSigner,
+    signer: ChequeSigner,
+}
+impl ChequeUnlocker {
+    pub fn new(signer: ChequeSigner) -> ChequeUnlocker {
+        ChequeUnlocker { signer }
+    }
+    pub fn is_unlocked(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+    ) -> Result<bool, UnlockError> {
+        Ok(true)
+    }
+}
+
+impl ScriptUnlocker for ChequeUnlocker {
+    fn match_args(&self, args: &[u8]) -> bool {
+        self.signer.match_args(args)
+    }
+
+    fn unlock(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        if self.is_unlocked(tx, script_group, tx_dep_provider)? {
+            Ok(tx.clone())
+        } else {
+            Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
+        }
+    }
 }

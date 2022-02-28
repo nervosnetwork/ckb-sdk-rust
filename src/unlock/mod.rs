@@ -2,7 +2,8 @@ mod signer;
 mod unlocker;
 
 pub use signer::{
-    MultisigConfig, ScriptSigner, Secp256k1MultisigSigner, Secp256k1SighashSigner, SignError,
+    AnyoneCanPaySigner, ChequeSigner, MultisigConfig, ScriptSigner, Secp256k1MultisigSigner,
+    Secp256k1SighashSigner, SignError,
 };
 pub use unlocker::{
     AnyoneCanPayUnlocker, ChequeUnlocker, ScriptUnlocker, ScriptUnlockerManager,

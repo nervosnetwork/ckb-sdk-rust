@@ -132,15 +132,14 @@ impl Secp256k1SighashSigner {
     pub fn new(wallet: Box<dyn Wallet>) -> Secp256k1SighashSigner {
         Secp256k1SighashSigner { wallet }
     }
-}
 
-impl ScriptSigner for Secp256k1SighashSigner {
-    fn match_args(&self, args: &[u8]) -> bool {
-        args.len() >= 20 && self.wallet.match_id(args)
+    pub fn wallet(&self) -> &dyn Wallet {
+        self.wallet.as_ref()
     }
 
-    fn sign_tx(
+    fn sign_tx_with_owner_id(
         &self,
+        owner_id: &[u8],
         tx: &TransactionView,
         script_group: &ScriptGroup,
         tx_dep_provider: &mut dyn TransactionDependencyProvider,
@@ -158,10 +157,9 @@ impl ScriptSigner for Secp256k1SighashSigner {
         let zero_lock = Bytes::from(vec![0u8; 65]);
         let message = self.generate_message(&tx_new, script_group, zero_lock)?;
 
-        let id = script_group.script.args().raw_data();
-        let signature =
-            self.wallet
-                .sign(&id.as_ref()[0..20], message.as_ref(), tx, tx_dep_provider)?;
+        let signature = self
+            .wallet
+            .sign(owner_id, message.as_ref(), tx, tx_dep_provider)?;
 
         // Put signature into witness
         let witness_data = witnesses[witness_idx].raw_data();
@@ -176,6 +174,22 @@ impl ScriptSigner for Secp256k1SighashSigner {
             .build();
         witnesses[witness_idx] = current_witness.as_bytes().pack();
         Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+    }
+}
+
+impl ScriptSigner for Secp256k1SighashSigner {
+    fn match_args(&self, args: &[u8]) -> bool {
+        args.len() == 20 && self.wallet.match_id(args)
+    }
+
+    fn sign_tx(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, SignError> {
+        let args = script_group.script.args().raw_data();
+        self.sign_tx_with_owner_id(args.as_ref(), tx, script_group, tx_dep_provider)
     }
 }
 
@@ -248,6 +262,9 @@ impl Secp256k1MultisigSigner {
             config,
             config_hash,
         }
+    }
+    pub fn wallet(&self) -> &dyn Wallet {
+        self.wallet.as_ref()
     }
 }
 
@@ -329,5 +346,74 @@ impl ScriptSigner for Secp256k1MultisigSigner {
             .build();
         witnesses[witness_idx] = current_witness.as_bytes().pack();
         Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+    }
+}
+
+pub struct AnyoneCanPaySigner {
+    sighash_signer: Secp256k1SighashSigner,
+}
+
+impl ScriptSigner for AnyoneCanPaySigner {
+    fn match_args(&self, args: &[u8]) -> bool {
+        let id = &args[0..20];
+        args.len() >= 20 && args.len() <= 22 && self.sighash_signer.wallet().match_id(id)
+    }
+
+    fn sign_tx(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, SignError> {
+        let args = script_group.script.args().raw_data();
+        let id = &args[0..20];
+        self.sighash_signer
+            .sign_tx_with_owner_id(id, tx, script_group, tx_dep_provider)
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum ChequeAction {
+    Claim,
+    Withdraw,
+}
+pub struct ChequeSigner {
+    sighash_signer: Secp256k1SighashSigner,
+    action: ChequeAction,
+}
+impl ChequeSigner {
+    pub fn new(sighash_signer: Secp256k1SighashSigner, action: ChequeAction) -> ChequeSigner {
+        ChequeSigner {
+            sighash_signer,
+            action,
+        }
+    }
+    pub fn owner_id<'t>(&self, args: &'t [u8]) -> &'t [u8] {
+        if args.len() != 40 {
+            &args[0..0]
+        } else if self.action == ChequeAction::Claim {
+            &args[0..20]
+        } else {
+            &args[20..40]
+        }
+    }
+}
+
+impl ScriptSigner for ChequeSigner {
+    fn match_args(&self, args: &[u8]) -> bool {
+        // NOTE: Require wallet raw key map as: {script_hash[0..20] -> private key}
+        args.len() == 40 && self.sighash_signer.wallet().match_id(self.owner_id(args))
+    }
+
+    fn sign_tx(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, SignError> {
+        let args = script_group.script.args().raw_data();
+        let id = self.owner_id(args.as_ref());
+        self.sighash_signer
+            .sign_tx_with_owner_id(id, tx, script_group, tx_dep_provider)
     }
 }
