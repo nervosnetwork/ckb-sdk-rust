@@ -136,7 +136,7 @@ impl Secp256k1SighashSigner {
 
 impl ScriptSigner for Secp256k1SighashSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        self.wallet.match_id(args)
+        args.len() >= 20 && self.wallet.match_id(args)
     }
 
     fn sign_tx(
@@ -159,9 +159,9 @@ impl ScriptSigner for Secp256k1SighashSigner {
         let message = self.generate_message(&tx_new, script_group, zero_lock)?;
 
         let id = script_group.script.args().raw_data();
-        let signature = self
-            .wallet
-            .sign(id.as_ref(), message.as_ref(), tx, tx_dep_provider)?;
+        let signature =
+            self.wallet
+                .sign(&id.as_ref()[0..20], message.as_ref(), tx, tx_dep_provider)?;
 
         // Put signature into witness
         let witness_data = witnesses[witness_idx].raw_data();
