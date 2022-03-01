@@ -1,7 +1,12 @@
 use std::collections::HashMap;
 
 use ckb_script::ScriptGroup;
-use ckb_types::{bytes::Bytes, core::TransactionView, packed::Byte32, prelude::*};
+use ckb_types::{
+    bytes::Bytes,
+    core::TransactionView,
+    packed::{Byte32, WitnessArgs},
+    prelude::*,
+};
 use thiserror::Error;
 
 use super::signer::{
@@ -10,6 +15,9 @@ use super::signer::{
 };
 use crate::traits::{TransactionDependencyProvider, TxDepProviderError};
 use crate::types::ScriptId;
+
+const CHEQUE_CLAIM_SINCE: u64 = 0;
+const CHEQUE_WITHDRAW_SINCE: u64 = 0xA000000000000006;
 
 #[derive(Error, Debug)]
 pub enum UnlockError {
@@ -27,6 +35,15 @@ pub enum UnlockError {
 ///   * Put extra unlock information into transaction (e.g. SMT proof in omni-lock case)
 pub trait ScriptUnlocker {
     fn match_args(&self, args: &[u8]) -> bool;
+
+    fn is_unlocked(
+        &self,
+        _tx: &TransactionView,
+        _script_group: &ScriptGroup,
+        _tx_dep_provider: &mut dyn TransactionDependencyProvider,
+    ) -> Result<bool, UnlockError> {
+        Ok(false)
+    }
     // Add signature or other information to witnesses
     fn unlock(
         &self,
@@ -105,7 +122,13 @@ impl AnyoneCanPayUnlocker {
     pub fn new(signer: AnyoneCanPaySigner) -> AnyoneCanPayUnlocker {
         AnyoneCanPayUnlocker { signer }
     }
-    pub fn is_unlocked(
+}
+impl ScriptUnlocker for AnyoneCanPayUnlocker {
+    fn match_args(&self, args: &[u8]) -> bool {
+        self.signer.match_args(args)
+    }
+
+    fn is_unlocked(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -288,12 +311,6 @@ impl AnyoneCanPayUnlocker {
         }
         Ok(true)
     }
-}
-impl ScriptUnlocker for AnyoneCanPayUnlocker {
-    fn match_args(&self, args: &[u8]) -> bool {
-        self.signer.match_args(args)
-    }
-
     fn unlock(
         &self,
         tx: &TransactionView,
@@ -315,19 +332,125 @@ impl ChequeUnlocker {
     pub fn new(signer: ChequeSigner) -> ChequeUnlocker {
         ChequeUnlocker { signer }
     }
-    pub fn is_unlocked(
-        &self,
-        tx: &TransactionView,
-        script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
-    ) -> Result<bool, UnlockError> {
-        Ok(true)
-    }
 }
 
 impl ScriptUnlocker for ChequeUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
+    }
+
+    fn is_unlocked(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+    ) -> Result<bool, UnlockError> {
+        let args = script_group.script.args().raw_data();
+        if args.len() != 40 {
+            return Err(UnlockError::Other(
+                format!(
+                    "invalid script args length, expected: 40, got: {}",
+                    args.len()
+                )
+                .into(),
+            ));
+        }
+        let inputs: Vec<_> = tx.inputs().into_iter().collect();
+        let group_since_list: Vec<u64> = script_group
+            .input_indices
+            .iter()
+            .map(|idx| inputs[*idx].since().unpack())
+            .collect();
+
+        // Check if unlocked via lock hash in inputs
+        let receiver_lock_hash = &args.as_ref()[0..20];
+        let sender_lock_hash = &args.as_ref()[20..40];
+        let mut receiver_lock_witness = None;
+        let mut sender_lock_witness = None;
+        for (input_idx, input) in inputs.into_iter().enumerate() {
+            let output = tx_dep_provider.get_output(input.previous_output())?;
+            let lock_hash = output.lock().calc_script_hash();
+            let lock_hash_prefix = &lock_hash.as_slice()[0..20];
+            let witness = tx
+                .witnesses()
+                .get(input_idx)
+                .map(|witness| witness.raw_data())
+                .unwrap_or_default();
+
+            #[allow(clippy::collapsible_if)]
+            if lock_hash_prefix == receiver_lock_hash {
+                if receiver_lock_witness.is_none() {
+                    receiver_lock_witness = Some((input_idx, witness));
+                }
+            } else if lock_hash_prefix == sender_lock_hash {
+                if sender_lock_witness.is_none() {
+                    sender_lock_witness = Some((input_idx, witness));
+                }
+            }
+        }
+        // NOTE: receiver has higher priority than sender
+        if let Some((input_idx, witness)) = receiver_lock_witness {
+            if group_since_list
+                .iter()
+                .any(|since| *since != CHEQUE_CLAIM_SINCE)
+            {
+                return Err(UnlockError::Other(
+                    "claim action must have all zero since in cheque inputs"
+                        .to_string()
+                        .into(),
+                ));
+            }
+            let witness_args = WitnessArgs::from_slice(witness.as_ref()).map_err(|_| {
+                UnlockError::Other(
+                    format!(
+                        "malformed witness for receiver lock, input index: {}",
+                        input_idx
+                    )
+                    .into(),
+                )
+            })?;
+            if witness_args.lock().to_opt().is_none() {
+                return Err(UnlockError::Other(
+                    format!(
+                        "witness has not lock field for receiver lock, input index: {}",
+                        input_idx
+                    )
+                    .into(),
+                ));
+            }
+            return Ok(true);
+        } else if let Some((input_idx, witness)) = sender_lock_witness {
+            if group_since_list
+                .iter()
+                .any(|since| *since != CHEQUE_WITHDRAW_SINCE)
+            {
+                return Err(UnlockError::Other(
+                    "claim action must have all relative 6 epochs since in cheque inputs"
+                        .to_string()
+                        .into(),
+                ));
+            }
+            let witness_args = WitnessArgs::from_slice(witness.as_ref()).map_err(|_| {
+                UnlockError::Other(
+                    format!(
+                        "malformed witness for sender lock, input index: {}",
+                        input_idx
+                    )
+                    .into(),
+                )
+            })?;
+            if witness_args.lock().to_opt().is_none() {
+                return Err(UnlockError::Other(
+                    format!(
+                        "witness has not lock field for sender lock, input index: {}",
+                        input_idx
+                    )
+                    .into(),
+                ));
+            }
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     fn unlock(
