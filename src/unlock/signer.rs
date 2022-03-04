@@ -50,7 +50,7 @@ pub trait ScriptSigner {
         tx: &TransactionView,
         script_group: &ScriptGroup,
         // This argument is for inner wallet to use
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, SignError>;
 
     /// Common logic of generate message for certain script group. Overwrite
@@ -142,7 +142,7 @@ impl Secp256k1SighashSigner {
         owner_id: &[u8],
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, SignError> {
         let witness_idx = script_group.input_indices[0];
         let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
@@ -186,7 +186,7 @@ impl ScriptSigner for Secp256k1SighashSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, SignError> {
         let args = script_group.script.args().raw_data();
         self.sign_tx_with_owner_id(args.as_ref(), tx, script_group, tx_dep_provider)
@@ -282,7 +282,7 @@ impl ScriptSigner for Secp256k1MultisigSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, SignError> {
         let witness_idx = script_group.input_indices[0];
         let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
@@ -363,7 +363,7 @@ impl ScriptSigner for AnyoneCanPaySigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, SignError> {
         let args = script_group.script.args().raw_data();
         let id = &args[0..20];
@@ -409,7 +409,7 @@ impl ScriptSigner for ChequeSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, SignError> {
         let args = script_group.script.args().raw_data();
         let id = self.owner_id(args.as_ref());

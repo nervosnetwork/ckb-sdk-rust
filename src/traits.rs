@@ -1,11 +1,18 @@
 //! The traits defined here is intent to describe the requirements of current
 //!  library code and only implemented the trait in upper level code.
 
+use ckb_chain_spec::consensus::Consensus;
+use ckb_hash::blake2b_256;
+use ckb_traits::{BlockEpoch, CellDataProvider, EpochProvider, HeaderProvider};
 use ckb_types::{
     bytes::Bytes,
-    core::TransactionView,
-    packed::{CellOutput, Header, OutPoint, Transaction},
-    H256,
+    core::{
+        cell::{CellMetaBuilder, CellProvider, CellStatus, HeaderChecker},
+        error::OutPointError,
+        EpochExt, HeaderView, TransactionView,
+    },
+    packed::{Byte32, CellOutput, Header, OutPoint, Transaction},
+    prelude::*,
 };
 use thiserror::Error;
 
@@ -45,7 +52,7 @@ pub trait Wallet {
         message: &[u8],
         tx: &TransactionView,
         // This is mainly for hardware wallet.
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<Bytes, WalletError>;
 
     /// Verify a signature
@@ -55,8 +62,8 @@ pub trait Wallet {
 /// Transaction dependency provider errors
 #[derive(Error, Debug)]
 pub enum TxDepProviderError {
-    #[error("the resource is not found in the provider")]
-    NotFound,
+    #[error("the resource is not found in the provider: `{0}`")]
+    NotFound(String),
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
 }
@@ -66,30 +73,114 @@ pub enum TxDepProviderError {
 ///   * cell_deps
 ///   * header_deps
 pub trait TransactionDependencyProvider {
+    fn get_consensus(&self) -> Result<Consensus, TxDepProviderError>;
     // For verify certain cell belong to certain transaction
-    fn get_tx(&mut self, tx_hash: H256) -> Result<Transaction, TxDepProviderError>;
-    // For get the output information of inputs or cell_deps
-    fn get_output(&mut self, out_point: OutPoint) -> Result<CellOutput, TxDepProviderError>;
+    fn get_transaction(&self, tx_hash: &Byte32) -> Result<Transaction, TxDepProviderError>;
+    // For get the output information of inputs or cell_deps, those cell should be live cell
+    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TxDepProviderError>;
     // For get the output data information of inputs or cell_deps
-    fn get_output_data(&mut self, out_point: OutPoint) -> Result<Bytes, TxDepProviderError>;
+    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TxDepProviderError>;
     // For get the header information of header_deps
-    fn get_header(&mut self, block_hash: H256) -> Result<Header, TxDepProviderError>;
+    fn get_header(&self, block_hash: &Byte32) -> Result<Header, TxDepProviderError>;
+    // Gets corresponding `EpochExt` by block hash (NOTE: for dao calculation)
+    fn get_epoch_ext(&self, block_hash: &Byte32) -> Result<EpochExt, TxDepProviderError>;
+}
+
+// Implement CellDataProvider trait is currently for `DaoCalculator`
+impl CellDataProvider for &dyn TransactionDependencyProvider {
+    fn get_cell_data(&self, out_point: &OutPoint) -> Option<Bytes> {
+        TransactionDependencyProvider::get_cell_data(*self, out_point).ok()
+    }
+    fn get_cell_data_hash(&self, out_point: &OutPoint) -> Option<Byte32> {
+        TransactionDependencyProvider::get_cell_data(*self, out_point)
+            .ok()
+            .map(|data| blake2b_256(data.as_ref()).pack())
+    }
+}
+// Implement CellDataProvider trait is currently for `DaoCalculator`
+impl EpochProvider for &dyn TransactionDependencyProvider {
+    fn get_epoch_ext(&self, block_header: &HeaderView) -> Option<EpochExt> {
+        TransactionDependencyProvider::get_epoch_ext(*self, &block_header.hash()).ok()
+    }
+    fn get_block_epoch(&self, _block_header: &HeaderView) -> Option<BlockEpoch> {
+        None
+    }
+}
+// Implement CellDataProvider trait is currently for `DaoCalculator`
+impl HeaderProvider for &dyn TransactionDependencyProvider {
+    fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
+        TransactionDependencyProvider::get_header(*self, hash)
+            .map(|header| header.into_view())
+            .ok()
+    }
+}
+impl HeaderChecker for &dyn TransactionDependencyProvider {
+    fn check_valid(&self, block_hash: &Byte32) -> Result<(), OutPointError> {
+        TransactionDependencyProvider::get_header(*self, block_hash)
+            .map(|_| ())
+            .map_err(|_| OutPointError::InvalidHeader(block_hash.clone()))
+    }
+}
+impl CellProvider for &dyn TransactionDependencyProvider {
+    fn cell(&self, out_point: &OutPoint, _eager_load: bool) -> CellStatus {
+        match self
+            .get_transaction(&out_point.tx_hash())
+            .map(|tx| tx.into_view())
+        {
+            Ok(tx) => tx
+                .outputs()
+                .get(out_point.index().unpack())
+                .map(|cell| {
+                    let data = tx
+                        .outputs_data()
+                        .get(out_point.index().unpack())
+                        .expect("output data");
+
+                    let cell_meta = CellMetaBuilder::from_cell_output(cell, data.unpack())
+                        .out_point(out_point.to_owned())
+                        .build();
+
+                    CellStatus::live_cell(cell_meta)
+                })
+                .unwrap_or(CellStatus::Unknown),
+            Err(_err) => CellStatus::Unknown,
+        }
+    }
 }
 
 /// An empty transaction dependency provider, this provider will return Err(NotFound) in all cases.
+/// This struct may useful for sign a transaction
 pub struct EmptyTxDepProvider;
 
 impl TransactionDependencyProvider for EmptyTxDepProvider {
-    fn get_tx(&mut self, _tx_hash: H256) -> Result<Transaction, TxDepProviderError> {
-        Err(TxDepProviderError::NotFound)
+    fn get_consensus(&self) -> Result<Consensus, TxDepProviderError> {
+        unimplemented!()
     }
-    fn get_output(&mut self, _out_point: OutPoint) -> Result<CellOutput, TxDepProviderError> {
-        Err(TxDepProviderError::NotFound)
+    fn get_transaction(&self, tx_hash: &Byte32) -> Result<Transaction, TxDepProviderError> {
+        Err(TxDepProviderError::NotFound(format!(
+            "transaction: {}",
+            tx_hash
+        )))
     }
-    fn get_output_data(&mut self, _out_point: OutPoint) -> Result<Bytes, TxDepProviderError> {
-        Err(TxDepProviderError::NotFound)
+    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TxDepProviderError> {
+        Err(TxDepProviderError::NotFound(format!("cell: {}", out_point)))
     }
-    fn get_header(&mut self, _block_hash: H256) -> Result<Header, TxDepProviderError> {
-        Err(TxDepProviderError::NotFound)
+    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TxDepProviderError> {
+        Err(TxDepProviderError::NotFound(format!(
+            "cell data: {}",
+            out_point
+        )))
+    }
+    fn get_header(&self, block_hash: &Byte32) -> Result<Header, TxDepProviderError> {
+        Err(TxDepProviderError::NotFound(format!(
+            "header: {}",
+            block_hash
+        )))
+    }
+    fn get_epoch_ext(&self, block_hash: &Byte32) -> Result<EpochExt, TxDepProviderError> {
+        Err(TxDepProviderError::NotFound(format!(
+            "epoch ext: {}",
+            block_hash
+        )))
     }
 }

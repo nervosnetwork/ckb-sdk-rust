@@ -40,7 +40,7 @@ pub trait ScriptUnlocker {
         &self,
         _tx: &TransactionView,
         _script_group: &ScriptGroup,
-        _tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<bool, UnlockError> {
         Ok(false)
     }
@@ -49,7 +49,7 @@ pub trait ScriptUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError>;
 }
 
@@ -85,7 +85,7 @@ impl ScriptUnlocker for Secp256k1SighashUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
         Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
     }
@@ -108,7 +108,7 @@ impl ScriptUnlocker for Secp256k1MultisigUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
         Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
     }
@@ -132,7 +132,7 @@ impl ScriptUnlocker for AnyoneCanPayUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<bool, UnlockError> {
         const POW10: [u64; 20] = [
             1,
@@ -195,8 +195,8 @@ impl ScriptUnlocker for AnyoneCanPayUnlocker {
                         format!("input index in script group is out of bound: {}", idx).into(),
                     )
                 })?;
-                let output = tx_dep_provider.get_output(input.previous_output())?;
-                let output_data = tx_dep_provider.get_output_data(input.previous_output())?;
+                let output = tx_dep_provider.get_cell(&input.previous_output())?;
+                let output_data = tx_dep_provider.get_cell_data(&input.previous_output())?;
 
                 let type_hash_opt = output
                     .type_()
@@ -315,7 +315,7 @@ impl ScriptUnlocker for AnyoneCanPayUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             Ok(tx.clone())
@@ -343,7 +343,7 @@ impl ScriptUnlocker for ChequeUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<bool, UnlockError> {
         let args = script_group.script.args().raw_data();
         if args.len() != 40 {
@@ -368,7 +368,7 @@ impl ScriptUnlocker for ChequeUnlocker {
         let mut receiver_lock_witness = None;
         let mut sender_lock_witness = None;
         for (input_idx, input) in inputs.into_iter().enumerate() {
-            let output = tx_dep_provider.get_output(input.previous_output())?;
+            let output = tx_dep_provider.get_cell(&input.previous_output())?;
             let lock_hash = output.lock().calc_script_hash();
             let lock_hash_prefix = &lock_hash.as_slice()[0..20];
             let witness = tx
@@ -457,7 +457,7 @@ impl ScriptUnlocker for ChequeUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &mut dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             Ok(tx.clone())

@@ -7,6 +7,7 @@ pub mod constants;
 pub mod pubsub;
 pub mod rpc;
 pub mod traits;
+pub mod tx_builder;
 pub mod unlock;
 
 pub use chain::{calc_max_mature_number, GenesisInfo};
