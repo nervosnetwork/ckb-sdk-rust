@@ -32,7 +32,6 @@ pub struct UdtIssueBuilder {
     owner: Script,
     receivers: Vec<(Script, u128)>,
     capacity_provider: Script,
-    change_receiver: Script,
     fee_rate: FeeRate,
     // Force small change as fee when live cell is not enough to adjust the tx fee
     force_small_change_as_fee: bool,
