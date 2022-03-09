@@ -11,10 +11,12 @@ use ckb_types::{
         error::OutPointError,
         EpochExt, HeaderView, TransactionView,
     },
-    packed::{Byte32, CellOutput, Header, OutPoint, Transaction},
+    packed::{Byte32, CellDep, CellOutput, Header, OutPoint, Script, Transaction},
     prelude::*,
 };
 use thiserror::Error;
+
+use crate::types::ScriptId;
 
 /// Wallet errors
 #[derive(Error, Debug)]
@@ -25,7 +27,6 @@ pub enum WalletError {
     InvalidMessage(String),
     #[error("get transaction dependency failed: `{0}`")]
     TxDep(#[from] TxDepProviderError),
-
     // maybe hardware wallet error or io error
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
@@ -184,3 +185,95 @@ impl CellProvider for &dyn TransactionDependencyProvider {
 //         )))
 //     }
 // }
+
+/// Cell collector errors
+#[derive(Error, Debug)]
+pub enum CellCollectorError {
+    #[error("internal error: `{0}`")]
+    Internal(Box<dyn std::error::Error>),
+    #[error("other error: `{0}`")]
+    Other(Box<dyn std::error::Error>),
+}
+
+// FIXME: live cell struct
+pub struct LiveCell {
+    pub output: CellOutput,
+    pub output_data: Bytes,
+    pub out_point: OutPoint,
+    pub block_number: u64,
+    pub tx_index: u32,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum DataBytesOption {
+    /// data.length == size
+    Eq(usize),
+    /// data.length >  size
+    Gt(usize),
+    /// data.length <  size
+    Lt(usize),
+    /// data.length >= size
+    Ge(usize),
+    /// data.length <= size
+    Le(usize),
+}
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum MaturityOption {
+    Mature,
+    Immature,
+    Both,
+}
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct CellQueryOptions {
+    // primary search key is lock script,
+    lock_script: Script,
+    type_script: Option<Script>,
+    data_bytes: DataBytesOption,
+    maturity: MaturityOption,
+    min_capacity: u64,
+}
+impl CellQueryOptions {
+    pub fn new(lock_script: Script) -> CellQueryOptions {
+        CellQueryOptions {
+            lock_script,
+            type_script: None,
+            data_bytes: DataBytesOption::Eq(0),
+            maturity: MaturityOption::Mature,
+            // 0 means no need capacity
+            min_capacity: 1,
+        }
+    }
+    pub fn type_script(mut self, script: Option<Script>) -> Self {
+        self.type_script = script;
+        self
+    }
+    pub fn data_bytes(mut self, option: DataBytesOption) -> Self {
+        self.data_bytes = option;
+        self
+    }
+    pub fn maturity(mut self, option: MaturityOption) -> Self {
+        self.maturity = option;
+        self
+    }
+    pub fn min_capacity(mut self, value: u64) -> Self {
+        self.min_capacity = value;
+        self
+    }
+}
+pub trait CellCollector {
+    fn collect_live_cells(
+        &mut self,
+        query: &CellQueryOptions,
+        apply_changes: bool,
+    ) -> Result<(Vec<LiveCell>, u64), CellCollectorError>;
+
+    fn lock_cell(&mut self, out_point: OutPoint) -> Result<(), CellCollectorError>;
+    fn apply_tx(&mut self, tx: Transaction) -> Result<(), CellCollectorError>;
+
+    /// Clear cache and locked cells
+    fn reset(&mut self);
+}
+
+pub trait CellDepResolver {
+    fn resolve(&self, script_id: &ScriptId) -> Option<CellDep>;
+}

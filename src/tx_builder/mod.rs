@@ -15,106 +15,46 @@ use ckb_types::{
         error::OutPointError,
         Capacity, CapacityError, FeeRate, ScriptHashType, TransactionView,
     },
-    packed::{Byte32, CellInput, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
+    packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
 };
 use thiserror::Error;
 
 use crate::constants::DAO_TYPE_HASH;
-use crate::traits::{TransactionDependencyProvider, TxDepProviderError};
+use crate::traits::{
+    CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions,
+    TransactionDependencyProvider, TxDepProviderError,
+};
+use crate::types::ScriptId;
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
-pub enum TransactionBuilderError {
+pub enum TransactionCrafterError {
     #[error("invalid parameter: `{0}`")]
     InvalidParameter(Box<dyn std::error::Error>),
+    #[error("cell collector error: `{0}`")]
+    CellCollector(#[from] CellCollectorError),
+    #[error("resolve cell dep failed: `{0}`")]
+    ResolveCellDepFailed(ScriptId),
     #[error("other error: `{0}`")]
     Other(Box<dyn std::error::Error>),
 }
 
 /// Transaction Builder interface
-pub trait TransactionBuilder {
-    fn build(&self) -> Result<TransactionView, TransactionBuilderError>;
+pub trait TransactionCrafter {
+    fn build(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+    ) -> Result<TransactionView, TransactionCrafterError>;
 }
 
-/// Cell collector errors
-#[derive(Error, Debug)]
-pub enum CellCollectorError {
-    #[error("internal error: `{0}`")]
-    Internal(Box<dyn std::error::Error>),
-    #[error("other error: `{0}`")]
-    Other(Box<dyn std::error::Error>),
-}
-
-// FIXME: live cell struct
-pub struct LiveCell {
-    pub output: CellOutput,
-    pub output_data: Bytes,
-    pub out_point: OutPoint,
-    pub block_number: u64,
-    pub tx_index: u32,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum DataBytesOption {
-    Eq(usize),
-    Gt(usize),
-    Lt(usize),
-    Ge(usize),
-    Le(usize),
-}
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum MaturityOption {
-    Mature,
-    Immature,
-    Both,
-}
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct CellQueryOptions {
-    // primary search key is lock script,
-    lock_script: Script,
-    type_script: Option<Script>,
-    data_bytes: DataBytesOption,
-    maturity: MaturityOption,
-    total_capacity: u64,
-}
-impl CellQueryOptions {
-    pub fn new(lock_script: Script) -> CellQueryOptions {
-        CellQueryOptions {
-            lock_script,
-            type_script: None,
-            data_bytes: DataBytesOption::Eq(0),
-            maturity: MaturityOption::Mature,
-            // 0 means no need capacity
-            total_capacity: 1,
-        }
-    }
-    pub fn type_script(mut self, script: Option<Script>) -> Self {
-        self.type_script = script;
-        self
-    }
-    pub fn data_bytes(mut self, option: DataBytesOption) -> Self {
-        self.data_bytes = option;
-        self
-    }
-    pub fn maturity(mut self, option: MaturityOption) -> Self {
-        self.maturity = option;
-        self
-    }
-    pub fn total_capacity(mut self, value: u64) -> Self {
-        self.total_capacity = value;
-        self
-    }
-}
-pub trait CellCollector {
-    fn collect_live_cells(
-        &mut self,
-        query: &CellQueryOptions,
-        apply_changes: bool,
-    ) -> Result<(Vec<LiveCell>, u64), CellCollectorError>;
-
-    fn lock_cell(&mut self, out_point: OutPoint) -> Result<(), CellCollectorError>;
-    fn apply_tx(&mut self, tx: Transaction) -> Result<(), CellCollectorError>;
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub enum TransferAction {
+    /// This action will crate a new cell, typecial lock script: cheque, sighash, multisig
+    Create,
+    /// This action will query the exists cell and update the amount, typecial lock script: acp
+    Update,
 }
 
 #[derive(Error, Debug)]
@@ -434,7 +374,7 @@ pub fn balance_tx_capacity(
                 }
             }
             // fee is positive and `fee < min_fee`
-            Ok(fee) => {}
+            Ok(_fee) => {}
             Err(TransactionFeeError::CapacityOverflow(delta)) => {
                 need_more_capacity = delta + min_fee;
             }
@@ -443,7 +383,7 @@ pub fn balance_tx_capacity(
             }
         }
         if need_more_capacity > 0 {
-            let query = base_query.clone().total_capacity(need_more_capacity);
+            let query = base_query.clone().min_capacity(need_more_capacity);
             let (more_cells, _more_capacity) = cell_collector.collect_live_cells(&query, true)?;
             if more_cells.is_empty() {
                 return Err(BalanceTxCapacityError::CapacityNotEnough);
