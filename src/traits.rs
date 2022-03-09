@@ -148,39 +148,39 @@ impl CellProvider for &dyn TransactionDependencyProvider {
     }
 }
 
-/// An empty transaction dependency provider, this provider will return Err(NotFound) in all cases.
-/// This struct may useful for sign a transaction
-pub struct EmptyTxDepProvider;
+// /// An empty transaction dependency provider, this provider will return Err(NotFound) in all cases.
+// /// This struct may useful for sign a transaction
+// pub struct EmptyTxDepProvider;
 
-impl TransactionDependencyProvider for EmptyTxDepProvider {
-    fn get_consensus(&self) -> Result<Consensus, TxDepProviderError> {
-        unimplemented!()
-    }
-    fn get_transaction(&self, tx_hash: &Byte32) -> Result<Transaction, TxDepProviderError> {
-        Err(TxDepProviderError::NotFound(format!(
-            "transaction: {}",
-            tx_hash
-        )))
-    }
-    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TxDepProviderError> {
-        Err(TxDepProviderError::NotFound(format!("cell: {}", out_point)))
-    }
-    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TxDepProviderError> {
-        Err(TxDepProviderError::NotFound(format!(
-            "cell data: {}",
-            out_point
-        )))
-    }
-    fn get_header(&self, block_hash: &Byte32) -> Result<Header, TxDepProviderError> {
-        Err(TxDepProviderError::NotFound(format!(
-            "header: {}",
-            block_hash
-        )))
-    }
-    fn get_epoch_ext(&self, block_hash: &Byte32) -> Result<EpochExt, TxDepProviderError> {
-        Err(TxDepProviderError::NotFound(format!(
-            "epoch ext: {}",
-            block_hash
-        )))
-    }
-}
+// impl TransactionDependencyProvider for EmptyTxDepProvider {
+//     fn get_consensus(&self) -> Result<Consensus, TxDepProviderError> {
+//         unimplemented!()
+//     }
+//     fn get_transaction(&self, tx_hash: &Byte32) -> Result<Transaction, TxDepProviderError> {
+//         Err(TxDepProviderError::NotFound(format!(
+//             "transaction: {}",
+//             tx_hash
+//         )))
+//     }
+//     fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TxDepProviderError> {
+//         Err(TxDepProviderError::NotFound(format!("cell: {}", out_point)))
+//     }
+//     fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TxDepProviderError> {
+//         Err(TxDepProviderError::NotFound(format!(
+//             "cell data: {}",
+//             out_point
+//         )))
+//     }
+//     fn get_header(&self, block_hash: &Byte32) -> Result<Header, TxDepProviderError> {
+//         Err(TxDepProviderError::NotFound(format!(
+//             "header: {}",
+//             block_hash
+//         )))
+//     }
+//     fn get_epoch_ext(&self, block_hash: &Byte32) -> Result<EpochExt, TxDepProviderError> {
+//         Err(TxDepProviderError::NotFound(format!(
+//             "epoch ext: {}",
+//             block_hash
+//         )))
+//     }
+// }

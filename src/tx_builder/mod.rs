@@ -1,19 +1,23 @@
 mod dao;
 mod udt;
 
+use std::collections::HashSet;
+
+use byteorder::{ByteOrder, LittleEndian};
+use ckb_chain_spec::consensus::Consensus;
 use ckb_dao::DaoCalculator;
 use ckb_dao_utils::DaoError;
+use ckb_traits::CellDataProvider;
 use ckb_types::{
     bytes::Bytes,
     core::{
-        cell::{resolve_transaction_with_options, ResolveOptions},
+        cell::{resolve_transaction_with_options, CellMeta, ResolveOptions, ResolvedTransaction},
         error::OutPointError,
-        Capacity, FeeRate, TransactionView,
+        Capacity, CapacityError, FeeRate, ScriptHashType, TransactionView,
     },
-    packed::{CellInput, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
+    packed::{Byte32, CellInput, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
     prelude::*,
 };
-use std::collections::HashSet;
 use thiserror::Error;
 
 use crate::constants::DAO_TYPE_HASH;
@@ -85,19 +89,19 @@ impl CellQueryOptions {
             total_capacity: 1,
         }
     }
-    pub fn type_script(&mut self, script: Option<Script>) -> &mut Self {
+    pub fn type_script(mut self, script: Option<Script>) -> Self {
         self.type_script = script;
         self
     }
-    pub fn data_bytes(&mut self, option: DataBytesOption) -> &mut Self {
+    pub fn data_bytes(mut self, option: DataBytesOption) -> Self {
         self.data_bytes = option;
         self
     }
-    pub fn maturity(&mut self, option: MaturityOption) -> &mut Self {
+    pub fn maturity(mut self, option: MaturityOption) -> Self {
         self.maturity = option;
         self
     }
-    pub fn total_capacity(&mut self, value: u64) -> &mut Self {
+    pub fn total_capacity(mut self, value: u64) -> Self {
         self.total_capacity = value;
         self
     }
@@ -121,10 +125,93 @@ pub enum TransactionFeeError {
     OutPoint(#[from] OutPointError),
     #[error("dao error: `{0}`")]
     Dao(#[from] DaoError),
-    #[error("unexpected dao cell in inputs")]
-    UnexpectedDaoInput,
-    #[error("capacity overflow, reason: `{0}`")]
-    CapacityOverflow(String),
+    #[error("unexpected dao withdraw cell in inputs")]
+    UnexpectedDaoWithdrawInput,
+    #[error("capacity error: `{0}`")]
+    CapacityError(#[from] CapacityError),
+    #[error("capacity sub overflow, delta: `{0}`")]
+    CapacityOverflow(u64),
+}
+
+// FIXME: This function is copied from ckb-dao, should make this public so we can remove it here.
+fn transaction_maximum_withdraw(
+    dao_calculator: &DaoCalculator<&dyn TransactionDependencyProvider>,
+    rtx: &ResolvedTransaction,
+    consensus: &Consensus,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+) -> Result<Capacity, DaoError> {
+    #[allow(clippy::mutable_key_type)]
+    let header_deps: HashSet<Byte32> = rtx.transaction.header_deps_iter().collect();
+    rtx.resolved_inputs.iter().enumerate().try_fold(
+        Capacity::zero(),
+        |capacities, (i, cell_meta)| {
+            let capacity: Result<Capacity, DaoError> = {
+                let output = &cell_meta.cell_output;
+                let is_dao_type_script = |type_script: Script| {
+                    Into::<u8>::into(type_script.hash_type())
+                        == Into::<u8>::into(ScriptHashType::Type)
+                        && type_script.code_hash()
+                            == consensus.dao_type_hash().expect("No dao system cell")
+                };
+                let is_withdrawing_input =
+                    |cell_meta: &CellMeta| match tx_dep_provider.load_cell_data(cell_meta) {
+                        Some(data) => data.len() == 8 && LittleEndian::read_u64(&data) > 0,
+                        None => false,
+                    };
+                if output
+                    .type_()
+                    .to_opt()
+                    .map(is_dao_type_script)
+                    .unwrap_or(false)
+                    && is_withdrawing_input(cell_meta)
+                {
+                    let withdrawing_header_hash = cell_meta
+                        .transaction_info
+                        .as_ref()
+                        .map(|info| &info.block_hash)
+                        .filter(|hash| header_deps.contains(hash))
+                        .ok_or(DaoError::InvalidOutPoint)?;
+                    let deposit_header_hash = rtx
+                        .transaction
+                        .witnesses()
+                        .get(i)
+                        .ok_or(DaoError::InvalidOutPoint)
+                        .and_then(|witness_data| {
+                            // dao contract stores header deps index as u64 in the input_type field of WitnessArgs
+                            let witness =
+                                WitnessArgs::from_slice(&Unpack::<Bytes>::unpack(&witness_data))
+                                    .map_err(|_| DaoError::InvalidDaoFormat)?;
+                            let header_deps_index_data: Option<Bytes> = witness
+                                .input_type()
+                                .to_opt()
+                                .map(|witness| witness.unpack());
+                            if header_deps_index_data.is_none()
+                                || header_deps_index_data.clone().map(|data| data.len()) != Some(8)
+                            {
+                                return Err(DaoError::InvalidDaoFormat);
+                            }
+                            Ok(LittleEndian::read_u64(&header_deps_index_data.unwrap()))
+                        })
+                        .and_then(|header_dep_index| {
+                            rtx.transaction
+                                .header_deps()
+                                .get(header_dep_index as usize)
+                                .and_then(|hash| header_deps.get(&hash))
+                                .ok_or(DaoError::InvalidOutPoint)
+                        })?;
+                    dao_calculator.calculate_maximum_withdraw(
+                        output,
+                        Capacity::bytes(cell_meta.data_bytes as usize)?,
+                        deposit_header_hash,
+                        withdrawing_header_hash,
+                    )
+                } else {
+                    Ok(output.capacity().unpack())
+                }
+            };
+            capacity.and_then(|c| c.safe_add(capacities).map_err(Into::into))
+        },
+    )
 }
 
 /// Calculate the actual transaction fee of the transaction, include dao
@@ -141,9 +228,17 @@ pub fn tx_fee(
         ResolveOptions::default(),
     )?;
     let consensus = tx_dep_provider.get_consensus()?;
-    Ok(DaoCalculator::new(&consensus, &tx_dep_provider)
-        .transaction_fee(&rtx)?
-        .as_u64())
+    let maximum_withdraw = transaction_maximum_withdraw(
+        &DaoCalculator::new(&consensus, &tx_dep_provider),
+        &rtx,
+        &consensus,
+        tx_dep_provider,
+    )?
+    .as_u64();
+    let output_total = rtx.transaction.outputs_capacity()?.as_u64();
+    maximum_withdraw
+        .checked_sub(output_total)
+        .ok_or_else(|| TransactionFeeError::CapacityOverflow(output_total - maximum_withdraw))
 }
 
 /// Calculate the actual transaction fee of the transaction.
@@ -151,7 +246,7 @@ pub fn tx_fee(
 /// If there is no dao cell in inputs, use this function will require less
 /// dependencies. If there is dao cell in inputs it will return
 /// `TransactionFeeError::UnexpectedDaoInput`.
-pub fn tx_fee_without_dao(
+pub fn tx_fee_without_dao_withdraw(
     tx: &TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,
 ) -> Result<u64, TransactionFeeError> {
@@ -163,7 +258,7 @@ pub fn tx_fee_without_dao(
         if since != 0 {
             if let Some(type_script) = cell.type_().to_opt() {
                 if type_script.code_hash().as_slice() == DAO_TYPE_HASH.as_bytes() {
-                    return Err(TransactionFeeError::UnexpectedDaoInput);
+                    return Err(TransactionFeeError::UnexpectedDaoWithdrawInput);
                 }
             }
         }
@@ -171,12 +266,9 @@ pub fn tx_fee_without_dao(
         input_total += capacity;
     }
     let output_total: u64 = tx.outputs_capacity().expect("capacity overflow").as_u64();
-    input_total.checked_sub(output_total).ok_or_else(|| {
-        TransactionFeeError::CapacityOverflow(format!(
-            "input total capacity({} shannons) less than otuput total capacity({} shannons)",
-            input_total, output_total
-        ))
-    })
+    input_total
+        .checked_sub(output_total)
+        .ok_or_else(|| TransactionFeeError::CapacityOverflow(output_total - input_total))
 }
 
 pub struct CapacityProvider {
@@ -223,18 +315,19 @@ pub fn balance_tx_capacity(
     fee_rate: FeeRate,
     capacity_provider: &CapacityProvider,
     force_small_change_as_fee: Option<u64>,
+    has_dao_withdraw: bool,
     cell_collector: &mut dyn CellCollector,
     tx_dep_provider: &dyn TransactionDependencyProvider,
 ) -> Result<TransactionView, BalanceTxCapacityError> {
-    let init_change_output = CellOutput::new_builder()
+    let base_change_output = CellOutput::new_builder()
         .lock(capacity_provider.lock_script.clone())
         .build();
-    let init_change_occupied_capacity = init_change_output
+    let base_change_occupied_capacity = base_change_output
         .occupied_capacity(Capacity::zero())
         .expect("init change occupied capacity")
         .as_u64();
     // the query is to collect just one cell
-    let query = CellQueryOptions::new(capacity_provider.lock_script.clone());
+    let base_query = CellQueryOptions::new(capacity_provider.lock_script.clone());
     // check if capacity provider lock script already in inputs
     let mut has_provider = false;
     for input in tx.inputs() {
@@ -276,8 +369,13 @@ pub fn balance_tx_capacity(
         };
         let tx_size = new_tx.data().as_reader().serialized_size_in_block();
         let min_fee = fee_rate.fee(tx_size).as_u64();
-        let mut need_one_more_input = true;
-        match tx_fee(new_tx.clone(), tx_dep_provider) {
+        let mut need_more_capacity = 1;
+        let fee_result: Result<u64, TransactionFeeError> = if has_dao_withdraw {
+            tx_fee(new_tx.clone(), tx_dep_provider)
+        } else {
+            tx_fee_without_dao_withdraw(&new_tx, tx_dep_provider)
+        };
+        match fee_result {
             Ok(fee) if fee == min_fee => {
                 return Ok(new_tx);
             }
@@ -291,25 +389,25 @@ pub fn balance_tx_capacity(
                         .expect("change cell capacity add overflow");
                     // next loop round must return new_tx;
                     change_output = Some(output.as_builder().capacity(new_capacity.pack()).build());
-                    need_one_more_input = false;
+                    need_more_capacity = 0;
                 } else {
                     // If change cell not exists, add a change cell.
-                    let extra_min_fee = fee_rate.fee(init_change_output.as_slice().len()).as_u64();
+                    let extra_min_fee = fee_rate.fee(base_change_output.as_slice().len()).as_u64();
                     // The extra capacity (delta - extra_min_fee) is enough to hold the change cell.
-                    if delta >= init_change_occupied_capacity + extra_min_fee {
+                    if delta >= base_change_occupied_capacity + extra_min_fee {
                         // next loop round must return new_tx;
                         change_output = Some(
-                            init_change_output
+                            base_change_output
                                 .clone()
                                 .as_builder()
                                 .capacity((delta - extra_min_fee).pack())
                                 .build(),
                         );
-                        need_one_more_input = false;
+                        need_more_capacity = 0;
                     } else {
                         // peek if there is more live cell owned by this capacity provider
                         let (more_cells, _more_capacity) =
-                            cell_collector.collect_live_cells(&query, false)?;
+                            cell_collector.collect_live_cells(&base_query, false)?;
                         if more_cells.is_empty() {
                             if let Some(capacity) = force_small_change_as_fee {
                                 if fee > capacity {
@@ -325,23 +423,27 @@ pub fn balance_tx_capacity(
                         } else {
                             // need more input to balance the capacity
                             change_output = Some(
-                                init_change_output
+                                base_change_output
                                     .clone()
                                     .as_builder()
-                                    .capacity(init_change_occupied_capacity.pack())
+                                    .capacity(base_change_occupied_capacity.pack())
                                     .build(),
                             );
                         }
                     }
                 }
             }
+            // fee is positive and `fee < min_fee`
             Ok(fee) => {}
-            Err(TransactionFeeError::Dao(DaoError::Overflow)) => {}
+            Err(TransactionFeeError::CapacityOverflow(delta)) => {
+                need_more_capacity = delta + min_fee;
+            }
             Err(err) => {
                 return Err(err.into());
             }
         }
-        if need_one_more_input {
+        if need_more_capacity > 0 {
+            let query = base_query.clone().total_capacity(need_more_capacity);
             let (more_cells, _more_capacity) = cell_collector.collect_live_cells(&query, true)?;
             if more_cells.is_empty() {
                 return Err(BalanceTxCapacityError::CapacityNotEnough);
