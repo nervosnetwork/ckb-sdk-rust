@@ -2,33 +2,37 @@ pub mod dao;
 pub mod udt;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
-use byteorder::{ByteOrder, LittleEndian};
+use lru::LruCache;
+use parking_lot::Mutex;
 use thiserror::Error;
 
 use ckb_chain_spec::consensus::Consensus;
 use ckb_dao::DaoCalculator;
 use ckb_dao_utils::DaoError;
+use ckb_jsonrpc_types as json_types;
 use ckb_script::ScriptGroup;
-use ckb_traits::CellDataProvider;
 use ckb_types::{
     bytes::Bytes,
     core::{
-        cell::{resolve_transaction_with_options, CellMeta, ResolveOptions, ResolvedTransaction},
+        cell::{resolve_transaction_with_options, ResolveOptions},
         error::OutPointError,
-        Capacity, CapacityError, FeeRate, ScriptHashType, TransactionView,
+        Capacity, CapacityError, FeeRate, HeaderView, TransactionView,
     },
-    packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
+    packed::{Byte32, CellInput, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
     prelude::*,
 };
 
 use crate::constants::DAO_TYPE_HASH;
+use crate::rpc::HttpRpcClient;
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions,
     TransactionDependencyProvider, TxDepProviderError,
 };
 use crate::types::ScriptId;
 use crate::unlock::{ScriptUnlocker, UnlockError};
+use crate::util::{clone_script_group, to_consensus_struct, transaction_maximum_withdraw};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
@@ -122,87 +126,6 @@ pub enum TransactionFeeError {
     CapacityError(#[from] CapacityError),
     #[error("capacity sub overflow, delta: `{0}`")]
     CapacityOverflow(u64),
-}
-
-// FIXME: This function is copied from ckb-dao, should make that function public so we can remove it here.
-fn transaction_maximum_withdraw(
-    dao_calculator: &DaoCalculator<&dyn TransactionDependencyProvider>,
-    rtx: &ResolvedTransaction,
-    consensus: &Consensus,
-    tx_dep_provider: &dyn TransactionDependencyProvider,
-) -> Result<Capacity, DaoError> {
-    #[allow(clippy::mutable_key_type)]
-    let header_deps: HashSet<Byte32> = rtx.transaction.header_deps_iter().collect();
-    rtx.resolved_inputs.iter().enumerate().try_fold(
-        Capacity::zero(),
-        |capacities, (i, cell_meta)| {
-            let capacity: Result<Capacity, DaoError> = {
-                let output = &cell_meta.cell_output;
-                let is_dao_type_script = |type_script: Script| {
-                    Into::<u8>::into(type_script.hash_type())
-                        == Into::<u8>::into(ScriptHashType::Type)
-                        && type_script.code_hash()
-                            == consensus.dao_type_hash().expect("No dao system cell")
-                };
-                let is_withdrawing_input =
-                    |cell_meta: &CellMeta| match tx_dep_provider.load_cell_data(cell_meta) {
-                        Some(data) => data.len() == 8 && LittleEndian::read_u64(&data) > 0,
-                        None => false,
-                    };
-                if output
-                    .type_()
-                    .to_opt()
-                    .map(is_dao_type_script)
-                    .unwrap_or(false)
-                    && is_withdrawing_input(cell_meta)
-                {
-                    let withdrawing_header_hash = cell_meta
-                        .transaction_info
-                        .as_ref()
-                        .map(|info| &info.block_hash)
-                        .filter(|hash| header_deps.contains(hash))
-                        .ok_or(DaoError::InvalidOutPoint)?;
-                    let deposit_header_hash = rtx
-                        .transaction
-                        .witnesses()
-                        .get(i)
-                        .ok_or(DaoError::InvalidOutPoint)
-                        .and_then(|witness_data| {
-                            // dao contract stores header deps index as u64 in the input_type field of WitnessArgs
-                            let witness =
-                                WitnessArgs::from_slice(&Unpack::<Bytes>::unpack(&witness_data))
-                                    .map_err(|_| DaoError::InvalidDaoFormat)?;
-                            let header_deps_index_data: Option<Bytes> = witness
-                                .input_type()
-                                .to_opt()
-                                .map(|witness| witness.unpack());
-                            if header_deps_index_data.is_none()
-                                || header_deps_index_data.clone().map(|data| data.len()) != Some(8)
-                            {
-                                return Err(DaoError::InvalidDaoFormat);
-                            }
-                            Ok(LittleEndian::read_u64(&header_deps_index_data.unwrap()))
-                        })
-                        .and_then(|header_dep_index| {
-                            rtx.transaction
-                                .header_deps()
-                                .get(header_dep_index as usize)
-                                .and_then(|hash| header_deps.get(&hash))
-                                .ok_or(DaoError::InvalidOutPoint)
-                        })?;
-                    dao_calculator.calculate_maximum_withdraw(
-                        output,
-                        Capacity::bytes(cell_meta.data_bytes as usize)?,
-                        deposit_header_hash,
-                        withdrawing_header_hash,
-                    )
-                } else {
-                    Ok(output.capacity().unpack())
-                }
-            };
-            capacity.and_then(|c| c.safe_add(capacities).map_err(Into::into))
-        },
-    )
 }
 
 /// Calculate the actual transaction fee of the transaction, include dao
@@ -471,15 +394,6 @@ pub fn balance_tx_capacity(
     }
 }
 
-pub fn clone_script_group(script_group: &ScriptGroup) -> ScriptGroup {
-    ScriptGroup {
-        script: script_group.script.clone(),
-        group_type: script_group.group_type,
-        input_indices: script_group.input_indices.clone(),
-        output_indices: script_group.output_indices.clone(),
-    }
-}
-
 pub struct ScriptGroups {
     pub lock_groups: HashMap<Byte32, ScriptGroup>,
     pub type_groups: HashMap<Byte32, ScriptGroup>,
@@ -538,4 +452,126 @@ pub fn unlock_tx(
         }
     }
     Ok((tx, not_unlocked))
+}
+
+/// A cell_dep resolver use genesis info resolve system scripts and can register more cell_dep info.
+pub struct DefaultCellDepResolver {}
+/// A cell collector use ckb-indexer as backend
+pub struct DefaultCellCollector {}
+
+struct DefaultTxDepProviderInner {
+    rpc_client: HttpRpcClient,
+    consensus: Option<Consensus>,
+    tx_cache: LruCache<Byte32, TransactionView>,
+    cell_cache: LruCache<OutPoint, (CellOutput, Bytes)>,
+    header_cache: LruCache<Byte32, HeaderView>,
+}
+
+/// A transaction dependency provider use ckb rpc client as backend, and with LRU cache supported
+pub struct DefaultTransactionDependencyProvider {
+    // since we will mainly deal with LruCache, so use Mutex here
+    inner: Arc<Mutex<DefaultTxDepProviderInner>>,
+}
+
+impl DefaultTransactionDependencyProvider {
+    /// Arguments:
+    ///   * `url` is the ckb http jsonrpc server url
+    ///   * When `cache_capacity` is 0 for not using cache.
+    pub fn new(url: &str, cache_capacity: usize) -> DefaultTransactionDependencyProvider {
+        let rpc_client = HttpRpcClient::new(url);
+        let inner = DefaultTxDepProviderInner {
+            rpc_client,
+            consensus: None,
+            tx_cache: LruCache::new(cache_capacity),
+            cell_cache: LruCache::new(cache_capacity),
+            header_cache: LruCache::new(cache_capacity),
+        };
+        DefaultTransactionDependencyProvider {
+            inner: Arc::new(Mutex::new(inner)),
+        }
+    }
+
+    pub fn get_cell_with_data(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<(CellOutput, Bytes), TxDepProviderError> {
+        let mut inner = self.inner.lock();
+        if let Some(pair) = inner.cell_cache.get(out_point) {
+            return Ok(pair.clone());
+        }
+        // TODO: handle proposed/pending transactions
+        let cell_with_status = inner
+            .rpc_client
+            .get_live_cell(out_point.clone().into(), true)
+            .map_err(|err| TxDepProviderError::Other(err.into()))?;
+        if cell_with_status.status != "live" {
+            return Err(TxDepProviderError::Other(
+                format!("invalid cell status: {:?}", cell_with_status.status).into(),
+            ));
+        }
+        let cell = cell_with_status.cell.unwrap();
+        let output = CellOutput::from(cell.output);
+        let output_data = cell.data.unwrap().content.into_bytes();
+        inner
+            .cell_cache
+            .put(out_point.clone(), (output.clone(), output_data.clone()));
+        Ok((output, output_data))
+    }
+}
+
+impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
+    fn get_consensus(&self) -> Result<Consensus, TxDepProviderError> {
+        let mut inner = self.inner.lock();
+        if let Some(consensus) = inner.consensus.as_ref() {
+            return Ok(consensus.clone());
+        }
+        let consensus = inner
+            .rpc_client
+            .get_consensus()
+            .map(to_consensus_struct)
+            .map_err(|err| TxDepProviderError::Other(err.into()))?;
+        inner.consensus = Some(consensus.clone());
+        Ok(consensus)
+    }
+    fn get_transaction(&self, tx_hash: &Byte32) -> Result<TransactionView, TxDepProviderError> {
+        let mut inner = self.inner.lock();
+        if let Some(tx) = inner.tx_cache.get(tx_hash) {
+            return Ok(tx.clone());
+        }
+        // TODO: handle proposed/pending transactions
+        let tx_with_status = inner
+            .rpc_client
+            .get_transaction(tx_hash.unpack())
+            .map_err(|err| TxDepProviderError::Other(err.into()))?
+            .ok_or_else(|| TxDepProviderError::NotFound("transaction".to_string()))?;
+        if tx_with_status.tx_status.status != json_types::Status::Committed {
+            return Err(TxDepProviderError::Other(
+                format!("invalid transaction status: {:?}", tx_with_status.tx_status).into(),
+            ));
+        }
+        let tx = Transaction::from(tx_with_status.transaction.unwrap().inner).into_view();
+        inner.tx_cache.put(tx_hash.clone(), tx.clone());
+        Ok(tx)
+    }
+    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TxDepProviderError> {
+        self.get_cell_with_data(out_point).map(|(output, _)| output)
+    }
+    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TxDepProviderError> {
+        self.get_cell_with_data(out_point)
+            .map(|(_, output_data)| output_data)
+    }
+    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TxDepProviderError> {
+        let mut inner = self.inner.lock();
+        if let Some(header) = inner.header_cache.get(block_hash) {
+            return Ok(header.clone());
+        }
+        let header = inner
+            .rpc_client
+            .get_header(block_hash.unpack())
+            .map_err(|err| TxDepProviderError::Other(err.into()))?
+            .map(HeaderView::from)
+            .ok_or_else(|| TxDepProviderError::NotFound("header".to_string()))?;
+        inner.header_cache.put(block_hash.clone(), header.clone());
+        Ok(header)
+    }
 }
