@@ -211,6 +211,7 @@ pub fn tx_fee_without_dao_withdraw(
         .ok_or_else(|| TransactionFeeError::CapacityOverflow(output_total - input_total))
 }
 
+#[derive(Debug, Clone)]
 pub struct CapacityProvider {
     pub lock_script: Script,
     /// The zero_lock size of WitnessArgs.lock field:
@@ -242,6 +243,15 @@ pub enum BalanceTxCapacityError {
     CellCollector(#[from] CellCollectorError),
 }
 
+/// Transaction capacity balancer config
+#[derive(Debug, Clone)]
+pub struct CapacityBalancer {
+    pub fee_rate: FeeRate,
+    pub capacity_provider: CapacityProvider,
+    pub force_small_change_as_fee: Option<u64>,
+    pub has_dao_withdraw: bool,
+}
+
 /// Fill more inputs to balance the transaction capacity
 ///
 ///   * capacity_provider: Search cell by this lock script and filter out cells
@@ -252,13 +262,11 @@ pub enum BalanceTxCapacityError {
 ///   capacity as fee, the value is actual maximum transaction fee.
 pub fn balance_tx_capacity(
     tx: &TransactionView,
-    fee_rate: FeeRate,
-    capacity_provider: &CapacityProvider,
-    force_small_change_as_fee: Option<u64>,
-    has_dao_withdraw: bool,
+    balancer: &CapacityBalancer,
     cell_collector: &mut dyn CellCollector,
     tx_dep_provider: &dyn TransactionDependencyProvider,
 ) -> Result<TransactionView, BalanceTxCapacityError> {
+    let capacity_provider = &balancer.capacity_provider;
     let base_change_output = CellOutput::new_builder()
         .lock(capacity_provider.lock_script.clone())
         .build();
@@ -308,9 +316,9 @@ pub fn balance_tx_capacity(
             builder.build()
         };
         let tx_size = new_tx.data().as_reader().serialized_size_in_block();
-        let min_fee = fee_rate.fee(tx_size).as_u64();
+        let min_fee = balancer.fee_rate.fee(tx_size).as_u64();
         let mut need_more_capacity = 1;
-        let fee_result: Result<u64, TransactionFeeError> = if has_dao_withdraw {
+        let fee_result: Result<u64, TransactionFeeError> = if balancer.has_dao_withdraw {
             tx_fee(new_tx.clone(), tx_dep_provider)
         } else {
             tx_fee_without_dao_withdraw(&new_tx, tx_dep_provider)
@@ -332,7 +340,10 @@ pub fn balance_tx_capacity(
                     need_more_capacity = 0;
                 } else {
                     // If change cell not exists, add a change cell.
-                    let extra_min_fee = fee_rate.fee(base_change_output.as_slice().len()).as_u64();
+                    let extra_min_fee = balancer
+                        .fee_rate
+                        .fee(base_change_output.as_slice().len())
+                        .as_u64();
                     // The extra capacity (delta - extra_min_fee) is enough to hold the change cell.
                     if delta >= base_change_occupied_capacity + extra_min_fee {
                         // next loop round must return new_tx;
@@ -349,7 +360,7 @@ pub fn balance_tx_capacity(
                         let (more_cells, _more_capacity) =
                             cell_collector.collect_live_cells(&base_query, false)?;
                         if more_cells.is_empty() {
-                            if let Some(capacity) = force_small_change_as_fee {
+                            if let Some(capacity) = balancer.force_small_change_as_fee {
                                 if fee > capacity {
                                     return Err(
                                         BalanceTxCapacityError::ForceSmallChangeAsFeeFailed(fee),

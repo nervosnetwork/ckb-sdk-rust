@@ -74,11 +74,16 @@ impl TransactionCrafter for IssueUdtCrafter {
             .args(type_script_args.pack())
             .build();
 
+        let owner_script_id = ScriptId::from(&self.owner);
+        let owner_cell_dep = cell_dep_resolver.resolve(&owner_script_id).ok_or(
+            TransactionCrafterError::ResolveCellDepFailed(owner_script_id),
+        )?;
         let udt_cell_dep = cell_dep_resolver
             .resolve(&self.script_id)
             .ok_or_else(|| TransactionCrafterError::ResolveCellDepFailed(self.script_id.clone()))?;
         #[allow(clippy::mutable_key_type)]
         let mut cell_deps = HashSet::new();
+        cell_deps.insert(owner_cell_dep);
         cell_deps.insert(udt_cell_dep);
 
         // Build outputs, outputs_data, cell_deps
@@ -126,14 +131,8 @@ impl TransactionCrafter for IssueUdtCrafter {
                 .capacity(final_capacity.pack())
                 .build();
 
-            let lock_script_id = ScriptId::from(&receiver.lock_script);
-            let lock_cell_dep = cell_dep_resolver.resolve(&lock_script_id).ok_or(
-                TransactionCrafterError::ResolveCellDepFailed(lock_script_id),
-            )?;
-
             outputs.push(output);
             outputs_data.push(output_data.pack());
-            cell_deps.insert(lock_cell_dep);
         }
         Ok(TransactionBuilder::default()
             .set_cell_deps(cell_deps.into_iter().collect())
@@ -291,17 +290,11 @@ impl TransactionCrafter for TransferUdtCrafter {
                 }
             };
 
-            let lock_script_id = ScriptId::from(&receiver.lock_script);
-            let lock_cell_dep = cell_dep_resolver.resolve(&lock_script_id).ok_or(
-                TransactionCrafterError::ResolveCellDepFailed(lock_script_id),
-            )?;
-
             if let Some(input) = input {
                 inputs.push(input);
             }
             outputs.push(output);
             outputs_data.push(output_data.pack());
-            cell_deps.insert(lock_cell_dep);
         }
 
         Ok(TransactionBuilder::default()
