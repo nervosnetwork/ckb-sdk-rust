@@ -1,12 +1,15 @@
 mod dao;
 mod udt;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use byteorder::{ByteOrder, LittleEndian};
+use thiserror::Error;
+
 use ckb_chain_spec::consensus::Consensus;
 use ckb_dao::DaoCalculator;
 use ckb_dao_utils::DaoError;
+use ckb_script::ScriptGroup;
 use ckb_traits::CellDataProvider;
 use ckb_types::{
     bytes::Bytes,
@@ -18,7 +21,6 @@ use ckb_types::{
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
 };
-use thiserror::Error;
 
 use crate::constants::DAO_TYPE_HASH;
 use crate::traits::{
@@ -26,27 +28,76 @@ use crate::traits::{
     TransactionDependencyProvider, TxDepProviderError,
 };
 use crate::types::ScriptId;
+use crate::unlock::{ScriptUnlocker, UnlockError};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
 pub enum TransactionCrafterError {
     #[error("invalid parameter: `{0}`")]
     InvalidParameter(Box<dyn std::error::Error>),
+    #[error("transaction dependency provider error: `{0}`")]
+    TxDep(#[from] TxDepProviderError),
     #[error("cell collector error: `{0}`")]
     CellCollector(#[from] CellCollectorError),
+    #[error("balance capacity error: `{0}`")]
+    BalanceCapacity(#[from] BalanceTxCapacityError),
     #[error("resolve cell dep failed: `{0}`")]
     ResolveCellDepFailed(ScriptId),
+    #[error("unlock error: `{0}`")]
+    Unlock(#[from] UnlockError),
     #[error("other error: `{0}`")]
     Other(Box<dyn std::error::Error>),
 }
 
 /// Transaction Builder interface
 pub trait TransactionCrafter {
-    fn build(
+    /// Build base transaction
+    fn build_base(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
     ) -> Result<TransactionView, TransactionCrafterError>;
+
+    /// Build balanced transaction that ready to sign:
+    ///  * Build base transaction
+    ///  * balance the capacity
+    fn build_balanced(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        balancer: &CapacityBalancer,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, TransactionCrafterError> {
+        let base_tx = self.build_base(cell_collector, cell_dep_resolver)?;
+        Ok(balance_tx_capacity(
+            &base_tx,
+            balancer,
+            cell_collector,
+            tx_dep_provider,
+            cell_dep_resolver,
+        )?)
+    }
+
+    /// Build unlocked transaction that ready to send or for further unlock:
+    ///   * build base transaction
+    ///   * balance the capacity
+    ///   * unlock(sign) the transaction
+    ///
+    /// Return value:
+    ///   * The built transaction
+    ///   * The script groups that not unlocked
+    fn build_unlocked(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        balancer: &CapacityBalancer,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+    ) -> Result<(TransactionView, Vec<ScriptGroup>), TransactionCrafterError> {
+        let balanced_tx =
+            self.build_balanced(cell_collector, cell_dep_resolver, balancer, tx_dep_provider)?;
+        Ok(unlock_tx(balanced_tx, tx_dep_provider, unlockers)?)
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -241,6 +292,8 @@ pub enum BalanceTxCapacityError {
     ForceSmallChangeAsFeeFailed(u64),
     #[error("cell collector error: `{0}`")]
     CellCollector(#[from] CellCollectorError),
+    #[error("resolve cell dep failed: `{0}`")]
+    ResolveCellDepFailed(ScriptId),
 }
 
 /// Transaction capacity balancer config
@@ -265,6 +318,7 @@ pub fn balance_tx_capacity(
     balancer: &CapacityBalancer,
     cell_collector: &mut dyn CellCollector,
     tx_dep_provider: &dyn TransactionDependencyProvider,
+    cell_dep_resolver: &dyn CellDepResolver,
 ) -> Result<TransactionView, BalanceTxCapacityError> {
     let capacity_provider = &balancer.capacity_provider;
     let base_change_output = CellOutput::new_builder()
@@ -285,6 +339,7 @@ pub fn balance_tx_capacity(
         }
     }
 
+    let mut cell_deps = Vec::new();
     let mut inputs = Vec::new();
     let mut change_output: Option<CellOutput> = None;
     let mut witnesses = Vec::new();
@@ -308,6 +363,7 @@ pub fn balance_tx_capacity(
             let mut builder = tx
                 .data()
                 .as_advanced_builder()
+                .cell_deps(cell_deps.clone())
                 .inputs(inputs.clone())
                 .witnesses(witnesses.clone());
             if let Some(output) = change_output.clone() {
@@ -399,6 +455,13 @@ pub fn balance_tx_capacity(
             if more_cells.is_empty() {
                 return Err(BalanceTxCapacityError::CapacityNotEnough);
             }
+            if cell_deps.is_empty() {
+                let provider_script_id = ScriptId::from(&capacity_provider.lock_script);
+                let provider_cell_dep = cell_dep_resolver.resolve(&provider_script_id).ok_or(
+                    BalanceTxCapacityError::ResolveCellDepFailed(provider_script_id),
+                )?;
+                cell_deps.push(provider_cell_dep);
+            }
             inputs.extend(
                 more_cells
                     .into_iter()
@@ -406,4 +469,51 @@ pub fn balance_tx_capacity(
             );
         }
     }
+}
+
+/// Build unlocked transaction that ready to send or for further unlock.
+///
+/// Return value:
+///   * The built transaction
+///   * The script groups that not unlocked
+pub fn unlock_tx(
+    balanced_tx: TransactionView,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+    unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+) -> Result<(TransactionView, Vec<ScriptGroup>), UnlockError> {
+    #[allow(clippy::mutable_key_type)]
+    let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+    for (i, input) in balanced_tx.inputs().into_iter().enumerate() {
+        let output = tx_dep_provider.get_cell(&input.previous_output())?;
+        let lock_group_entry = lock_groups
+            .entry(output.calc_lock_hash())
+            .or_insert_with(|| ScriptGroup::from_lock_script(&output.lock()));
+        lock_group_entry.input_indices.push(i);
+    }
+
+    let mut tx = balanced_tx;
+    let mut not_unlocked = Vec::new();
+    for script_group in lock_groups.values() {
+        let script_id = ScriptId::from(&script_group.script);
+        if let Some(unlocker) = unlockers.get(&script_id) {
+            if unlocker.match_args(script_group.script.args().raw_data().as_ref()) {
+                tx = unlocker.unlock(&tx, script_group, tx_dep_provider)?;
+            } else {
+                not_unlocked.push(ScriptGroup {
+                    script: script_group.script.clone(),
+                    group_type: script_group.group_type,
+                    input_indices: script_group.input_indices.clone(),
+                    output_indices: script_group.output_indices.clone(),
+                });
+            }
+        } else {
+            not_unlocked.push(ScriptGroup {
+                script: script_group.script.clone(),
+                group_type: script_group.group_type,
+                input_indices: script_group.input_indices.clone(),
+                output_indices: script_group.output_indices.clone(),
+            });
+        }
+    }
+    Ok((tx, not_unlocked))
 }

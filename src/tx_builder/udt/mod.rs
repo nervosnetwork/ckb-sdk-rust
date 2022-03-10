@@ -42,7 +42,7 @@ pub struct IssueUdtCrafter {
 }
 
 impl TransactionCrafter for IssueUdtCrafter {
-    fn build(
+    fn build_base(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -164,7 +164,7 @@ pub struct TransferUdtCrafter {
 }
 
 impl TransactionCrafter for TransferUdtCrafter {
-    fn build(
+    fn build_base(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
