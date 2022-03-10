@@ -1,5 +1,5 @@
-mod dao;
-mod udt;
+pub mod dao;
+pub mod udt;
 
 use std::collections::{HashMap, HashSet};
 
@@ -124,7 +124,7 @@ pub enum TransactionFeeError {
     CapacityOverflow(u64),
 }
 
-// FIXME: This function is copied from ckb-dao, should make this public so we can remove it here.
+// FIXME: This function is copied from ckb-dao, should make that function public so we can remove it here.
 fn transaction_maximum_withdraw(
     dao_calculator: &DaoCalculator<&dyn TransactionDependencyProvider>,
     rtx: &ResolvedTransaction,
@@ -471,6 +471,47 @@ pub fn balance_tx_capacity(
     }
 }
 
+pub fn clone_script_group(script_group: &ScriptGroup) -> ScriptGroup {
+    ScriptGroup {
+        script: script_group.script.clone(),
+        group_type: script_group.group_type,
+        input_indices: script_group.input_indices.clone(),
+        output_indices: script_group.output_indices.clone(),
+    }
+}
+
+pub struct ScriptGroups {
+    pub lock_groups: HashMap<Byte32, ScriptGroup>,
+    pub type_groups: HashMap<Byte32, ScriptGroup>,
+}
+
+pub fn gen_script_groups(
+    tx: &TransactionView,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+) -> Result<ScriptGroups, TxDepProviderError> {
+    #[allow(clippy::mutable_key_type)]
+    let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+    #[allow(clippy::mutable_key_type)]
+    let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+    for (i, input) in tx.inputs().into_iter().enumerate() {
+        let output = tx_dep_provider.get_cell(&input.previous_output())?;
+        let lock_group_entry = lock_groups
+            .entry(output.calc_lock_hash())
+            .or_insert_with(|| ScriptGroup::from_lock_script(&output.lock()));
+        lock_group_entry.input_indices.push(i);
+        if let Some(t) = &output.type_().to_opt() {
+            let type_group_entry = type_groups
+                .entry(t.calc_script_hash())
+                .or_insert_with(|| ScriptGroup::from_type_script(t));
+            type_group_entry.input_indices.push(i);
+        }
+    }
+    Ok(ScriptGroups {
+        lock_groups,
+        type_groups,
+    })
+}
+
 /// Build unlocked transaction that ready to send or for further unlock.
 ///
 /// Return value:
@@ -481,38 +522,19 @@ pub fn unlock_tx(
     tx_dep_provider: &dyn TransactionDependencyProvider,
     unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
 ) -> Result<(TransactionView, Vec<ScriptGroup>), UnlockError> {
-    #[allow(clippy::mutable_key_type)]
-    let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
-    for (i, input) in balanced_tx.inputs().into_iter().enumerate() {
-        let output = tx_dep_provider.get_cell(&input.previous_output())?;
-        let lock_group_entry = lock_groups
-            .entry(output.calc_lock_hash())
-            .or_insert_with(|| ScriptGroup::from_lock_script(&output.lock()));
-        lock_group_entry.input_indices.push(i);
-    }
-
+    let ScriptGroups { lock_groups, .. } = gen_script_groups(&balanced_tx, tx_dep_provider)?;
     let mut tx = balanced_tx;
     let mut not_unlocked = Vec::new();
     for script_group in lock_groups.values() {
         let script_id = ScriptId::from(&script_group.script);
-        if let Some(unlocker) = unlockers.get(&script_id) {
-            if unlocker.match_args(script_group.script.args().raw_data().as_ref()) {
-                tx = unlocker.unlock(&tx, script_group, tx_dep_provider)?;
-            } else {
-                not_unlocked.push(ScriptGroup {
-                    script: script_group.script.clone(),
-                    group_type: script_group.group_type,
-                    input_indices: script_group.input_indices.clone(),
-                    output_indices: script_group.output_indices.clone(),
-                });
-            }
+        let script_args = script_group.script.args().raw_data();
+        if let Some(unlocker) = unlockers
+            .get(&script_id)
+            .filter(|unlocker| unlocker.match_args(script_args.as_ref()))
+        {
+            tx = unlocker.unlock(&tx, script_group, tx_dep_provider)?;
         } else {
-            not_unlocked.push(ScriptGroup {
-                script: script_group.script.clone(),
-                group_type: script_group.group_type,
-                input_indices: script_group.input_indices.clone(),
-                output_indices: script_group.output_indices.clone(),
-            });
+            not_unlocked.push(clone_script_group(script_group));
         }
     }
     Ok((tx, not_unlocked))
