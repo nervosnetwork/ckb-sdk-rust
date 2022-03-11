@@ -11,7 +11,9 @@ use ckb_types::{
 use std::collections::HashSet;
 use thiserror::Error;
 
-use crate::traits::{TransactionDependencyProvider, TxDepProviderError, Wallet, WalletError};
+use crate::traits::{
+    TransactionDependencyError, TransactionDependencyProvider, Wallet, WalletError,
+};
 
 #[derive(Error, Debug)]
 pub enum SignError {
@@ -19,7 +21,7 @@ pub enum SignError {
     Wallet(#[from] WalletError),
 
     #[error("transaction dependency error: `{0}`")]
-    TxDep(#[from] TxDepProviderError),
+    TxDep(#[from] TransactionDependencyError),
 
     #[error("witness count in current transaction not enough to cover current script group")]
     WitnessNotEnough,

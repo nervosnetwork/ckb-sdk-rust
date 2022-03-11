@@ -1,7 +1,7 @@
 
 use thiserror::Error;
 
-use crate::traits::{TxDepProviderError, WalletError};
+use crate::traits::{TransactionDependencyError, WalletError};
 use crate::unlock::{SignError, UnlockError};
 use crate::chain::ParseGenesisInfoError;
 
@@ -16,5 +16,5 @@ pub enum Error {
     #[error("wallet error: `{0}`")]
     Wallet(#[from] WalletError),
     #[error("transaction dependency provider error: `{0}`")]
-    TxDep(#[from] TxDepProviderError),
+    TxDep(#[from] TransactionDependencyError),
 }

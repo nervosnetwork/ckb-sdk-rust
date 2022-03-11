@@ -28,7 +28,7 @@ use crate::constants::DAO_TYPE_HASH;
 use crate::rpc::HttpRpcClient;
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions,
-    TransactionDependencyProvider, TxDepProviderError,
+    TransactionDependencyError, TransactionDependencyProvider,
 };
 use crate::types::ScriptId;
 use crate::unlock::{ScriptUnlocker, UnlockError};
@@ -40,7 +40,7 @@ pub enum TransactionCrafterError {
     #[error("invalid parameter: `{0}`")]
     InvalidParameter(Box<dyn std::error::Error>),
     #[error("transaction dependency provider error: `{0}`")]
-    TxDep(#[from] TxDepProviderError),
+    TxDep(#[from] TransactionDependencyError),
     #[error("cell collector error: `{0}`")]
     CellCollector(#[from] CellCollectorError),
     #[error("balance capacity error: `{0}`")]
@@ -115,7 +115,7 @@ pub enum TransferAction {
 #[derive(Error, Debug)]
 pub enum TransactionFeeError {
     #[error("transaction dependency provider error: `{0}`")]
-    TxDep(#[from] TxDepProviderError),
+    TxDep(#[from] TransactionDependencyError),
     #[error("out point error: `{0}`")]
     OutPoint(#[from] OutPointError),
     #[error("dao error: `{0}`")]
@@ -208,7 +208,7 @@ pub enum BalanceTxCapacityError {
     #[error("calculate transaction fee error: `{0}`")]
     TxFee(#[from] TransactionFeeError),
     #[error("transaction dependency provider error: `{0}`")]
-    TxDep(#[from] TxDepProviderError),
+    TxDep(#[from] TransactionDependencyError),
     #[error("capacity not enough")]
     CapacityNotEnough,
     #[error("Force small change as fee failed, fee: `{0}`")]
@@ -402,7 +402,7 @@ pub struct ScriptGroups {
 pub fn gen_script_groups(
     tx: &TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,
-) -> Result<ScriptGroups, TxDepProviderError> {
+) -> Result<ScriptGroups, TransactionDependencyError> {
     #[allow(clippy::mutable_key_type)]
     let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
     #[allow(clippy::mutable_key_type)]
@@ -494,7 +494,7 @@ impl DefaultTransactionDependencyProvider {
     pub fn get_cell_with_data(
         &self,
         out_point: &OutPoint,
-    ) -> Result<(CellOutput, Bytes), TxDepProviderError> {
+    ) -> Result<(CellOutput, Bytes), TransactionDependencyError> {
         let mut inner = self.inner.lock();
         if let Some(pair) = inner.cell_cache.get(out_point) {
             return Ok(pair.clone());
@@ -503,9 +503,9 @@ impl DefaultTransactionDependencyProvider {
         let cell_with_status = inner
             .rpc_client
             .get_live_cell(out_point.clone().into(), true)
-            .map_err(|err| TxDepProviderError::Other(err.into()))?;
+            .map_err(|err| TransactionDependencyError::Other(err.into()))?;
         if cell_with_status.status != "live" {
-            return Err(TxDepProviderError::Other(
+            return Err(TransactionDependencyError::Other(
                 format!("invalid cell status: {:?}", cell_with_status.status).into(),
             ));
         }
@@ -520,7 +520,7 @@ impl DefaultTransactionDependencyProvider {
 }
 
 impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
-    fn get_consensus(&self) -> Result<Consensus, TxDepProviderError> {
+    fn get_consensus(&self) -> Result<Consensus, TransactionDependencyError> {
         let mut inner = self.inner.lock();
         if let Some(consensus) = inner.consensus.as_ref() {
             return Ok(consensus.clone());
@@ -529,11 +529,14 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
             .rpc_client
             .get_consensus()
             .map(to_consensus_struct)
-            .map_err(|err| TxDepProviderError::Other(err.into()))?;
+            .map_err(|err| TransactionDependencyError::Other(err.into()))?;
         inner.consensus = Some(consensus.clone());
         Ok(consensus)
     }
-    fn get_transaction(&self, tx_hash: &Byte32) -> Result<TransactionView, TxDepProviderError> {
+    fn get_transaction(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<TransactionView, TransactionDependencyError> {
         let mut inner = self.inner.lock();
         if let Some(tx) = inner.tx_cache.get(tx_hash) {
             return Ok(tx.clone());
@@ -542,10 +545,10 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
         let tx_with_status = inner
             .rpc_client
             .get_transaction(tx_hash.unpack())
-            .map_err(|err| TxDepProviderError::Other(err.into()))?
-            .ok_or_else(|| TxDepProviderError::NotFound("transaction".to_string()))?;
+            .map_err(|err| TransactionDependencyError::Other(err.into()))?
+            .ok_or_else(|| TransactionDependencyError::NotFound("transaction".to_string()))?;
         if tx_with_status.tx_status.status != json_types::Status::Committed {
-            return Err(TxDepProviderError::Other(
+            return Err(TransactionDependencyError::Other(
                 format!("invalid transaction status: {:?}", tx_with_status.tx_status).into(),
             ));
         }
@@ -553,14 +556,14 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
         inner.tx_cache.put(tx_hash.clone(), tx.clone());
         Ok(tx)
     }
-    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TxDepProviderError> {
+    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
         self.get_cell_with_data(out_point).map(|(output, _)| output)
     }
-    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TxDepProviderError> {
+    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
         self.get_cell_with_data(out_point)
             .map(|(_, output_data)| output_data)
     }
-    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TxDepProviderError> {
+    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
         let mut inner = self.inner.lock();
         if let Some(header) = inner.header_cache.get(block_hash) {
             return Ok(header.clone());
@@ -568,9 +571,9 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
         let header = inner
             .rpc_client
             .get_header(block_hash.unpack())
-            .map_err(|err| TxDepProviderError::Other(err.into()))?
+            .map_err(|err| TransactionDependencyError::Other(err.into()))?
             .map(HeaderView::from)
-            .ok_or_else(|| TxDepProviderError::NotFound("header".to_string()))?;
+            .ok_or_else(|| TransactionDependencyError::NotFound("header".to_string()))?;
         inner.header_cache.put(block_hash.clone(), header.clone());
         Ok(header)
     }

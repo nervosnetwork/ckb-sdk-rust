@@ -13,7 +13,7 @@ use super::signer::{
     AnyoneCanPaySigner, ChequeSigner, ScriptSigner, Secp256k1MultisigSigner,
     Secp256k1SighashSigner, SignError,
 };
-use crate::traits::{TransactionDependencyProvider, TxDepProviderError};
+use crate::traits::{TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptId;
 
 const CHEQUE_CLAIM_SINCE: u64 = 0;
@@ -24,7 +24,7 @@ pub enum UnlockError {
     #[error("sign script error: `{0}`")]
     Signer(#[from] SignError),
     #[error("transaction dependency error: `{0}`")]
-    TxDep(#[from] TxDepProviderError),
+    TxDep(#[from] TransactionDependencyError),
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
 }

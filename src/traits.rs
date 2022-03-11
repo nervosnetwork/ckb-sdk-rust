@@ -27,7 +27,7 @@ pub enum WalletError {
     #[error("invalid message, reason: `{0}`")]
     InvalidMessage(String),
     #[error("get transaction dependency failed: `{0}`")]
-    TxDep(#[from] TxDepProviderError),
+    TxDep(#[from] TransactionDependencyError),
     // maybe hardware wallet error or io error
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
@@ -63,7 +63,7 @@ pub trait Wallet {
 
 /// Transaction dependency provider errors
 #[derive(Error, Debug)]
-pub enum TxDepProviderError {
+pub enum TransactionDependencyError {
     #[error("the resource is not found in the provider: `{0}`")]
     NotFound(String),
     #[error("other error: `{0}`")]
@@ -81,15 +81,18 @@ pub trait TransactionDependencyProvider {
     ///   * `genesis_epoch_ext`           (not included in jsonrpc result)
     ///   * `satoshi_pubkey_hash`         (not included in jsonrpc result)
     ///   * `satoshi_cell_occupied_ratio` (not included in jsonrpc result)
-    fn get_consensus(&self) -> Result<Consensus, TxDepProviderError>;
+    fn get_consensus(&self) -> Result<Consensus, TransactionDependencyError>;
     // For verify certain cell belong to certain transaction
-    fn get_transaction(&self, tx_hash: &Byte32) -> Result<TransactionView, TxDepProviderError>;
+    fn get_transaction(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<TransactionView, TransactionDependencyError>;
     // For get the output information of inputs or cell_deps, those cell should be live cell
-    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TxDepProviderError>;
+    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError>;
     // For get the output data information of inputs or cell_deps
-    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TxDepProviderError>;
+    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError>;
     // For get the header information of header_deps
-    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TxDepProviderError>;
+    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError>;
 }
 
 // Implement CellDataProvider trait is currently for `DaoCalculator`
