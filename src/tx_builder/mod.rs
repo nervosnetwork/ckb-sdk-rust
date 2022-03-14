@@ -2,53 +2,53 @@ pub mod dao;
 pub mod udt;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
-use lru::LruCache;
-use parking_lot::Mutex;
 use thiserror::Error;
 
-use ckb_chain_spec::consensus::Consensus;
 use ckb_dao::DaoCalculator;
 use ckb_dao_utils::DaoError;
-use ckb_jsonrpc_types as json_types;
 use ckb_script::ScriptGroup;
 use ckb_types::{
     bytes::Bytes,
     core::{
         cell::{resolve_transaction_with_options, ResolveOptions},
         error::OutPointError,
-        Capacity, CapacityError, FeeRate, HeaderView, TransactionView,
+        Capacity, CapacityError, FeeRate, TransactionView,
     },
-    packed::{Byte32, CellInput, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
+    packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
 };
 
 use crate::constants::DAO_TYPE_HASH;
-use crate::rpc::HttpRpcClient;
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions,
-    TransactionDependencyError, TransactionDependencyProvider,
+    TransactionDependencyError, TransactionDependencyProvider, ValueRangeOption,
 };
 use crate::types::ScriptId;
 use crate::unlock::{ScriptUnlocker, UnlockError};
-use crate::util::{clone_script_group, to_consensus_struct, transaction_maximum_withdraw};
+use crate::util::{clone_script_group, transaction_maximum_withdraw};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
 pub enum TransactionCrafterError {
     #[error("invalid parameter: `{0}`")]
     InvalidParameter(Box<dyn std::error::Error>),
+
     #[error("transaction dependency provider error: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
+
     #[error("cell collector error: `{0}`")]
     CellCollector(#[from] CellCollectorError),
+
     #[error("balance capacity error: `{0}`")]
     BalanceCapacity(#[from] BalanceTxCapacityError),
+
     #[error("resolve cell dep failed: `{0}`")]
     ResolveCellDepFailed(ScriptId),
+
     #[error("unlock error: `{0}`")]
     Unlock(#[from] UnlockError),
+
     #[error("other error: `{0}`")]
     Other(Box<dyn std::error::Error>),
 }
@@ -89,7 +89,7 @@ pub trait TransactionCrafter {
     ///
     /// Return value:
     ///   * The built transaction
-    ///   * The script groups that not unlocked
+    ///   * The script groups that not unlocked by given `unlockers`
     fn build_unlocked(
         &self,
         cell_collector: &mut dyn CellCollector,
@@ -116,14 +116,19 @@ pub enum TransferAction {
 pub enum TransactionFeeError {
     #[error("transaction dependency provider error: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
+
     #[error("out point error: `{0}`")]
     OutPoint(#[from] OutPointError),
+
     #[error("dao error: `{0}`")]
     Dao(#[from] DaoError),
+
     #[error("unexpected dao withdraw cell in inputs")]
     UnexpectedDaoWithdrawInput,
+
     #[error("capacity error: `{0}`")]
     CapacityError(#[from] CapacityError),
+
     #[error("capacity sub overflow, delta: `{0}`")]
     CapacityOverflow(u64),
 }
@@ -207,14 +212,19 @@ impl CapacityProvider {
 pub enum BalanceTxCapacityError {
     #[error("calculate transaction fee error: `{0}`")]
     TxFee(#[from] TransactionFeeError),
+
     #[error("transaction dependency provider error: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
+
     #[error("capacity not enough")]
     CapacityNotEnough,
+
     #[error("Force small change as fee failed, fee: `{0}`")]
     ForceSmallChangeAsFeeFailed(u64),
+
     #[error("cell collector error: `{0}`")]
     CellCollector(#[from] CellCollectorError),
+
     #[error("resolve cell dep failed: `{0}`")]
     ResolveCellDepFailed(ScriptId),
 }
@@ -252,7 +262,11 @@ pub fn balance_tx_capacity(
         .expect("init change occupied capacity")
         .as_u64();
     // the query is to collect just one cell
-    let base_query = CellQueryOptions::new(capacity_provider.lock_script.clone());
+    let base_query = {
+        let mut query = CellQueryOptions::new_lock(capacity_provider.lock_script.clone());
+        query.data_len_range = Some(ValueRangeOption::new_exact(0));
+        query
+    };
     // check if capacity provider lock script already in inputs
     let mut has_provider = false;
     for input in tx.inputs() {
@@ -373,7 +387,11 @@ pub fn balance_tx_capacity(
             }
         }
         if need_more_capacity > 0 {
-            let query = base_query.clone().min_capacity(need_more_capacity);
+            let query = {
+                let mut query = base_query.clone();
+                query.min_total_capacity = need_more_capacity;
+                query
+            };
             let (more_cells, _more_capacity) = cell_collector.collect_live_cells(&query, true)?;
             if more_cells.is_empty() {
                 return Err(BalanceTxCapacityError::CapacityNotEnough);
@@ -430,7 +448,7 @@ pub fn gen_script_groups(
 ///
 /// Return value:
 ///   * The built transaction
-///   * The script groups that not unlocked
+///   * The script groups that not unlocked by given `unlockers`
 pub fn unlock_tx(
     balanced_tx: TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,
@@ -452,129 +470,4 @@ pub fn unlock_tx(
         }
     }
     Ok((tx, not_unlocked))
-}
-
-/// A cell_dep resolver use genesis info resolve system scripts and can register more cell_dep info.
-pub struct DefaultCellDepResolver {}
-/// A cell collector use ckb-indexer as backend
-pub struct DefaultCellCollector {}
-
-struct DefaultTxDepProviderInner {
-    rpc_client: HttpRpcClient,
-    consensus: Option<Consensus>,
-    tx_cache: LruCache<Byte32, TransactionView>,
-    cell_cache: LruCache<OutPoint, (CellOutput, Bytes)>,
-    header_cache: LruCache<Byte32, HeaderView>,
-}
-
-/// A transaction dependency provider use ckb rpc client as backend, and with LRU cache supported
-pub struct DefaultTransactionDependencyProvider {
-    // since we will mainly deal with LruCache, so use Mutex here
-    inner: Arc<Mutex<DefaultTxDepProviderInner>>,
-}
-
-impl DefaultTransactionDependencyProvider {
-    /// Arguments:
-    ///   * `url` is the ckb http jsonrpc server url
-    ///   * When `cache_capacity` is 0 for not using cache.
-    pub fn new(url: &str, cache_capacity: usize) -> DefaultTransactionDependencyProvider {
-        let rpc_client = HttpRpcClient::new(url);
-        let inner = DefaultTxDepProviderInner {
-            rpc_client,
-            consensus: None,
-            tx_cache: LruCache::new(cache_capacity),
-            cell_cache: LruCache::new(cache_capacity),
-            header_cache: LruCache::new(cache_capacity),
-        };
-        DefaultTransactionDependencyProvider {
-            inner: Arc::new(Mutex::new(inner)),
-        }
-    }
-
-    pub fn get_cell_with_data(
-        &self,
-        out_point: &OutPoint,
-    ) -> Result<(CellOutput, Bytes), TransactionDependencyError> {
-        let mut inner = self.inner.lock();
-        if let Some(pair) = inner.cell_cache.get(out_point) {
-            return Ok(pair.clone());
-        }
-        // TODO: handle proposed/pending transactions
-        let cell_with_status = inner
-            .rpc_client
-            .get_live_cell(out_point.clone().into(), true)
-            .map_err(|err| TransactionDependencyError::Other(err.into()))?;
-        if cell_with_status.status != "live" {
-            return Err(TransactionDependencyError::Other(
-                format!("invalid cell status: {:?}", cell_with_status.status).into(),
-            ));
-        }
-        let cell = cell_with_status.cell.unwrap();
-        let output = CellOutput::from(cell.output);
-        let output_data = cell.data.unwrap().content.into_bytes();
-        inner
-            .cell_cache
-            .put(out_point.clone(), (output.clone(), output_data.clone()));
-        Ok((output, output_data))
-    }
-}
-
-impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
-    fn get_consensus(&self) -> Result<Consensus, TransactionDependencyError> {
-        let mut inner = self.inner.lock();
-        if let Some(consensus) = inner.consensus.as_ref() {
-            return Ok(consensus.clone());
-        }
-        let consensus = inner
-            .rpc_client
-            .get_consensus()
-            .map(to_consensus_struct)
-            .map_err(|err| TransactionDependencyError::Other(err.into()))?;
-        inner.consensus = Some(consensus.clone());
-        Ok(consensus)
-    }
-    fn get_transaction(
-        &self,
-        tx_hash: &Byte32,
-    ) -> Result<TransactionView, TransactionDependencyError> {
-        let mut inner = self.inner.lock();
-        if let Some(tx) = inner.tx_cache.get(tx_hash) {
-            return Ok(tx.clone());
-        }
-        // TODO: handle proposed/pending transactions
-        let tx_with_status = inner
-            .rpc_client
-            .get_transaction(tx_hash.unpack())
-            .map_err(|err| TransactionDependencyError::Other(err.into()))?
-            .ok_or_else(|| TransactionDependencyError::NotFound("transaction".to_string()))?;
-        if tx_with_status.tx_status.status != json_types::Status::Committed {
-            return Err(TransactionDependencyError::Other(
-                format!("invalid transaction status: {:?}", tx_with_status.tx_status).into(),
-            ));
-        }
-        let tx = Transaction::from(tx_with_status.transaction.unwrap().inner).into_view();
-        inner.tx_cache.put(tx_hash.clone(), tx.clone());
-        Ok(tx)
-    }
-    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
-        self.get_cell_with_data(out_point).map(|(output, _)| output)
-    }
-    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
-        self.get_cell_with_data(out_point)
-            .map(|(_, output_data)| output_data)
-    }
-    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
-        let mut inner = self.inner.lock();
-        if let Some(header) = inner.header_cache.get(block_hash) {
-            return Ok(header.clone());
-        }
-        let header = inner
-            .rpc_client
-            .get_header(block_hash.unpack())
-            .map_err(|err| TransactionDependencyError::Other(err.into()))?
-            .map(HeaderView::from)
-            .ok_or_else(|| TransactionDependencyError::NotFound("header".to_string()))?;
-        inner.header_cache.put(block_hash.clone(), header.clone());
-        Ok(header)
-    }
 }

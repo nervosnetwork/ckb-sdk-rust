@@ -22,7 +22,8 @@ use ckb_types::{
     U256,
 };
 
-use crate::traits::TransactionDependencyProvider;
+use crate::rpc::CkbRpcClient;
+use crate::traits::{LiveCell, TransactionDependencyProvider};
 
 pub fn zeroize_privkey(key: &mut secp256k1::SecretKey) {
     let key_ptr = key.as_mut_ptr();
@@ -201,4 +202,64 @@ pub fn to_consensus_struct(json: json_types::Consensus) -> Consensus {
         permanent_difficulty_in_dummy: json.permanent_difficulty_in_dummy,
         hardfork_switch,
     }
+}
+
+pub fn calc_max_mature_number(
+    tip_epoch: EpochNumberWithFraction,
+    max_mature_epoch: Option<(u64, u64)>,
+    cellbase_maturity: EpochNumberWithFraction,
+) -> u64 {
+    if tip_epoch.to_rational() < cellbase_maturity.to_rational() {
+        0
+    } else if let Some((start_number, length)) = max_mature_epoch {
+        let epoch_delta = tip_epoch.to_rational() - cellbase_maturity.to_rational();
+        let index_bytes: [u8; 32] = ((epoch_delta.clone() - epoch_delta.into_u256())
+            * U256::from(length))
+        .into_u256()
+        .to_le_bytes();
+        let mut index_bytes_u64 = [0u8; 8];
+        index_bytes_u64.copy_from_slice(&index_bytes[0..8]);
+        u64::from_le_bytes(index_bytes_u64) + start_number
+    } else {
+        0
+    }
+}
+
+pub fn get_max_mature_number(rpc_client: &mut CkbRpcClient) -> Result<u64, String> {
+    let cellbase_maturity = EpochNumberWithFraction::from_full_value(
+        rpc_client
+            .get_consensus()
+            .map_err(|err| err.to_string())?
+            .cellbase_maturity
+            .value(),
+    );
+    let tip_epoch = rpc_client
+        .get_tip_header()
+        .map(|header| EpochNumberWithFraction::from_full_value(header.inner.epoch.value()))
+        .map_err(|err| err.to_string())?;
+    let tip_epoch_number = tip_epoch.number();
+    if tip_epoch_number < cellbase_maturity.number() {
+        // No cellbase live cell is mature
+        Ok(0)
+    } else {
+        let max_mature_epoch = rpc_client
+            .get_epoch_by_number((tip_epoch_number - cellbase_maturity.number()).into())
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| "Can not get epoch less than current epoch number".to_string())?;
+        let start_number = max_mature_epoch.start_number;
+        let length = max_mature_epoch.length;
+        Ok(calc_max_mature_number(
+            tip_epoch,
+            Some((start_number.value(), length.value())),
+            cellbase_maturity,
+        ))
+    }
+}
+
+pub fn is_mature(info: &LiveCell, max_mature_number: u64) -> bool {
+    // Not cellbase cell
+    info.tx_index > 0
+    // Live cells in genesis are all mature
+        || info.block_number == 0
+        || info.block_number <= max_mature_number
 }

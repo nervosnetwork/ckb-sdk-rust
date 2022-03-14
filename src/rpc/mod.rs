@@ -1,6 +1,8 @@
+pub mod ckb_indexer;
 mod client;
 
-pub use client::HttpRpcClient;
+pub use ckb_indexer::IndexerRpcClient;
+pub use client::CkbRpcClient;
 
 use thiserror::Error;
 
@@ -39,9 +41,9 @@ macro_rules! jsonrpc {
 
             $(
                 $(#[$attr])*
-                pub fn $method(&mut $selff $(, $arg_name: $arg_ty)*) -> Result<$return_ty, RpcError> {
+                pub fn $method(&mut $selff $(, $arg_name: $arg_ty)*) -> Result<$return_ty, crate::rpc::RpcError> {
                     let method = String::from(stringify!($method));
-                    let params = serialize_parameters!($($arg_name,)*);
+                    let params = crate::serialize_parameters!($($arg_name,)*);
                     $selff.id += 1;
 
                     let mut req_json = serde_json::Map::new();

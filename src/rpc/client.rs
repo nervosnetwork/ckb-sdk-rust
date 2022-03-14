@@ -7,10 +7,7 @@ use ckb_jsonrpc_types::{
 };
 use ckb_types::H256;
 
-use super::RpcError;
-use crate::{jsonrpc, serialize_parameters};
-
-jsonrpc!(pub struct HttpRpcClient {
+crate::jsonrpc!(pub struct CkbRpcClient {
     // Chain
     pub fn get_block(&mut self, hash: H256) -> Option<BlockView>;
     pub fn get_block_by_number(&mut self, number: BlockNumber) -> Option<BlockView>;

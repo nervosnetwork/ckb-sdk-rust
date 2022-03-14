@@ -10,7 +10,7 @@ use ckb_types::{
 use std::collections::HashSet;
 
 use super::{TransactionCrafter, TransactionCrafterError, TransferAction};
-use crate::traits::{CellCollector, CellDepResolver, CellQueryOptions, DataBytesOption};
+use crate::traits::{CellCollector, CellDepResolver, CellQueryOptions, ValueRangeOption};
 use crate::types::ScriptId;
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -48,7 +48,12 @@ impl TransactionCrafter for IssueUdtCrafter {
         cell_dep_resolver: &dyn CellDepResolver,
     ) -> Result<TransactionView, TransactionCrafterError> {
         // Build inputs
-        let owner_query = CellQueryOptions::new(self.owner.clone());
+        let owner_query = {
+            let mut query = CellQueryOptions::new_lock(self.owner.clone());
+            query.data_len_range = Some(ValueRangeOption::new_exact(0));
+            query
+        };
+
         let (owner_cells, _) = cell_collector.collect_live_cells(&owner_query, true)?;
         if owner_cells.is_empty() {
             return Err(TransactionCrafterError::Other(
@@ -169,9 +174,12 @@ impl TransactionCrafter for TransferUdtCrafter {
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
     ) -> Result<TransactionView, TransactionCrafterError> {
-        let sender_query = CellQueryOptions::new(self.sender.clone())
-            .type_script(Some(self.type_script.clone()))
-            .data_bytes(DataBytesOption::Ge(16));
+        let sender_query = {
+            let mut query = CellQueryOptions::new_lock(self.sender.clone());
+            query.secondary_script = Some(self.type_script.clone());
+            query.data_len_range = Some(ValueRangeOption::new_min(16));
+            query
+        };
         let (sender_cells, _) = cell_collector.collect_live_cells(&sender_query, true)?;
         if sender_cells.is_empty() {
             return Err(TransactionCrafterError::Other(
@@ -263,9 +271,12 @@ impl TransactionCrafter for TransferUdtCrafter {
                     (None, output, data.freeze())
                 }
                 TransferAction::Update => {
-                    let receiver_query = CellQueryOptions::new(receiver.lock_script.clone())
-                        .type_script(Some(self.type_script.clone()))
-                        .data_bytes(DataBytesOption::Ge(16));
+                    let receiver_query = {
+                        let mut query = CellQueryOptions::new_lock(receiver.lock_script.clone());
+                        query.secondary_script = Some(self.type_script.clone());
+                        query.data_len_range = Some(ValueRangeOption::new_min(16));
+                        query
+                    };
                     let (receiver_cells, _) =
                         cell_collector.collect_live_cells(&receiver_query, true)?;
                     if receiver_cells.is_empty() {
