@@ -7,10 +7,11 @@ pub mod constants;
 pub mod pubsub;
 pub mod rpc;
 pub mod traits;
+pub mod tx_builder;
 pub mod unlock;
 
 pub use chain::{calc_max_mature_number, GenesisInfo};
-pub use rpc::{HttpRpcClient, RpcError};
+pub use rpc::{CkbRpcClient, IndexerRpcClient, RpcError};
 pub use types::{
     Address, AddressPayload, AddressType, CodeHashIndex, HumanCapacity, NetworkType, OldAddress,
     OldAddressFormat, Since, SinceType,

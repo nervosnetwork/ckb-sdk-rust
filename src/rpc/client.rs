@@ -6,75 +6,8 @@ use ckb_jsonrpc_types::{
     TxPoolInfo, Uint64, Version,
 };
 use ckb_types::H256;
-use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum RpcError {
-    #[error("parse json error: `{0}`")]
-    Json(#[from] serde_json::Error),
-    #[error("http error: `{0}`")]
-    Http(#[from] reqwest::Error),
-    #[error("jsonrpc error: `{0}`")]
-    Rpc(#[from] jsonrpc_core::Error),
-}
-
-macro_rules! jsonrpc {
-    (
-        $(#[$struct_attr:meta])*
-        pub struct $struct_name:ident {$(
-            $(#[$attr:meta])*
-            pub fn $method:ident(&mut $selff:ident $(, $arg_name:ident: $arg_ty:ty)*)
-                -> $return_ty:ty;
-        )*}
-    ) => (
-        $(#[$struct_attr])*
-        pub struct $struct_name {
-            pub client: reqwest::blocking::Client,
-            pub url: reqwest::Url,
-            pub id: u64,
-        }
-
-        impl $struct_name {
-            pub fn new(uri: &str) -> Self {
-                let url = reqwest::Url::parse(uri).expect("ckb uri, e.g. \"http://127.0.0.1:8114\"");
-                $struct_name { url, id: 0, client: reqwest::blocking::Client::new(), }
-            }
-
-            $(
-                $(#[$attr])*
-                pub fn $method(&mut $selff $(, $arg_name: $arg_ty)*) -> Result<$return_ty, RpcError> {
-                    let method = String::from(stringify!($method));
-                    let params = serialize_parameters!($($arg_name,)*);
-                    $selff.id += 1;
-
-                    let mut req_json = serde_json::Map::new();
-                    req_json.insert("id".to_owned(), serde_json::json!($selff.id));
-                    req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
-                    req_json.insert("method".to_owned(), serde_json::json!(method));
-                    req_json.insert("params".to_owned(), params);
-
-                    let resp = $selff.client.post($selff.url.clone()).json(&req_json).send()?;
-                    let output = resp.json::<jsonrpc_core::response::Output>()?;
-                    match output {
-                        jsonrpc_core::response::Output::Success(success) => {
-                            serde_json::from_value(success.result).map_err(Into::into)
-                        },
-                        jsonrpc_core::response::Output::Failure(failure) => {
-                            Err(failure.error.into())
-                        }
-                    }
-                }
-            )*
-        }
-    )
-}
-
-macro_rules! serialize_parameters {
-    () => ( serde_json::Value::Null );
-    ($($arg_name:ident,)+) => ( serde_json::to_value(($($arg_name,)+))?)
-}
-
-jsonrpc!(pub struct HttpRpcClient {
+crate::jsonrpc!(pub struct CkbRpcClient {
     // Chain
     pub fn get_block(&mut self, hash: H256) -> Option<BlockView>;
     pub fn get_block_by_number(&mut self, number: BlockNumber) -> Option<BlockView>;
