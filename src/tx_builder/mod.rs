@@ -30,7 +30,7 @@ use crate::util::{clone_script_group, transaction_maximum_withdraw};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
-pub enum TransactionCrafterError {
+pub enum TxBuilderError {
     #[error("invalid parameter: `{0}`")]
     InvalidParameter(Box<dyn std::error::Error>),
 
@@ -54,13 +54,13 @@ pub enum TransactionCrafterError {
 }
 
 /// Transaction Builder interface
-pub trait TransactionCrafter {
+pub trait TxBuilder {
     /// Build base transaction
     fn build_base(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
-    ) -> Result<TransactionView, TransactionCrafterError>;
+    ) -> Result<TransactionView, TxBuilderError>;
 
     /// Build balanced transaction that ready to sign:
     ///  * Build base transaction
@@ -71,7 +71,7 @@ pub trait TransactionCrafter {
         cell_dep_resolver: &dyn CellDepResolver,
         balancer: &CapacityBalancer,
         tx_dep_provider: &dyn TransactionDependencyProvider,
-    ) -> Result<TransactionView, TransactionCrafterError> {
+    ) -> Result<TransactionView, TxBuilderError> {
         let base_tx = self.build_base(cell_collector, cell_dep_resolver)?;
         Ok(balance_tx_capacity(
             &base_tx,
@@ -97,7 +97,7 @@ pub trait TransactionCrafter {
         balancer: &CapacityBalancer,
         tx_dep_provider: &dyn TransactionDependencyProvider,
         unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
-    ) -> Result<(TransactionView, Vec<ScriptGroup>), TransactionCrafterError> {
+    ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
         let balanced_tx =
             self.build_balanced(cell_collector, cell_dep_resolver, balancer, tx_dep_provider)?;
         Ok(unlock_tx(balanced_tx, tx_dep_provider, unlockers)?)
