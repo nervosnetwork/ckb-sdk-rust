@@ -14,14 +14,14 @@ use crate::traits::{CellCollector, CellDepResolver, CellQueryOptions, ValueRange
 use crate::types::ScriptId;
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub enum IssueUdtType {
+pub enum UdtIssueType {
     Sudt,
     /// The parameter is <xudt args>
     Xudt(Bytes),
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub struct IssueUdtReceiver {
+pub struct UdtIssueReceiver {
     pub lock_script: Script,
     /// The capacity set to this output cell
     pub capacity: Option<u64>,
@@ -30,18 +30,18 @@ pub struct IssueUdtReceiver {
     pub extra_data: Option<Bytes>,
 }
 
-pub struct IssueUdtBuilder {
-    pub udt_type: IssueUdtType,
+pub struct UdtIssueBuilder {
+    pub udt_type: UdtIssueType,
     pub script_id: ScriptId,
     /// We will collect a cell from owner, there must exists a cell that:
     ///   * type script is None
     ///   * data field is empty
     ///   * is mature
     pub owner: Script,
-    pub receivers: Vec<IssueUdtReceiver>,
+    pub receivers: Vec<UdtIssueReceiver>,
 }
 
-impl TxBuilder for IssueUdtBuilder {
+impl TxBuilder for UdtIssueBuilder {
     fn build_base(
         &self,
         cell_collector: &mut dyn CellCollector,
@@ -65,8 +65,8 @@ impl TxBuilder for IssueUdtBuilder {
         // Build output type script
         let owner_lock_hash = self.owner.calc_script_hash();
         let type_script_args = match &self.udt_type {
-            IssueUdtType::Sudt => owner_lock_hash.as_bytes(),
-            IssueUdtType::Xudt(extra_args) => {
+            UdtIssueType::Sudt => owner_lock_hash.as_bytes(),
+            UdtIssueType::Xudt(extra_args) => {
                 let mut data = BytesMut::with_capacity(32 + extra_args.len());
                 data.put(owner_lock_hash.as_slice());
                 data.put(extra_args.as_ref());
@@ -149,7 +149,7 @@ impl TxBuilder for IssueUdtBuilder {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub struct TransferUdtReceiver {
+pub struct UdtTransferReceiver {
     pub action: TransferAction,
     pub lock_script: Script,
     /// The capacity set to this output cell when `action` is TransferAction::Create
@@ -160,15 +160,15 @@ pub struct TransferUdtReceiver {
     pub extra_data: Option<Bytes>,
 }
 
-pub struct TransferUdtBuilder {
+pub struct UdtTransferBuilder {
     /// The udt type script
     pub type_script: Script,
-    /// sender's lock script (we will asume there is only one udt cell identify by `type_script` and `sender`)
+    /// Sender's lock script (we will asume there is only one udt cell identify by `type_script` and `sender`)
     pub sender: Script,
-    pub receivers: Vec<TransferUdtReceiver>,
+    pub receivers: Vec<UdtTransferReceiver>,
 }
 
-impl TxBuilder for TransferUdtBuilder {
+impl TxBuilder for UdtTransferBuilder {
     fn build_base(
         &self,
         cell_collector: &mut dyn CellCollector,
