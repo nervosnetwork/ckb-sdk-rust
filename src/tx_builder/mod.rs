@@ -21,7 +21,7 @@ use ckb_types::{
 
 use crate::constants::DAO_TYPE_HASH;
 use crate::traits::{
-    CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions,
+    CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
     TransactionDependencyError, TransactionDependencyProvider, ValueRangeOption,
 };
 use crate::types::ScriptId;
@@ -46,6 +46,12 @@ pub enum TxBuilderError {
     #[error("resolve cell dep failed: `{0}`")]
     ResolveCellDepFailed(ScriptId),
 
+    #[error("resolve header dep by transaction hash failed: `{0}`")]
+    ResolveHeaderDepByTxHashFailed(Byte32),
+
+    #[error("resolve header dep by block number failed: `{0}`")]
+    ResolveHeaderDepByNumberFailed(u64),
+
     #[error("unlock error: `{0}`")]
     Unlock(#[from] UnlockError),
 
@@ -60,6 +66,8 @@ pub trait TxBuilder {
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError>;
 
     /// Build balanced transaction that ready to sign:
@@ -69,10 +77,16 @@ pub trait TxBuilder {
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
-        balancer: &CapacityBalancer,
+        header_dep_resolver: &dyn HeaderDepResolver,
         tx_dep_provider: &dyn TransactionDependencyProvider,
+        balancer: &CapacityBalancer,
     ) -> Result<TransactionView, TxBuilderError> {
-        let base_tx = self.build_base(cell_collector, cell_dep_resolver)?;
+        let base_tx = self.build_base(
+            cell_collector,
+            cell_dep_resolver,
+            header_dep_resolver,
+            tx_dep_provider,
+        )?;
         Ok(balance_tx_capacity(
             &base_tx,
             balancer,
@@ -94,12 +108,18 @@ pub trait TxBuilder {
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
-        balancer: &CapacityBalancer,
+        header_dep_resolver: &dyn HeaderDepResolver,
         tx_dep_provider: &dyn TransactionDependencyProvider,
+        balancer: &CapacityBalancer,
         unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
     ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
-        let balanced_tx =
-            self.build_balanced(cell_collector, cell_dep_resolver, balancer, tx_dep_provider)?;
+        let balanced_tx = self.build_balanced(
+            cell_collector,
+            cell_dep_resolver,
+            header_dep_resolver,
+            tx_dep_provider,
+            balancer,
+        )?;
         Ok(unlock_tx(balanced_tx, tx_dep_provider, unlockers)?)
     }
 }
@@ -401,7 +421,13 @@ pub fn balance_tx_capacity(
                 let provider_cell_dep = cell_dep_resolver.resolve(&provider_script_id).ok_or(
                     BalanceTxCapacityError::ResolveCellDepFailed(provider_script_id),
                 )?;
-                cell_deps.push(provider_cell_dep);
+                if tx
+                    .cell_deps()
+                    .into_iter()
+                    .all(|cell_dep| cell_dep == provider_cell_dep)
+                {
+                    cell_deps.push(provider_cell_dep);
+                }
             }
             inputs.extend(
                 more_cells

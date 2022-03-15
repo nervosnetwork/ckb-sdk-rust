@@ -5,7 +5,7 @@ use byteorder::{ByteOrder, LittleEndian};
 
 use ckb_chain_spec::consensus::{Consensus, ProposalWindow};
 use ckb_dao::DaoCalculator;
-use ckb_dao_utils::DaoError;
+use ckb_dao_utils::{extract_dao_data, DaoError};
 use ckb_jsonrpc_types as json_types;
 use ckb_pow::Pow;
 use ckb_script::ScriptGroup;
@@ -15,9 +15,9 @@ use ckb_types::{
     core::{
         cell::{CellMeta, ResolvedTransaction},
         hardfork::HardForkSwitchBuilder,
-        Capacity, EpochNumberWithFraction, Ratio, ScriptHashType,
+        Capacity, EpochNumber, EpochNumberWithFraction, HeaderView, Ratio, ScriptHashType,
     },
-    packed::{Block, Byte32, Script, WitnessArgs},
+    packed::{Block, Byte32, CellOutput, Script, WitnessArgs},
     prelude::*,
     U256,
 };
@@ -262,4 +262,44 @@ pub fn is_mature(info: &LiveCell, max_mature_number: u64) -> bool {
     // Live cells in genesis are all mature
         || info.block_number == 0
         || info.block_number <= max_mature_number
+}
+
+pub fn minimal_unlock_point(
+    deposit_header: &HeaderView,
+    prepare_header: &HeaderView,
+) -> EpochNumberWithFraction {
+    const LOCK_PERIOD_EPOCHES: EpochNumber = 180;
+
+    // https://github.com/nervosnetwork/ckb-system-scripts/blob/master/c/dao.c#L182-L223
+    let deposit_point = deposit_header.epoch();
+    let prepare_point = prepare_header.epoch();
+    let prepare_fraction = prepare_point.index() * deposit_point.length();
+    let deposit_fraction = deposit_point.index() * prepare_point.length();
+    let passed_epoch_cnt = if prepare_fraction > deposit_fraction {
+        prepare_point.number() - deposit_point.number() + 1
+    } else {
+        prepare_point.number() - deposit_point.number()
+    };
+    let rest_epoch_cnt =
+        (passed_epoch_cnt + (LOCK_PERIOD_EPOCHES - 1)) / LOCK_PERIOD_EPOCHES * LOCK_PERIOD_EPOCHES;
+    EpochNumberWithFraction::new(
+        deposit_point.number() + rest_epoch_cnt,
+        deposit_point.index(),
+        deposit_point.length(),
+    )
+}
+
+pub fn calculate_dao_maximum_withdraw4(
+    deposit_header: &HeaderView,
+    prepare_header: &HeaderView,
+    output: &CellOutput,
+    occupied_capacity: u64,
+) -> u64 {
+    let (deposit_ar, _, _, _) = extract_dao_data(deposit_header.dao());
+    let (prepare_ar, _, _, _) = extract_dao_data(prepare_header.dao());
+    let output_capacity: Capacity = output.capacity().unpack();
+    let counted_capacity = output_capacity.as_u64() - occupied_capacity;
+    let withdraw_counted_capacity =
+        u128::from(counted_capacity) * u128::from(prepare_ar) / u128::from(deposit_ar);
+    occupied_capacity + withdraw_counted_capacity as u64
 }

@@ -3,7 +3,8 @@
 
 mod default_impls;
 pub use default_impls::{
-    DefaultCellCollector, DefaultCellDepResolver, DefaultTransactionDependencyProvider,
+    DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
+    DefaultTransactionDependencyProvider,
 };
 
 use thiserror::Error;
@@ -362,5 +363,19 @@ pub trait CellCollector {
 }
 
 pub trait CellDepResolver {
+    /// Resolve cell dep by script id
     fn resolve(&self, script_id: &ScriptId) -> Option<CellDep>;
+}
+pub trait HeaderDepResolver {
+    /// Resolve header dep by trancation hash
+    fn resolve_by_tx(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>>;
+
+    /// Resolve header dep by block number
+    fn resolve_by_number(
+        &self,
+        number: u64,
+    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>>;
 }

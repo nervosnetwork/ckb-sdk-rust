@@ -19,8 +19,8 @@ use ckb_types::{
 use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
 use crate::rpc::{CkbRpcClient, IndexerRpcClient};
 use crate::traits::{
-    CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, LiveCell,
-    TransactionDependencyError, TransactionDependencyProvider,
+    CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+    LiveCell, TransactionDependencyError, TransactionDependencyProvider,
 };
 use crate::types::ScriptId;
 use crate::util::{get_max_mature_number, to_consensus_struct};
@@ -75,6 +75,48 @@ impl DefaultCellDepResolver {
 impl CellDepResolver for DefaultCellDepResolver {
     fn resolve(&self, script_id: &ScriptId) -> Option<CellDep> {
         self.get(script_id).map(|(cell_dep, _)| cell_dep.clone())
+    }
+}
+
+/// A header_dep resolver use ckb jsonrpc client as backend
+pub struct DefaultHeaderDepResolver {
+    ckb_client: Arc<Mutex<CkbRpcClient>>,
+}
+impl DefaultHeaderDepResolver {
+    pub fn new(ckb_client: CkbRpcClient) -> DefaultHeaderDepResolver {
+        let ckb_client = Arc::new(Mutex::new(ckb_client));
+        DefaultHeaderDepResolver { ckb_client }
+    }
+}
+impl HeaderDepResolver for DefaultHeaderDepResolver {
+    fn resolve_by_tx(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>> {
+        let mut client = self.ckb_client.lock();
+        if let Some(block_hash) = client
+            .get_transaction(tx_hash.unpack())
+            .map_err(Box::new)?
+            .and_then(|tx_with_status| tx_with_status.tx_status.block_hash)
+        {
+            Ok(client
+                .get_header(block_hash)
+                .map_err(Box::new)?
+                .map(Into::into))
+        } else {
+            Ok(None)
+        }
+    }
+    fn resolve_by_number(
+        &self,
+        number: u64,
+    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>> {
+        Ok(self
+            .ckb_client
+            .lock()
+            .get_header_by_number(number.into())
+            .map_err(Box::new)?
+            .map(Into::into))
     }
 }
 

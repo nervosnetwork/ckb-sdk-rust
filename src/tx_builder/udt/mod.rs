@@ -10,7 +10,10 @@ use ckb_types::{
 use std::collections::HashSet;
 
 use super::{TransferAction, TxBuilder, TxBuilderError};
-use crate::traits::{CellCollector, CellDepResolver, CellQueryOptions, ValueRangeOption};
+use crate::traits::{
+    CellCollector, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+    TransactionDependencyProvider, ValueRangeOption,
+};
 use crate::types::ScriptId;
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -46,6 +49,8 @@ impl TxBuilder for UdtIssueBuilder {
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
+        _header_dep_resolver: &dyn HeaderDepResolver,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError> {
         // Build inputs
         let owner_query = {
@@ -173,6 +178,8 @@ impl TxBuilder for UdtTransferBuilder {
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
+        _header_dep_resolver: &dyn HeaderDepResolver,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError> {
         let sender_query = {
             let mut query = CellQueryOptions::new_lock(self.sender.clone());
