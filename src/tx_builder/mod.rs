@@ -1,4 +1,7 @@
+pub mod acp;
+pub mod cheque;
 pub mod dao;
+pub mod transfer;
 pub mod udt;
 
 use std::collections::{HashMap, HashSet};
@@ -210,6 +213,10 @@ pub fn tx_fee_without_dao_withdraw(
         .ok_or_else(|| TransactionFeeError::CapacityOverflow(output_total - input_total))
 }
 
+/// Provide capacity locked by a lock script.
+///
+/// The cells collected by `lock_script` will filter out those have type script
+/// or data length is not `0` or is not mature.
 #[derive(Debug, Clone)]
 pub struct CapacityProvider {
     pub lock_script: Script,
@@ -253,19 +260,20 @@ pub enum BalanceTxCapacityError {
 #[derive(Debug, Clone)]
 pub struct CapacityBalancer {
     pub fee_rate: FeeRate,
+
+    /// Search cell by this lock script and filter out cells with data or with
+    /// type script or not mature.
     pub capacity_provider: CapacityProvider,
+
+    /// When there is no more inputs for create a change cell to balance the
+    /// transaction capacity, force the addition capacity as fee, the value is
+    /// actual maximum transaction fee.
     pub force_small_change_as_fee: Option<u64>,
+
     pub has_dao_withdraw: bool,
 }
 
 /// Fill more inputs to balance the transaction capacity
-///
-///   * capacity_provider: Search cell by this lock script and filter out cells
-///     with data or with type script or not mature.
-///
-///   * force_small_change_as_fee: When there is no more inputs for create a
-///   change cell to balance the transaction capacity, force the addition
-///   capacity as fee, the value is actual maximum transaction fee.
 pub fn balance_tx_capacity(
     tx: &TransactionView,
     balancer: &CapacityBalancer,
