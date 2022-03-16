@@ -72,16 +72,16 @@ impl TxBuilder for DaoDepositBuilder {
 #[derive(Debug, Clone)]
 pub struct DaoPrepareItem {
     /// The cell to prepare withdraw (deposited cell)
-    pub out_point: OutPoint,
+    pub input: CellInput,
 
     /// If `lock_script` is `None` copy the lock script from input with same
     /// index, otherwise replace the lock script with the given script.
     pub lock_script: Option<Script>,
 }
-impl From<OutPoint> for DaoPrepareItem {
-    fn from(out_point: OutPoint) -> DaoPrepareItem {
+impl From<CellInput> for DaoPrepareItem {
+    fn from(input: CellInput) -> DaoPrepareItem {
         DaoPrepareItem {
-            out_point,
+            input,
             lock_script: None,
         }
     }
@@ -90,12 +90,12 @@ impl From<OutPoint> for DaoPrepareItem {
 /// Build a Nervos DAO withdraw Phase 1 transaction
 #[derive(Debug, Clone)]
 pub struct DaoPrepareBuilder {
-    /// Prepare withdraw from those out_points (deposited cells)
+    /// Prepare withdraw from those inputs (deposited cells)
     pub items: Vec<DaoPrepareItem>,
 }
 impl DaoPrepareBuilder {
-    pub fn new(out_points: Vec<OutPoint>) -> DaoPrepareBuilder {
-        let items: Vec<_> = out_points.into_iter().map(DaoPrepareItem::from).collect();
+    pub fn new(inputs: Vec<CellInput>) -> DaoPrepareBuilder {
+        let items: Vec<_> = inputs.into_iter().map(DaoPrepareItem::from).collect();
         DaoPrepareBuilder { items }
     }
 }
@@ -129,17 +129,14 @@ impl TxBuilder for DaoPrepareBuilder {
         let mut inputs = Vec::new();
         let mut outputs = Vec::new();
         let mut outputs_data = Vec::new();
-        for DaoPrepareItem {
-            out_point,
-            lock_script,
-        } in &self.items
-        {
+        for DaoPrepareItem { input, lock_script } in &self.items {
+            let out_point = input.previous_output();
             let tx_hash = out_point.tx_hash();
             let deposit_header = header_dep_resolver
                 .resolve_by_tx(&tx_hash)
                 .map_err(TxBuilderError::Other)?
                 .ok_or_else(|| TxBuilderError::ResolveHeaderDepByTxHashFailed(tx_hash.clone()))?;
-            let input_cell = tx_dep_provider.get_cell(out_point)?;
+            let input_cell = tx_dep_provider.get_cell(&out_point)?;
             if input_cell.type_().to_opt().as_ref() != Some(&dao_type_script) {
                 return Err(TxBuilderError::InvalidParameter(
                     "the input cell has invalid type script".to_string().into(),
@@ -160,7 +157,7 @@ impl TxBuilder for DaoPrepareBuilder {
 
             cell_deps.insert(input_lock_cell_dep);
             header_deps.push(deposit_header.hash());
-            inputs.push(CellInput::new(out_point.clone(), 0));
+            inputs.push(input.clone());
             outputs.push(output);
             outputs_data.push(output_data.pack());
         }

@@ -15,13 +15,13 @@ use crate::types::ScriptId;
 
 #[derive(Clone, Debug)]
 pub struct AcpTransferReceiver {
-    lock_script: Script,
-    capacity: u64,
+    pub lock_script: Script,
+    pub capacity: u64,
 }
 /// Transfer capacity to already exists acp cell, the type script and cell data
 /// will be copied.
 pub struct AcpTransferBuilder {
-    receivers: Vec<AcpTransferReceiver>,
+    pub receivers: Vec<AcpTransferReceiver>,
 }
 
 impl TxBuilder for AcpTransferBuilder {
