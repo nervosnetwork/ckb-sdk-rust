@@ -9,19 +9,22 @@ use ckb_types::{
 };
 use std::collections::HashSet;
 
-use super::{TransactionCrafter, TransactionCrafterError, TransferAction};
-use crate::traits::{CellCollector, CellDepResolver, CellQueryOptions, ValueRangeOption};
+use super::{TransferAction, TxBuilder, TxBuilderError};
+use crate::traits::{
+    CellCollector, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+    TransactionDependencyProvider, ValueRangeOption,
+};
 use crate::types::ScriptId;
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub enum IssueUdtType {
+pub enum UdtIssueType {
     Sudt,
     /// The parameter is <xudt args>
     Xudt(Bytes),
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub struct IssueUdtReceiver {
+pub struct UdtIssueReceiver {
     pub lock_script: Script,
     /// The capacity set to this output cell
     pub capacity: Option<u64>,
@@ -30,23 +33,25 @@ pub struct IssueUdtReceiver {
     pub extra_data: Option<Bytes>,
 }
 
-pub struct IssueUdtCrafter {
-    pub udt_type: IssueUdtType,
+pub struct UdtIssueBuilder {
+    pub udt_type: UdtIssueType,
     pub script_id: ScriptId,
     /// We will collect a cell from owner, there must exists a cell that:
     ///   * type script is None
     ///   * data field is empty
     ///   * is mature
     pub owner: Script,
-    pub receivers: Vec<IssueUdtReceiver>,
+    pub receivers: Vec<UdtIssueReceiver>,
 }
 
-impl TransactionCrafter for IssueUdtCrafter {
+impl TxBuilder for UdtIssueBuilder {
     fn build_base(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
-    ) -> Result<TransactionView, TransactionCrafterError> {
+        _header_dep_resolver: &dyn HeaderDepResolver,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, TxBuilderError> {
         // Build inputs
         let owner_query = {
             let mut query = CellQueryOptions::new_lock(self.owner.clone());
@@ -56,7 +61,7 @@ impl TransactionCrafter for IssueUdtCrafter {
 
         let (owner_cells, _) = cell_collector.collect_live_cells(&owner_query, true)?;
         if owner_cells.is_empty() {
-            return Err(TransactionCrafterError::Other(
+            return Err(TxBuilderError::Other(
                 "owner cell not found".to_string().into(),
             ));
         }
@@ -65,8 +70,8 @@ impl TransactionCrafter for IssueUdtCrafter {
         // Build output type script
         let owner_lock_hash = self.owner.calc_script_hash();
         let type_script_args = match &self.udt_type {
-            IssueUdtType::Sudt => owner_lock_hash.as_bytes(),
-            IssueUdtType::Xudt(extra_args) => {
+            UdtIssueType::Sudt => owner_lock_hash.as_bytes(),
+            UdtIssueType::Xudt(extra_args) => {
                 let mut data = BytesMut::with_capacity(32 + extra_args.len());
                 data.put(owner_lock_hash.as_slice());
                 data.put(extra_args.as_ref());
@@ -80,12 +85,12 @@ impl TransactionCrafter for IssueUdtCrafter {
             .build();
 
         let owner_script_id = ScriptId::from(&self.owner);
-        let owner_cell_dep = cell_dep_resolver.resolve(&owner_script_id).ok_or(
-            TransactionCrafterError::ResolveCellDepFailed(owner_script_id),
-        )?;
+        let owner_cell_dep = cell_dep_resolver
+            .resolve(&owner_script_id)
+            .ok_or(TxBuilderError::ResolveCellDepFailed(owner_script_id))?;
         let udt_cell_dep = cell_dep_resolver
             .resolve(&self.script_id)
-            .ok_or_else(|| TransactionCrafterError::ResolveCellDepFailed(self.script_id.clone()))?;
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(self.script_id.clone()))?;
         #[allow(clippy::mutable_key_type)]
         let mut cell_deps = HashSet::new();
         cell_deps.insert(owner_cell_dep);
@@ -120,7 +125,7 @@ impl TransactionCrafter for IssueUdtCrafter {
                 if *capacity >= base_occupied_capacity {
                     *capacity
                 } else {
-                    return Err(TransactionCrafterError::Other(
+                    return Err(TxBuilderError::Other(
                         format!(
                             "Not enough capacity to hold a receiver cell, min: {}, actual: {}",
                             base_occupied_capacity, *capacity,
@@ -149,7 +154,7 @@ impl TransactionCrafter for IssueUdtCrafter {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub struct TransferUdtReceiver {
+pub struct UdtTransferReceiver {
     pub action: TransferAction,
     pub lock_script: Script,
     /// The capacity set to this output cell when `action` is TransferAction::Create
@@ -160,20 +165,22 @@ pub struct TransferUdtReceiver {
     pub extra_data: Option<Bytes>,
 }
 
-pub struct TransferUdtCrafter {
+pub struct UdtTransferBuilder {
     /// The udt type script
     pub type_script: Script,
-    /// sender's lock script (we will asume there is only one udt cell identify by `type_script` and `sender`)
+    /// Sender's lock script (we will asume there is only one udt cell identify by `type_script` and `sender`)
     pub sender: Script,
-    pub receivers: Vec<TransferUdtReceiver>,
+    pub receivers: Vec<UdtTransferReceiver>,
 }
 
-impl TransactionCrafter for TransferUdtCrafter {
+impl TxBuilder for UdtTransferBuilder {
     fn build_base(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
-    ) -> Result<TransactionView, TransactionCrafterError> {
+        _header_dep_resolver: &dyn HeaderDepResolver,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, TxBuilderError> {
         let sender_query = {
             let mut query = CellQueryOptions::new_lock(self.sender.clone());
             query.secondary_script = Some(self.type_script.clone());
@@ -182,20 +189,20 @@ impl TransactionCrafter for TransferUdtCrafter {
         };
         let (sender_cells, _) = cell_collector.collect_live_cells(&sender_query, true)?;
         if sender_cells.is_empty() {
-            return Err(TransactionCrafterError::Other(
+            return Err(TxBuilderError::Other(
                 "sender cell not found".to_string().into(),
             ));
         }
         let sender_cell = &sender_cells[0];
 
         let sender_script_id = ScriptId::from(&self.sender);
-        let sender_cell_dep = cell_dep_resolver.resolve(&sender_script_id).ok_or(
-            TransactionCrafterError::ResolveCellDepFailed(sender_script_id),
-        )?;
+        let sender_cell_dep = cell_dep_resolver
+            .resolve(&sender_script_id)
+            .ok_or(TxBuilderError::ResolveCellDepFailed(sender_script_id))?;
         let type_script_id = ScriptId::from(&self.type_script);
-        let udt_cell_dep = cell_dep_resolver.resolve(&type_script_id).ok_or(
-            TransactionCrafterError::ResolveCellDepFailed(type_script_id),
-        )?;
+        let udt_cell_dep = cell_dep_resolver
+            .resolve(&type_script_id)
+            .ok_or(TxBuilderError::ResolveCellDepFailed(type_script_id))?;
         #[allow(clippy::mutable_key_type)]
         let mut cell_deps = HashSet::new();
         cell_deps.insert(sender_cell_dep);
@@ -206,7 +213,7 @@ impl TransactionCrafter for TransferUdtCrafter {
         let input_total = u128::from_le_bytes(amount_bytes);
         let output_total: u128 = self.receivers.iter().map(|receiver| receiver.amount).sum();
         if input_total < output_total {
-            return Err(TransactionCrafterError::Other(
+            return Err(TxBuilderError::Other(
                 format!(
                     "sender udt amount not enough, expected at least: {}, actual: {}",
                     output_total, input_total
@@ -253,7 +260,7 @@ impl TransactionCrafter for TransferUdtCrafter {
                         if *capacity >= base_occupied_capacity {
                             *capacity
                         } else {
-                            return Err(TransactionCrafterError::Other(
+                            return Err(TxBuilderError::Other(
                                 format!(
                                     "Not enough capacity to hold a receiver cell, min: {}, actual: {}",
                                     base_occupied_capacity, *capacity,
@@ -280,7 +287,7 @@ impl TransactionCrafter for TransferUdtCrafter {
                     let (receiver_cells, _) =
                         cell_collector.collect_live_cells(&receiver_query, true)?;
                     if receiver_cells.is_empty() {
-                        return Err(TransactionCrafterError::Other(
+                        return Err(TxBuilderError::Other(
                             format!(
                                 "update receiver cell failed, cell not found, lock={:?}",
                                 receiver.lock_script
