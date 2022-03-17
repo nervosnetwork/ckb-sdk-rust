@@ -36,6 +36,8 @@ pub const MULTISIG_TYPE_HASH: H256 =
 pub const DAO_TYPE_HASH: H256 =
     h256!("0x82d76d1b75fe2fd9a27dfbaa65a039221a380d76c926f378d3f81cf3e7e13f2e");
 
+pub const CHEQUE_CELL_SINCE: u64 = 0xA000000000000006;
+
 #[cfg(test)]
 mod test {
     use super::*;

@@ -2,6 +2,8 @@
 //!  library code and only implemented the trait in upper level code.
 
 mod default_impls;
+pub mod dummy_impls;
+
 pub use default_impls::{
     DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
     DefaultTransactionDependencyProvider,
