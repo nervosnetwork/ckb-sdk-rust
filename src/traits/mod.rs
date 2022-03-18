@@ -37,6 +37,12 @@ pub enum WalletError {
     #[error("invalid message, reason: `{0}`")]
     InvalidMessage(String),
 
+    #[error("invalid signature, reason: `{0}`")]
+    InvalidSignature(String),
+
+    #[error("invalid transaction, reason: `{0}`")]
+    InvalidTransaction(String),
+
     #[error("get transaction dependency failed: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
 
