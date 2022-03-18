@@ -178,7 +178,7 @@ pub struct ExtendedPrivKey {
 }
 
 /// Extended public key
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ExtendedPubKey {
     /// How many derivations this key is from the master (which is 0)
     pub depth: u8,
@@ -620,7 +620,7 @@ impl ExtendedPubKey {
         secp: &Secp256k1<C>,
         path: &P,
     ) -> Result<ExtendedPubKey, Error> {
-        let mut pk: ExtendedPubKey = *self;
+        let mut pk: ExtendedPubKey = self.clone();
         for cnum in path.as_ref() {
             pk = pk.ckd_pub(secp, *cnum)?
         }
@@ -685,6 +685,12 @@ impl ExtendedPubKey {
 impl Drop for ExtendedPrivKey {
     fn drop(&mut self) {
         zeroize_privkey(&mut self.private_key);
+        zeroize_slice(&mut self.chain_code.0);
+        zeroize_slice(&mut self.parent_fingerprint.0);
+    }
+}
+impl Drop for ExtendedPubKey {
+    fn drop(&mut self) {
         zeroize_slice(&mut self.chain_code.0);
         zeroize_slice(&mut self.parent_fingerprint.0);
     }

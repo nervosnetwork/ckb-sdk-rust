@@ -64,13 +64,21 @@ pub trait Wallet {
         &self,
         id: &[u8],
         message: &[u8],
+        recoverable: bool,
         tx: &TransactionView,
         // This is mainly for hardware wallet.
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<Bytes, WalletError>;
 
-    /// Verify a signature
-    fn verify(&self, id: &[u8], message: &[u8], signature: Bytes) -> Result<bool, WalletError>;
+    /// Verify a signature, if return Ok means verfiy success, if `recoverable`
+    /// is true return the recovered public key.
+    fn verify(
+        &self,
+        id: &[u8],
+        message: &[u8],
+        recoverable: bool,
+        signature: Bytes,
+    ) -> Result<Option<Bytes>, WalletError>;
 }
 
 /// Transaction dependency provider errors

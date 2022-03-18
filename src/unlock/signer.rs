@@ -161,7 +161,7 @@ impl Secp256k1SighashSigner {
 
         let signature = self
             .wallet
-            .sign(owner_id, message.as_ref(), tx, tx_dep_provider)?;
+            .sign(owner_id, message.as_ref(), true, tx, tx_dep_provider)?;
 
         // Put signature into witness
         let witness_data = witnesses[witness_idx].raw_data();
@@ -309,7 +309,7 @@ impl ScriptSigner for Secp256k1MultisigSigner {
             .filter(|id| self.wallet.match_id(id.as_bytes()))
             .map(|id| {
                 self.wallet
-                    .sign(id.as_bytes(), message.as_ref(), tx, tx_dep_provider)
+                    .sign(id.as_bytes(), message.as_ref(), true, tx, tx_dep_provider)
             })
             .collect::<Result<Vec<_>, WalletError>>()?;
         // Put signature into witness
