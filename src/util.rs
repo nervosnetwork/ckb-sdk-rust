@@ -303,3 +303,11 @@ pub fn calculate_dao_maximum_withdraw4(
         u128::from(counted_capacity) * u128::from(prepare_ar) / u128::from(deposit_ar);
     occupied_capacity + withdraw_counted_capacity as u64
 }
+
+pub fn serialize_signature(signature: &secp256k1::recovery::RecoverableSignature) -> [u8; 65] {
+    let (recov_id, data) = signature.serialize_compact();
+    let mut signature_bytes = [0u8; 65];
+    signature_bytes[0..64].copy_from_slice(&data[0..64]);
+    signature_bytes[64] = recov_id.to_i32() as u8;
+    signature_bytes
+}
