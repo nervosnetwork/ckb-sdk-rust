@@ -6,7 +6,7 @@ pub mod dummy_impls;
 
 pub use default_impls::{
     DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
-    DefaultTransactionDependencyProvider,
+    DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
 };
 
 use thiserror::Error;

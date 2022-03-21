@@ -3,28 +3,32 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use secp256k1::{PublicKey, SecretKey};
+
 use lru::LruCache;
 use parking_lot::Mutex;
 
 use ckb_chain_spec::consensus::Consensus;
+use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types as json_types;
 use ckb_types::{
     bytes::Bytes,
     core::{HeaderView, ScriptHashType, TransactionView},
     packed::{Byte32, CellDep, CellOutput, OutPoint, Transaction},
     prelude::*,
-    H256,
+    H160, H256,
 };
 
 use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
 use crate::rpc::{CkbRpcClient, IndexerRpcClient};
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
-    LiveCell, TransactionDependencyError, TransactionDependencyProvider,
+    LiveCell, Signer, SignerError, TransactionDependencyError, TransactionDependencyProvider,
 };
 use crate::types::ScriptId;
-use crate::util::{get_max_mature_number, to_consensus_struct};
+use crate::util::{get_max_mature_number, serialize_signature, to_consensus_struct};
 use crate::GenesisInfo;
+use crate::SECP256K1;
 
 /// A cell_dep resolver use genesis info resolve system scripts and can register more cell_dep info.
 #[derive(Default, Clone)]
@@ -404,5 +408,56 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
             .ok_or_else(|| TransactionDependencyError::NotFound("header".to_string()))?;
         inner.header_cache.put(block_hash.clone(), header.clone());
         Ok(header)
+    }
+}
+
+/// A signer use secp256k1 raw key, the id is `blake160(pubkey)`.
+#[derive(Default)]
+pub struct SecpCkbRawKeySigner {
+    keys: HashMap<H160, SecretKey>,
+}
+
+impl SecpCkbRawKeySigner {
+    pub fn new(keys: HashMap<H160, SecretKey>) -> SecpCkbRawKeySigner {
+        SecpCkbRawKeySigner { keys }
+    }
+    pub fn add_secret_key(&mut self, key: SecretKey) {
+        let pubkey = PublicKey::from_secret_key(&SECP256K1, &key);
+        let hash160 = H160::from_slice(&blake2b_256(&pubkey.serialize()[..])[0..20])
+            .expect("Generate hash(H160) from pubkey failed");
+        self.keys.insert(hash160, key);
+    }
+}
+
+impl Signer for SecpCkbRawKeySigner {
+    fn match_id(&self, id: &[u8]) -> bool {
+        id.len() == 20 && self.keys.contains_key(&H160::from_slice(id).unwrap())
+    }
+
+    fn sign(
+        &self,
+        id: &[u8],
+        message: &[u8],
+        recoverable: bool,
+        _tx: &TransactionView,
+    ) -> Result<Bytes, SignerError> {
+        if !self.match_id(id) {
+            return Err(SignerError::IdNotFound);
+        }
+        if message.len() != 32 {
+            return Err(SignerError::InvalidMessage(format!(
+                "expected: 32, got: {}",
+                message.len()
+            )));
+        }
+        let msg = secp256k1::Message::from_slice(message).expect("Convert to message failed");
+        let key = self.keys.get(&H160::from_slice(id).unwrap()).unwrap();
+        if recoverable {
+            let sig = SECP256K1.sign_recoverable(&msg, key);
+            Ok(Bytes::from(serialize_signature(&sig).to_vec()))
+        } else {
+            let sig = SECP256K1.sign(&msg, key);
+            Ok(Bytes::from(sig.serialize_compact().to_vec()))
+        }
     }
 }
