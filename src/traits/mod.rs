@@ -28,10 +28,10 @@ use ckb_types::{
 use crate::types::ScriptId;
 use crate::util::is_mature;
 
-/// Wallet errors
+/// Signer errors
 #[derive(Error, Debug)]
-pub enum WalletError {
-    #[error("the id is not found in the wallet")]
+pub enum SignerError {
+    #[error("the id is not found in the signer")]
     IdNotFound,
 
     #[error("invalid message, reason: `{0}`")]
@@ -51,30 +51,26 @@ pub enum WalletError {
     Other(#[from] Box<dyn std::error::Error>),
 }
 
-/// A wallet abstraction, support wallet type:
-///    * secp256k1 ckb wallet
-///    * secp256k1 eth wallet
-///    * RSA wallet
-///    * Hardware wallet
-pub trait Wallet {
+/// A signer abstraction, support signer type:
+///    * secp256k1 ckb signer
+///    * secp256k1 eth signer
+///    * RSA signer
+///    * Hardware wallet signer
+pub trait Signer {
     /// typecial id are blake160(pubkey) and keccak256(pubkey)[12..20]
     fn match_id(&self, id: &[u8]) -> bool;
 
-    /// `message` type is Bytes, because different algorithm have different length of message.
+    /// `message` type is variable length, because different algorithm have
+    /// different length of message:
     ///   * secp256k1 => 256bits
     ///   * RSA       => 512bits (when key size is 1024bits)
-    ///
-    ///  For keystore case, `password` may read from prompt.
-    ///  For ledger case, `password` will read from ledger device.
     fn sign(
         &self,
         id: &[u8],
         message: &[u8],
         recoverable: bool,
         tx: &TransactionView,
-        // This is mainly for hardware wallet.
-        tx_dep_provider: &dyn TransactionDependencyProvider,
-    ) -> Result<Bytes, WalletError>;
+    ) -> Result<Bytes, SignerError>;
 }
 
 /// Transaction dependency provider errors

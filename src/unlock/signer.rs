@@ -11,17 +11,12 @@ use ckb_types::{
 use std::collections::HashSet;
 use thiserror::Error;
 
-use crate::traits::{
-    TransactionDependencyError, TransactionDependencyProvider, Wallet, WalletError,
-};
+use crate::traits::{Signer, SignerError};
 
 #[derive(Error, Debug)]
-pub enum SignError {
-    #[error("wallet error: `{0}`")]
-    Wallet(#[from] WalletError),
-
-    #[error("transaction dependency error: `{0}`")]
-    TxDep(#[from] TransactionDependencyError),
+pub enum ScriptSignError {
+    #[error("signer error: `{0}`")]
+    Signer(#[from] SignerError),
 
     #[error("witness count in current transaction not enough to cover current script group")]
     WitnessNotEnough,
@@ -51,9 +46,7 @@ pub trait ScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        // This argument is for inner wallet to use
-        tx_dep_provider: &dyn TransactionDependencyProvider,
-    ) -> Result<TransactionView, SignError>;
+    ) -> Result<TransactionView, ScriptSignError>;
 
     /// Common logic of generate message for certain script group. Overwrite
     /// this method to support special use case.
@@ -62,9 +55,9 @@ pub trait ScriptSigner {
         tx: &TransactionView,
         script_group: &ScriptGroup,
         zero_lock: Bytes,
-    ) -> Result<Bytes, SignError> {
+    ) -> Result<Bytes, ScriptSignError> {
         if tx.witnesses().item_count() <= script_group.input_indices[0] {
-            return Err(SignError::WitnessNotEnough);
+            return Err(ScriptSignError::WitnessNotEnough);
         }
 
         let witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
@@ -126,17 +119,17 @@ pub trait ScriptSigner {
 
 /// Signer for secp256k1 sighash all lock script
 pub struct Secp256k1SighashSigner {
-    // Can be: SecpCkbRawKeyWallet, HardwareWallet
-    wallet: Box<dyn Wallet>,
+    // Can be: SecpCkbRawKeySigner, HardwareWalletSigner
+    signer: Box<dyn Signer>,
 }
 
 impl Secp256k1SighashSigner {
-    pub fn new(wallet: Box<dyn Wallet>) -> Secp256k1SighashSigner {
-        Secp256k1SighashSigner { wallet }
+    pub fn new(signer: Box<dyn Signer>) -> Secp256k1SighashSigner {
+        Secp256k1SighashSigner { signer }
     }
 
-    pub fn wallet(&self) -> &dyn Wallet {
-        self.wallet.as_ref()
+    pub fn signer(&self) -> &dyn Signer {
+        self.signer.as_ref()
     }
 
     fn sign_tx_with_owner_id(
@@ -144,8 +137,7 @@ impl Secp256k1SighashSigner {
         owner_id: &[u8],
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &dyn TransactionDependencyProvider,
-    ) -> Result<TransactionView, SignError> {
+    ) -> Result<TransactionView, ScriptSignError> {
         let witness_idx = script_group.input_indices[0];
         let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
         while witnesses.len() <= witness_idx {
@@ -159,9 +151,7 @@ impl Secp256k1SighashSigner {
         let zero_lock = Bytes::from(vec![0u8; 65]);
         let message = self.generate_message(&tx_new, script_group, zero_lock)?;
 
-        let signature = self
-            .wallet
-            .sign(owner_id, message.as_ref(), true, tx, tx_dep_provider)?;
+        let signature = self.signer.sign(owner_id, message.as_ref(), true, tx)?;
 
         // Put signature into witness
         let witness_data = witnesses[witness_idx].raw_data();
@@ -181,17 +171,16 @@ impl Secp256k1SighashSigner {
 
 impl ScriptSigner for Secp256k1SighashSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        args.len() == 20 && self.wallet.match_id(args)
+        args.len() == 20 && self.signer.match_id(args)
     }
 
     fn sign_tx(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &dyn TransactionDependencyProvider,
-    ) -> Result<TransactionView, SignError> {
+    ) -> Result<TransactionView, ScriptSignError> {
         let args = script_group.script.args().raw_data();
-        self.sign_tx_with_owner_id(args.as_ref(), tx, script_group, tx_dep_provider)
+        self.sign_tx_with_owner_id(args.as_ref(), tx, script_group)
     }
 }
 
@@ -205,25 +194,25 @@ impl MultisigConfig {
         sighash_addresses: Vec<H160>,
         require_first_n: u8,
         threshold: u8,
-    ) -> Result<MultisigConfig, SignError> {
+    ) -> Result<MultisigConfig, ScriptSignError> {
         let mut addr_set: HashSet<&H160> = HashSet::default();
         for addr in &sighash_addresses {
             if !addr_set.insert(addr) {
-                return Err(SignError::InvalidMultisigConfig(format!(
+                return Err(ScriptSignError::InvalidMultisigConfig(format!(
                     "Duplicated address: {:?}",
                     addr
                 )));
             }
         }
         if threshold as usize > sighash_addresses.len() {
-            return Err(SignError::InvalidMultisigConfig(format!(
+            return Err(ScriptSignError::InvalidMultisigConfig(format!(
                 "Invalid threshold {} > {}",
                 threshold,
                 sighash_addresses.len()
             )));
         }
         if require_first_n > threshold {
-            return Err(SignError::InvalidMultisigConfig(format!(
+            return Err(ScriptSignError::InvalidMultisigConfig(format!(
                 "Invalid require-first-n {} > {}",
                 require_first_n, threshold
             )));
@@ -251,22 +240,22 @@ impl MultisigConfig {
 }
 /// Signer for secp256k1 multisig all lock script
 pub struct Secp256k1MultisigSigner {
-    // Can be: SecpCkbRawKeyWallet, HardwareWallet
-    wallet: Box<dyn Wallet>,
+    // Can be: SecpCkbRawKeySigner, HardwareWalletSigner
+    signer: Box<dyn Signer>,
     config: MultisigConfig,
     config_hash: [u8; 32],
 }
 impl Secp256k1MultisigSigner {
-    pub fn new(wallet: Box<dyn Wallet>, config: MultisigConfig) -> Secp256k1MultisigSigner {
+    pub fn new(signer: Box<dyn Signer>, config: MultisigConfig) -> Secp256k1MultisigSigner {
         let config_hash = blake2b_256(config.to_witness_data());
         Secp256k1MultisigSigner {
-            wallet,
+            signer,
             config,
             config_hash,
         }
     }
-    pub fn wallet(&self) -> &dyn Wallet {
-        self.wallet.as_ref()
+    pub fn signer(&self) -> &dyn Signer {
+        self.signer.as_ref()
     }
 }
 
@@ -277,15 +266,14 @@ impl ScriptSigner for Secp256k1MultisigSigner {
                 .config
                 .sighash_addresses
                 .iter()
-                .any(|id| self.wallet.match_id(id.as_bytes()))
+                .any(|id| self.signer.match_id(id.as_bytes()))
     }
 
     fn sign_tx(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &dyn TransactionDependencyProvider,
-    ) -> Result<TransactionView, SignError> {
+    ) -> Result<TransactionView, ScriptSignError> {
         let witness_idx = script_group.input_indices[0];
         let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
         while witnesses.len() <= witness_idx {
@@ -306,12 +294,9 @@ impl ScriptSigner for Secp256k1MultisigSigner {
             .config
             .sighash_addresses
             .iter()
-            .filter(|id| self.wallet.match_id(id.as_bytes()))
-            .map(|id| {
-                self.wallet
-                    .sign(id.as_bytes(), message.as_ref(), true, tx, tx_dep_provider)
-            })
-            .collect::<Result<Vec<_>, WalletError>>()?;
+            .filter(|id| self.signer.match_id(id.as_bytes()))
+            .map(|id| self.signer.sign(id.as_bytes(), message.as_ref(), true, tx))
+            .collect::<Result<Vec<_>, SignerError>>()?;
         // Put signature into witness
         let witness_idx = script_group.input_indices[0];
         let witness_data = witnesses[witness_idx].raw_data();
@@ -338,7 +323,7 @@ impl ScriptSigner for Secp256k1MultisigSigner {
                 idx += 65;
             }
             if idx >= lock_field.len() {
-                return Err(SignError::TooManySignatures);
+                return Err(ScriptSignError::TooManySignatures);
             }
         }
 
@@ -358,19 +343,18 @@ pub struct AnyoneCanPaySigner {
 impl ScriptSigner for AnyoneCanPaySigner {
     fn match_args(&self, args: &[u8]) -> bool {
         let id = &args[0..20];
-        args.len() >= 20 && args.len() <= 22 && self.sighash_signer.wallet().match_id(id)
+        args.len() >= 20 && args.len() <= 22 && self.sighash_signer.signer().match_id(id)
     }
 
     fn sign_tx(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &dyn TransactionDependencyProvider,
-    ) -> Result<TransactionView, SignError> {
+    ) -> Result<TransactionView, ScriptSignError> {
         let args = script_group.script.args().raw_data();
         let id = &args[0..20];
         self.sighash_signer
-            .sign_tx_with_owner_id(id, tx, script_group, tx_dep_provider)
+            .sign_tx_with_owner_id(id, tx, script_group)
     }
 }
 
@@ -403,19 +387,18 @@ impl ChequeSigner {
 
 impl ScriptSigner for ChequeSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        // NOTE: Require wallet raw key map as: {script_hash[0..20] -> private key}
-        args.len() == 40 && self.sighash_signer.wallet().match_id(self.owner_id(args))
+        // NOTE: Require signer raw key map as: {script_hash[0..20] -> private key}
+        args.len() == 40 && self.sighash_signer.signer().match_id(self.owner_id(args))
     }
 
     fn sign_tx(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &dyn TransactionDependencyProvider,
-    ) -> Result<TransactionView, SignError> {
+    ) -> Result<TransactionView, ScriptSignError> {
         let args = script_group.script.args().raw_data();
         let id = self.owner_id(args.as_ref());
         self.sighash_signer
-            .sign_tx_with_owner_id(id, tx, script_group, tx_dep_provider)
+            .sign_tx_with_owner_id(id, tx, script_group)
     }
 }

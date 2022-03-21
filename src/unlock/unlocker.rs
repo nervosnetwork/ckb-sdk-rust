@@ -10,8 +10,8 @@ use ckb_types::{
 use thiserror::Error;
 
 use super::signer::{
-    AnyoneCanPaySigner, ChequeSigner, ScriptSigner, Secp256k1MultisigSigner,
-    Secp256k1SighashSigner, SignError,
+    AnyoneCanPaySigner, ChequeSigner, ScriptSignError, ScriptSigner, Secp256k1MultisigSigner,
+    Secp256k1SighashSigner,
 };
 use crate::traits::{TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptId;
@@ -22,7 +22,7 @@ const CHEQUE_WITHDRAW_SINCE: u64 = 0xA000000000000006;
 #[derive(Error, Debug)]
 pub enum UnlockError {
     #[error("sign script error: `{0}`")]
-    Signer(#[from] SignError),
+    ScriptSigner(#[from] ScriptSignError),
     #[error("transaction dependency error: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
     #[error("other error: `{0}`")]
@@ -85,9 +85,9 @@ impl ScriptUnlocker for Secp256k1SighashUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &dyn TransactionDependencyProvider,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
+        Ok(self.signer.sign_tx(tx, script_group)?)
     }
 }
 
@@ -108,9 +108,9 @@ impl ScriptUnlocker for Secp256k1MultisigUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        tx_dep_provider: &dyn TransactionDependencyProvider,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
+        Ok(self.signer.sign_tx(tx, script_group)?)
     }
 }
 
@@ -320,7 +320,7 @@ impl ScriptUnlocker for AnyoneCanPayUnlocker {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             Ok(tx.clone())
         } else {
-            Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
+            Ok(self.signer.sign_tx(tx, script_group)?)
         }
     }
 }
@@ -462,7 +462,7 @@ impl ScriptUnlocker for ChequeUnlocker {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             Ok(tx.clone())
         } else {
-            Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
+            Ok(self.signer.sign_tx(tx, script_group)?)
         }
     }
 }
