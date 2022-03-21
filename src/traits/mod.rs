@@ -75,18 +75,6 @@ pub trait Wallet {
         // This is mainly for hardware wallet.
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<Bytes, WalletError>;
-
-    /// Verify a signature, if return Ok means verfiy success. If `pubkey` is
-    /// None it will verify as recoverable signature and return the pubkey as
-    /// result. If `pubkey` is Some it will verify as normal signature and
-    /// return None as result.
-    fn verify(
-        &self,
-        id: &[u8],
-        message: &[u8],
-        pubkey: Option<Bytes>,
-        signature: Bytes,
-    ) -> Result<Option<Bytes>, WalletError>;
 }
 
 /// Transaction dependency provider errors
