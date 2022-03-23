@@ -1,8 +1,8 @@
 use ckb_hash::{blake2b_256, new_blake2b};
 use ckb_script::ScriptGroup;
 use ckb_types::{
-    bytes::Bytes,
-    core::TransactionView,
+    bytes::{Bytes, BytesMut},
+    core::{ScriptHashType, TransactionView},
     error::VerificationError,
     packed::{self, WitnessArgs},
     prelude::*,
@@ -11,7 +11,9 @@ use ckb_types::{
 use std::collections::HashSet;
 use thiserror::Error;
 
+use crate::constants::MULTISIG_TYPE_HASH;
 use crate::traits::{Signer, SignerError};
+use crate::types::{AddressPayload, CodeHashIndex, Since};
 
 #[derive(Error, Debug)]
 pub enum ScriptSignError {
@@ -222,6 +224,43 @@ impl MultisigConfig {
             require_first_n,
             threshold,
         })
+    }
+
+    pub fn contains_address(&self, target: &H160) -> bool {
+        self.sighash_addresses
+            .iter()
+            .any(|payload| payload == target)
+    }
+    pub fn sighash_addresses(&self) -> &Vec<H160> {
+        &self.sighash_addresses
+    }
+    pub fn require_first_n(&self) -> u8 {
+        self.require_first_n
+    }
+    pub fn threshold(&self) -> u8 {
+        self.threshold
+    }
+
+    pub fn hash160(&self) -> H160 {
+        let witness_data = self.to_witness_data();
+        let params_hash = blake2b_256(&witness_data);
+        H160::from_slice(&params_hash[0..20]).unwrap()
+    }
+
+    pub fn to_address_payload(&self, since_absolute_epoch: Option<u64>) -> AddressPayload {
+        let hash160 = self.hash160();
+        if let Some(absolute_epoch_number) = since_absolute_epoch {
+            let since_value = Since::new_absolute_epoch(absolute_epoch_number).value();
+            let mut args = BytesMut::from(hash160.as_bytes());
+            args.extend_from_slice(&since_value.to_le_bytes()[..]);
+            AddressPayload::new_full(
+                ScriptHashType::Type,
+                MULTISIG_TYPE_HASH.pack(),
+                args.freeze(),
+            )
+        } else {
+            AddressPayload::new_short(CodeHashIndex::Multisig, hash160)
+        }
     }
 
     pub fn to_witness_data(&self) -> Vec<u8> {
