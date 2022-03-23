@@ -186,6 +186,7 @@ impl ScriptSigner for Secp256k1SighashSigner {
     }
 }
 
+#[derive(Eq, PartialEq, Clone, Hash)]
 pub struct MultisigConfig {
     sighash_addresses: Vec<H160>,
     require_first_n: u8,
