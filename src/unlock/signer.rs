@@ -120,14 +120,14 @@ pub trait ScriptSigner {
 }
 
 /// Signer for secp256k1 sighash all lock script
-pub struct Secp256k1SighashSigner {
+pub struct SecpSighashScriptSigner {
     // Can be: SecpCkbRawKeySigner, HardwareWalletSigner
     signer: Box<dyn Signer>,
 }
 
-impl Secp256k1SighashSigner {
-    pub fn new(signer: Box<dyn Signer>) -> Secp256k1SighashSigner {
-        Secp256k1SighashSigner { signer }
+impl SecpSighashScriptSigner {
+    pub fn new(signer: Box<dyn Signer>) -> SecpSighashScriptSigner {
+        SecpSighashScriptSigner { signer }
     }
 
     pub fn signer(&self) -> &dyn Signer {
@@ -171,7 +171,7 @@ impl Secp256k1SighashSigner {
     }
 }
 
-impl ScriptSigner for Secp256k1SighashSigner {
+impl ScriptSigner for SecpSighashScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
         args.len() == 20 && self.signer.match_id(args)
     }
@@ -279,16 +279,16 @@ impl MultisigConfig {
     }
 }
 /// Signer for secp256k1 multisig all lock script
-pub struct Secp256k1MultisigSigner {
+pub struct SecpMultisigScriptSigner {
     // Can be: SecpCkbRawKeySigner, HardwareWalletSigner
     signer: Box<dyn Signer>,
     config: MultisigConfig,
     config_hash: [u8; 32],
 }
-impl Secp256k1MultisigSigner {
-    pub fn new(signer: Box<dyn Signer>, config: MultisigConfig) -> Secp256k1MultisigSigner {
+impl SecpMultisigScriptSigner {
+    pub fn new(signer: Box<dyn Signer>, config: MultisigConfig) -> SecpMultisigScriptSigner {
         let config_hash = blake2b_256(config.to_witness_data());
-        Secp256k1MultisigSigner {
+        SecpMultisigScriptSigner {
             signer,
             config,
             config_hash,
@@ -299,7 +299,7 @@ impl Secp256k1MultisigSigner {
     }
 }
 
-impl ScriptSigner for Secp256k1MultisigSigner {
+impl ScriptSigner for SecpMultisigScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
         &self.config_hash[0..20] == args
             && self
@@ -376,11 +376,11 @@ impl ScriptSigner for Secp256k1MultisigSigner {
     }
 }
 
-pub struct AnyoneCanPaySigner {
-    sighash_signer: Secp256k1SighashSigner,
+pub struct AcpScriptSigner {
+    sighash_signer: SecpSighashScriptSigner,
 }
 
-impl ScriptSigner for AnyoneCanPaySigner {
+impl ScriptSigner for AcpScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
         let id = &args[0..20];
         args.len() >= 20 && args.len() <= 22 && self.sighash_signer.signer().match_id(id)
@@ -403,13 +403,16 @@ pub enum ChequeAction {
     Claim,
     Withdraw,
 }
-pub struct ChequeSigner {
-    sighash_signer: Secp256k1SighashSigner,
+pub struct ChequeScriptSigner {
+    sighash_signer: SecpSighashScriptSigner,
     action: ChequeAction,
 }
-impl ChequeSigner {
-    pub fn new(sighash_signer: Secp256k1SighashSigner, action: ChequeAction) -> ChequeSigner {
-        ChequeSigner {
+impl ChequeScriptSigner {
+    pub fn new(
+        sighash_signer: SecpSighashScriptSigner,
+        action: ChequeAction,
+    ) -> ChequeScriptSigner {
+        ChequeScriptSigner {
             sighash_signer,
             action,
         }
@@ -425,7 +428,7 @@ impl ChequeSigner {
     }
 }
 
-impl ScriptSigner for ChequeSigner {
+impl ScriptSigner for ChequeScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
         // NOTE: Require signer raw key map as: {script_hash[0..20] -> private key}
         args.len() == 40 && self.sighash_signer.signer().match_id(self.owner_id(args))

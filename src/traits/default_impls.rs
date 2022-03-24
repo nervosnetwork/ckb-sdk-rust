@@ -446,7 +446,7 @@ impl Signer for SecpCkbRawKeySigner {
         }
         if message.len() != 32 {
             return Err(SignerError::InvalidMessage(format!(
-                "expected: 32, got: {}",
+                "expected length: 32, got: {}",
                 message.len()
             )));
         }

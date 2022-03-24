@@ -10,8 +10,8 @@ use ckb_types::{
 use thiserror::Error;
 
 use super::signer::{
-    AnyoneCanPaySigner, ChequeSigner, ScriptSignError, ScriptSigner, Secp256k1MultisigSigner,
-    Secp256k1SighashSigner,
+    AcpScriptSigner, ChequeScriptSigner, ScriptSignError, ScriptSigner, SecpMultisigScriptSigner,
+    SecpSighashScriptSigner,
 };
 use crate::traits::{TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptId;
@@ -68,15 +68,15 @@ impl ScriptUnlockerManager {
     }
 }
 
-pub struct Secp256k1SighashUnlocker {
-    signer: Secp256k1SighashSigner,
+pub struct SecpSighashUnlocker {
+    signer: SecpSighashScriptSigner,
 }
-impl Secp256k1SighashUnlocker {
-    pub fn new(signer: Secp256k1SighashSigner) -> Secp256k1SighashUnlocker {
-        Secp256k1SighashUnlocker { signer }
+impl SecpSighashUnlocker {
+    pub fn new(signer: SecpSighashScriptSigner) -> SecpSighashUnlocker {
+        SecpSighashUnlocker { signer }
     }
 }
-impl ScriptUnlocker for Secp256k1SighashUnlocker {
+impl ScriptUnlocker for SecpSighashUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
     }
@@ -91,15 +91,15 @@ impl ScriptUnlocker for Secp256k1SighashUnlocker {
     }
 }
 
-pub struct Secp256k1MultisigUnlocker {
-    signer: Secp256k1MultisigSigner,
+pub struct SecpMultisigUnlocker {
+    signer: SecpMultisigScriptSigner,
 }
-impl Secp256k1MultisigUnlocker {
-    pub fn new(signer: Secp256k1MultisigSigner) -> Secp256k1MultisigUnlocker {
-        Secp256k1MultisigUnlocker { signer }
+impl SecpMultisigUnlocker {
+    pub fn new(signer: SecpMultisigScriptSigner) -> SecpMultisigUnlocker {
+        SecpMultisigUnlocker { signer }
     }
 }
-impl ScriptUnlocker for Secp256k1MultisigUnlocker {
+impl ScriptUnlocker for SecpMultisigUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         (args.len() == 20 || args.len() == 28) && self.signer.match_args(args)
     }
@@ -114,16 +114,16 @@ impl ScriptUnlocker for Secp256k1MultisigUnlocker {
     }
 }
 
-pub struct AnyoneCanPayUnlocker {
-    signer: AnyoneCanPaySigner,
+pub struct AcpUnlocker {
+    signer: AcpScriptSigner,
 }
 
-impl AnyoneCanPayUnlocker {
-    pub fn new(signer: AnyoneCanPaySigner) -> AnyoneCanPayUnlocker {
-        AnyoneCanPayUnlocker { signer }
+impl AcpUnlocker {
+    pub fn new(signer: AcpScriptSigner) -> AcpUnlocker {
+        AcpUnlocker { signer }
     }
 }
-impl ScriptUnlocker for AnyoneCanPayUnlocker {
+impl ScriptUnlocker for AcpUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
     }
@@ -326,10 +326,10 @@ impl ScriptUnlocker for AnyoneCanPayUnlocker {
 }
 
 pub struct ChequeUnlocker {
-    signer: ChequeSigner,
+    signer: ChequeScriptSigner,
 }
 impl ChequeUnlocker {
-    pub fn new(signer: ChequeSigner) -> ChequeUnlocker {
+    pub fn new(signer: ChequeScriptSigner) -> ChequeUnlocker {
         ChequeUnlocker { signer }
     }
 }
