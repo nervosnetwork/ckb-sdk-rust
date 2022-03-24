@@ -3,8 +3,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use secp256k1::{PublicKey, SecretKey};
-
 use lru::LruCache;
 use parking_lot::Mutex;
 
@@ -26,7 +24,9 @@ use crate::traits::{
     LiveCell, Signer, SignerError, TransactionDependencyError, TransactionDependencyProvider,
 };
 use crate::types::ScriptId;
-use crate::util::{get_max_mature_number, serialize_signature, to_consensus_struct};
+use crate::util::{
+    get_max_mature_number, serialize_signature, to_consensus_struct, zeroize_privkey,
+};
 use crate::GenesisInfo;
 use crate::SECP256K1;
 
@@ -414,15 +414,15 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
 /// A signer use secp256k1 raw key, the id is `blake160(pubkey)`.
 #[derive(Default)]
 pub struct SecpCkbRawKeySigner {
-    keys: HashMap<H160, SecretKey>,
+    keys: HashMap<H160, secp256k1::SecretKey>,
 }
 
 impl SecpCkbRawKeySigner {
-    pub fn new(keys: HashMap<H160, SecretKey>) -> SecpCkbRawKeySigner {
+    pub fn new(keys: HashMap<H160, secp256k1::SecretKey>) -> SecpCkbRawKeySigner {
         SecpCkbRawKeySigner { keys }
     }
-    pub fn add_secret_key(&mut self, key: SecretKey) {
-        let pubkey = PublicKey::from_secret_key(&SECP256K1, &key);
+    pub fn add_secret_key(&mut self, key: secp256k1::SecretKey) {
+        let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
         let hash160 = H160::from_slice(&blake2b_256(&pubkey.serialize()[..])[0..20])
             .expect("Generate hash(H160) from pubkey failed");
         self.keys.insert(hash160, key);
@@ -458,6 +458,13 @@ impl Signer for SecpCkbRawKeySigner {
         } else {
             let sig = SECP256K1.sign(&msg, key);
             Ok(Bytes::from(sig.serialize_compact().to_vec()))
+        }
+    }
+}
+impl Drop for SecpCkbRawKeySigner {
+    fn drop(&mut self) {
+        for (_, mut secret_key) in self.keys.drain() {
+            zeroize_privkey(&mut secret_key);
         }
     }
 }
