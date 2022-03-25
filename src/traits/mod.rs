@@ -1,7 +1,7 @@
 //! The traits defined here is intent to describe the requirements of current
 //!  library code and only implemented the trait in upper level code.
 
-mod default_impls;
+pub mod default_impls;
 pub mod dummy_impls;
 
 pub use default_impls::{

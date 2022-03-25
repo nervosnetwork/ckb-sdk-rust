@@ -28,6 +28,21 @@ pub struct DaoDepositBuilder {
     pub receivers: Vec<DaoDepositReceiver>,
 }
 
+impl DaoDepositReceiver {
+    pub fn new(lock_script: Script, capacity: u64) -> DaoDepositReceiver {
+        DaoDepositReceiver {
+            lock_script,
+            capacity,
+        }
+    }
+}
+
+impl DaoDepositBuilder {
+    pub fn new(receivers: Vec<DaoDepositReceiver>) -> DaoDepositBuilder {
+        DaoDepositBuilder { receivers }
+    }
+}
+
 impl TxBuilder for DaoDepositBuilder {
     fn build_base(
         &self,
@@ -205,6 +220,15 @@ pub struct DaoWithdrawBuilder {
     /// Withdraw from those out_points (prepared cells)
     pub items: Vec<DaoWithdrawItem>,
     pub receiver: DaoWithdrawReceiver,
+}
+
+impl DaoWithdrawItem {
+    pub fn new(out_point: OutPoint, init_witness: Option<WitnessArgs>) -> DaoWithdrawItem {
+        DaoWithdrawItem {
+            out_point,
+            init_witness,
+        }
+    }
 }
 impl DaoWithdrawBuilder {
     pub fn new(items: Vec<DaoWithdrawItem>, receiver: DaoWithdrawReceiver) -> DaoWithdrawBuilder {
