@@ -16,6 +16,15 @@ impl ScriptId {
             hash_type,
         }
     }
+    pub fn new_data(code_hash: H256) -> ScriptId {
+        Self::new(code_hash, ScriptHashType::Data)
+    }
+    pub fn new_data1(code_hash: H256) -> ScriptId {
+        Self::new(code_hash, ScriptHashType::Data1)
+    }
+    pub fn new_type(code_hash: H256) -> ScriptId {
+        Self::new(code_hash, ScriptHashType::Type)
+    }
 }
 
 impl From<&Script> for ScriptId {
