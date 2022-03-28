@@ -4,20 +4,15 @@ pub mod dao;
 pub mod transfer;
 pub mod udt;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use thiserror::Error;
 
-use ckb_dao::DaoCalculator;
 use ckb_dao_utils::DaoError;
 use ckb_script::ScriptGroup;
 use ckb_types::{
     bytes::Bytes,
-    core::{
-        cell::{resolve_transaction_with_options, ResolveOptions},
-        error::OutPointError,
-        Capacity, CapacityError, FeeRate, TransactionView,
-    },
+    core::{error::OutPointError, Capacity, CapacityError, FeeRate, TransactionView},
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
 };
@@ -29,7 +24,7 @@ use crate::traits::{
 };
 use crate::types::ScriptId;
 use crate::unlock::{ScriptUnlocker, UnlockError};
-use crate::util::{clone_script_group, transaction_maximum_withdraw};
+use crate::util::{calculate_dao_maximum_withdraw4, clone_script_group};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
@@ -100,6 +95,7 @@ pub trait TxBuilder {
             cell_collector,
             tx_dep_provider,
             cell_dep_resolver,
+            header_dep_resolver,
         )?)
     }
 
@@ -145,6 +141,9 @@ pub enum TransactionFeeError {
     #[error("transaction dependency provider error: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
 
+    #[error("header dependency provider error: `{0}`")]
+    HeaderDep(Box<dyn std::error::Error>),
+
     #[error("out point error: `{0}`")]
     OutPoint(#[from] OutPointError),
 
@@ -166,53 +165,68 @@ pub enum TransactionFeeError {
 pub fn tx_fee(
     tx: TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,
-) -> Result<u64, TransactionFeeError> {
-    let rtx = resolve_transaction_with_options(
-        tx,
-        &mut HashSet::new(),
-        &tx_dep_provider,
-        &tx_dep_provider,
-        ResolveOptions::default(),
-    )?;
-    let consensus = tx_dep_provider.get_consensus()?;
-    let maximum_withdraw = transaction_maximum_withdraw(
-        &DaoCalculator::new(&consensus, &tx_dep_provider),
-        &rtx,
-        &consensus,
-        tx_dep_provider,
-    )?
-    .as_u64();
-    let output_total = rtx.transaction.outputs_capacity()?.as_u64();
-    maximum_withdraw
-        .checked_sub(output_total)
-        .ok_or_else(|| TransactionFeeError::CapacityOverflow(output_total - maximum_withdraw))
-}
-
-/// Calculate the actual transaction fee of the transaction.
-///
-/// If there is no dao cell in inputs, use this function will require less
-/// dependencies. If there is dao cell in inputs it will return
-/// `TransactionFeeError::UnexpectedDaoInput`.
-pub fn tx_fee_without_dao_withdraw(
-    tx: &TransactionView,
-    tx_dep_provider: &dyn TransactionDependencyProvider,
+    header_dep_resolver: &dyn HeaderDepResolver,
 ) -> Result<u64, TransactionFeeError> {
     let mut input_total: u64 = 0;
     for input in tx.inputs() {
+        let mut is_withdraw = false;
         let since: u64 = input.since().unpack();
         let cell = tx_dep_provider.get_cell(&input.previous_output())?;
-        // dao withdraw operation
         if since != 0 {
             if let Some(type_script) = cell.type_().to_opt() {
                 if type_script.code_hash().as_slice() == DAO_TYPE_HASH.as_bytes() {
-                    return Err(TransactionFeeError::UnexpectedDaoWithdrawInput);
+                    is_withdraw = true;
                 }
             }
         }
-        let capacity: u64 = cell.capacity().unpack();
+        let capacity: u64 = if is_withdraw {
+            let tx_hash = input.previous_output().tx_hash();
+            let prepare_header = header_dep_resolver
+                .resolve_by_tx(&tx_hash)
+                .map_err(TransactionFeeError::HeaderDep)?
+                .ok_or_else(|| {
+                    TransactionFeeError::HeaderDep(
+                        format!(
+                            "resolve prepare header by transaction hash failed: {}",
+                            tx_hash
+                        )
+                        .into(),
+                    )
+                })?;
+            let data = tx_dep_provider.get_cell_data(&input.previous_output())?;
+            assert_eq!(data.len(), 8);
+            let deposit_number = {
+                let mut number_bytes = [0u8; 8];
+                number_bytes.copy_from_slice(data.as_ref());
+                u64::from_le_bytes(number_bytes)
+            };
+            let deposit_header = header_dep_resolver
+                .resolve_by_number(deposit_number)
+                .map_err(TransactionFeeError::HeaderDep)?
+                .ok_or_else(|| {
+                    TransactionFeeError::HeaderDep(
+                        format!(
+                            "resolve deposit header by block number failed: {}",
+                            deposit_number
+                        )
+                        .into(),
+                    )
+                })?;
+            let occupied_capacity = cell
+                .occupied_capacity(Capacity::bytes(data.len()).unwrap())
+                .unwrap();
+            calculate_dao_maximum_withdraw4(
+                &deposit_header,
+                &prepare_header,
+                &cell,
+                occupied_capacity.as_u64(),
+            )
+        } else {
+            cell.capacity().unpack()
+        };
         input_total += capacity;
     }
-    let output_total: u64 = tx.outputs_capacity().expect("capacity overflow").as_u64();
+    let output_total = tx.outputs_capacity()?.as_u64();
     input_total
         .checked_sub(output_total)
         .ok_or_else(|| TransactionFeeError::CapacityOverflow(output_total - input_total))
@@ -274,8 +288,6 @@ pub struct CapacityBalancer {
     /// transaction capacity, force the addition capacity as fee, the value is
     /// actual maximum transaction fee.
     pub force_small_change_as_fee: Option<u64>,
-
-    pub has_dao_withdraw: bool,
 }
 
 /// Fill more inputs to balance the transaction capacity
@@ -285,6 +297,7 @@ pub fn balance_tx_capacity(
     cell_collector: &mut dyn CellCollector,
     tx_dep_provider: &dyn TransactionDependencyProvider,
     cell_dep_resolver: &dyn CellDepResolver,
+    header_dep_resolver: &dyn HeaderDepResolver,
 ) -> Result<TransactionView, BalanceTxCapacityError> {
     let capacity_provider = &balancer.capacity_provider;
     let base_change_output = CellOutput::new_builder()
@@ -344,11 +357,8 @@ pub fn balance_tx_capacity(
         let tx_size = new_tx.data().as_reader().serialized_size_in_block();
         let min_fee = balancer.fee_rate.fee(tx_size).as_u64();
         let mut need_more_capacity = 1;
-        let fee_result: Result<u64, TransactionFeeError> = if balancer.has_dao_withdraw {
-            tx_fee(new_tx.clone(), tx_dep_provider)
-        } else {
-            tx_fee_without_dao_withdraw(&new_tx, tx_dep_provider)
-        };
+        let fee_result: Result<u64, TransactionFeeError> =
+            tx_fee(new_tx.clone(), tx_dep_provider, header_dep_resolver);
         match fee_result {
             Ok(fee) if fee == min_fee => {
                 return Ok(new_tx);
