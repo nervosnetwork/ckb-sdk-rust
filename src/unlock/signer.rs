@@ -297,6 +297,9 @@ impl SecpMultisigScriptSigner {
     pub fn signer(&self) -> &dyn Signer {
         self.signer.as_ref()
     }
+    pub fn config(&self) -> &MultisigConfig {
+        &self.config
+    }
 }
 
 impl ScriptSigner for SecpMultisigScriptSigner {

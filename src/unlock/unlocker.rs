@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-
 use ckb_script::ScriptGroup;
 use ckb_types::{
     bytes::Bytes,
     core::TransactionView,
-    packed::{Byte32, WitnessArgs},
+    packed::{self, Byte32, WitnessArgs},
     prelude::*,
 };
 use thiserror::Error;
@@ -14,7 +12,6 @@ use super::signer::{
     SecpSighashScriptSigner,
 };
 use crate::traits::{TransactionDependencyError, TransactionDependencyProvider};
-use crate::types::ScriptId;
 
 const CHEQUE_CLAIM_SINCE: u64 = 0;
 const CHEQUE_WITHDRAW_SINCE: u64 = 0xA000000000000006;
@@ -23,8 +20,13 @@ const CHEQUE_WITHDRAW_SINCE: u64 = 0xA000000000000006;
 pub enum UnlockError {
     #[error("sign script error: `{0}`")]
     ScriptSigner(#[from] ScriptSignError),
+
     #[error("transaction dependency error: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
+
+    #[error("invalid witness args: witness index=`{0}`")]
+    InvalidWitnessArgs(usize),
+
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
 }
@@ -36,6 +38,7 @@ pub enum UnlockError {
 pub trait ScriptUnlocker {
     fn match_args(&self, args: &[u8]) -> bool;
 
+    /// Check if the script group is already unlocked
     fn is_unlocked(
         &self,
         _tx: &TransactionView,
@@ -44,8 +47,16 @@ pub trait ScriptUnlocker {
     ) -> Result<bool, UnlockError> {
         Ok(false)
     }
-    // Add signature or other information to witnesses
+    /// Add signature or other information to witnesses
     fn unlock(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError>;
+
+    /// Fill a placehodler witness before balance the transaction capacity
+    fn fill_placeholder_witness(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -53,19 +64,28 @@ pub trait ScriptUnlocker {
     ) -> Result<TransactionView, UnlockError>;
 }
 
-#[derive(Default)]
-pub struct ScriptUnlockerManager {
-    items: HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
-}
-
-impl ScriptUnlockerManager {
-    pub fn register(&mut self, script_id: ScriptId, unlocker: Box<dyn ScriptUnlocker>) {
-        self.items.insert(script_id, unlocker);
+pub fn fill_witness_lock(
+    tx: &TransactionView,
+    script_group: &ScriptGroup,
+    lock_field: Bytes,
+) -> Result<TransactionView, UnlockError> {
+    let witness_idx = script_group.input_indices[0];
+    let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+    while witnesses.len() <= witness_idx {
+        witnesses.push(Default::default());
     }
-
-    pub fn get_mut(&mut self, script_id: &ScriptId) -> Option<&mut Box<dyn ScriptUnlocker>> {
-        self.items.get_mut(script_id)
+    let witness_data = witnesses[witness_idx].raw_data();
+    let mut witness = if witness_data.is_empty() {
+        WitnessArgs::default()
+    } else {
+        WitnessArgs::from_slice(witness_data.as_ref())
+            .map_err(|_| UnlockError::InvalidWitnessArgs(witness_idx))?
+    };
+    if witness.lock().is_none() {
+        witness = witness.as_builder().lock(Some(lock_field).pack()).build();
     }
+    witnesses[witness_idx] = witness.as_bytes().pack();
+    Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
 }
 
 pub struct SecpSighashUnlocker {
@@ -89,6 +109,15 @@ impl ScriptUnlocker for SecpSighashUnlocker {
     ) -> Result<TransactionView, UnlockError> {
         Ok(self.signer.sign_tx(tx, script_group)?)
     }
+
+    fn fill_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
+    }
 }
 
 pub struct SecpMultisigUnlocker {
@@ -111,6 +140,19 @@ impl ScriptUnlocker for SecpMultisigUnlocker {
         _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
         Ok(self.signer.sign_tx(tx, script_group)?)
+    }
+
+    fn fill_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        let config = self.signer.config();
+        let config_data = config.to_witness_data();
+        let mut zero_lock = vec![0u8; config_data.len() + 65 * (config.threshold() as usize)];
+        zero_lock[0..config_data.len()].copy_from_slice(&config_data);
+        fill_witness_lock(tx, script_group, Bytes::from(zero_lock))
     }
 }
 
@@ -323,6 +365,19 @@ impl ScriptUnlocker for AcpUnlocker {
             Ok(self.signer.sign_tx(tx, script_group)?)
         }
     }
+
+    fn fill_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        if self.is_unlocked(tx, script_group, tx_dep_provider)? {
+            Ok(tx.clone())
+        } else {
+            fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
+        }
+    }
 }
 
 pub struct ChequeUnlocker {
@@ -463,6 +518,19 @@ impl ScriptUnlocker for ChequeUnlocker {
             Ok(tx.clone())
         } else {
             Ok(self.signer.sign_tx(tx, script_group)?)
+        }
+    }
+
+    fn fill_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        if self.is_unlocked(tx, script_group, tx_dep_provider)? {
+            Ok(tx.clone())
+        } else {
+            fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
         }
     }
 }

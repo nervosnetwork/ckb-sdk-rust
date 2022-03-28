@@ -75,6 +75,7 @@ pub trait TxBuilder {
 
     /// Build balanced transaction that ready to sign:
     ///  * Build base transaction
+    ///  * Fill placehodler witness for lock script
     ///  * balance the capacity
     fn build_balanced(
         &self,
@@ -83,6 +84,7 @@ pub trait TxBuilder {
         header_dep_resolver: &dyn HeaderDepResolver,
         tx_dep_provider: &dyn TransactionDependencyProvider,
         balancer: &CapacityBalancer,
+        unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
     ) -> Result<TransactionView, TxBuilderError> {
         let base_tx = self.build_base(
             cell_collector,
@@ -90,8 +92,10 @@ pub trait TxBuilder {
             header_dep_resolver,
             tx_dep_provider,
         )?;
+        let (tx_filled_witnesses, _) =
+            fill_placeholder_witnesses(base_tx, tx_dep_provider, unlockers)?;
         Ok(balance_tx_capacity(
-            &base_tx,
+            &tx_filled_witnesses,
             balancer,
             cell_collector,
             tx_dep_provider,
@@ -122,6 +126,7 @@ pub trait TxBuilder {
             header_dep_resolver,
             tx_dep_provider,
             balancer,
+            unlockers,
         )?;
         Ok(unlock_tx(balanced_tx, tx_dep_provider, unlockers)?)
     }
@@ -361,9 +366,15 @@ pub fn balance_tx_capacity(
                     need_more_capacity = 0;
                 } else {
                     // If change cell not exists, add a change cell.
+
+                    // The output extra header size is for:
+                    //   * first 4 bytes is for output data header (the length)
+                    //   * second 4 bytes if for output data offset
+                    //   * third 4 bytes is for output offset
+                    let output_header_extra = 4 + 4 + 4;
                     let extra_min_fee = balancer
                         .fee_rate
-                        .fee(base_change_output.as_slice().len())
+                        .fee(base_change_output.as_slice().len() + output_header_extra)
                         .as_u64();
                     // The extra capacity (delta - extra_min_fee) is enough to hold the change cell.
                     if delta >= base_change_occupied_capacity + extra_min_fee {
@@ -432,7 +443,7 @@ pub fn balance_tx_capacity(
                 if tx
                     .cell_deps()
                     .into_iter()
-                    .all(|cell_dep| cell_dep == provider_cell_dep)
+                    .all(|cell_dep| cell_dep != provider_cell_dep)
                 {
                     cell_deps.push(provider_cell_dep);
                 }
@@ -476,6 +487,34 @@ pub fn gen_script_groups(
         lock_groups,
         type_groups,
     })
+}
+
+/// Fill placehodler lock script witnesses
+///
+/// Return value:
+///   * The updated transaction
+///   * The script groups that not matched by given `unlockers`
+pub fn fill_placeholder_witnesses(
+    balanced_tx: TransactionView,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+    unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+) -> Result<(TransactionView, Vec<ScriptGroup>), UnlockError> {
+    let ScriptGroups { lock_groups, .. } = gen_script_groups(&balanced_tx, tx_dep_provider)?;
+    let mut tx = balanced_tx;
+    let mut not_matched = Vec::new();
+    for script_group in lock_groups.values() {
+        let script_id = ScriptId::from(&script_group.script);
+        let script_args = script_group.script.args().raw_data();
+        if let Some(unlocker) = unlockers
+            .get(&script_id)
+            .filter(|unlocker| unlocker.match_args(script_args.as_ref()))
+        {
+            tx = unlocker.fill_placeholder_witness(&tx, script_group, tx_dep_provider)?;
+        } else {
+            not_matched.push(clone_script_group(script_group));
+        }
+    }
+    Ok((tx, not_matched))
 }
 
 /// Build unlocked transaction that ready to send or for further unlock.
