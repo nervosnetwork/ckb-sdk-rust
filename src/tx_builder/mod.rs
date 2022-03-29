@@ -13,16 +13,16 @@ use ckb_script::ScriptGroup;
 use ckb_types::{
     bytes::Bytes,
     core::{error::OutPointError, Capacity, CapacityError, FeeRate, TransactionView},
-    packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
+    packed::{Byte32, CellInput, CellOutput, Script},
     prelude::*,
 };
 
-use crate::constants::DAO_TYPE_HASH;
+use crate::constants::{DAO_TYPE_HASH, MULTISIG_TYPE_HASH};
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
     TransactionDependencyError, TransactionDependencyProvider, ValueRangeOption,
 };
-use crate::types::ScriptId;
+use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::{calculate_dao_maximum_withdraw4, clone_script_group};
 
@@ -70,7 +70,7 @@ pub trait TxBuilder {
 
     /// Build balanced transaction that ready to sign:
     ///  * Build base transaction
-    ///  * Fill placehodler witness for lock script
+    ///  * Fill placeholder witness for lock script
     ///  * balance the capacity
     fn build_balanced(
         &self,
@@ -238,19 +238,14 @@ pub fn tx_fee(
 /// or data length is not `0` or is not mature.
 #[derive(Debug, Clone)]
 pub struct CapacityProvider {
-    pub lock_script: Script,
-    /// The zero_lock size of WitnessArgs.lock field:
-    ///   * sighash is: `65`
-    ///   * multisig is: `MultisigConfig.to_witness_data().len() + 65 * MultisigConfig.threshold`
-    pub init_witness_lock_field_size: usize,
+    /// The lock scripts provider capacity. The second field of the tuple is the
+    /// placeholder witness of the lock script.
+    pub lock_scripts: Vec<(Script, Bytes)>,
 }
 
 impl CapacityProvider {
-    pub fn new(lock_script: Script, init_witness_lock_field_size: usize) -> CapacityProvider {
-        CapacityProvider {
-            lock_script,
-            init_witness_lock_field_size,
-        }
+    pub fn new(lock_scripts: Vec<(Script, Bytes)>) -> CapacityProvider {
+        CapacityProvider { lock_scripts }
     }
 }
 
@@ -262,11 +257,14 @@ pub enum BalanceTxCapacityError {
     #[error("transaction dependency provider error: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
 
-    #[error("capacity not enough")]
-    CapacityNotEnough,
+    #[error("capacity not enough: `{0}`")]
+    CapacityNotEnough(String),
 
     #[error("Force small change as fee failed, fee: `{0}`")]
     ForceSmallChangeAsFeeFailed(u64),
+
+    #[error("empty capacity provider")]
+    EmptyCapacityProvider,
 
     #[error("cell collector error: `{0}`")]
     CellCollector(#[from] CellCollectorError),
@@ -284,6 +282,9 @@ pub struct CapacityBalancer {
     /// type script or not mature.
     pub capacity_provider: CapacityProvider,
 
+    /// Change cell's lock script if `None` use capacity_provider's first lock script
+    pub change_lock_script: Option<Script>,
+
     /// When there is no more inputs for create a change cell to balance the
     /// transaction capacity, force the addition capacity as fee, the value is
     /// actual maximum transaction fee.
@@ -300,47 +301,50 @@ pub fn balance_tx_capacity(
     header_dep_resolver: &dyn HeaderDepResolver,
 ) -> Result<TransactionView, BalanceTxCapacityError> {
     let capacity_provider = &balancer.capacity_provider;
-    let base_change_output = CellOutput::new_builder()
-        .lock(capacity_provider.lock_script.clone())
-        .build();
+    if capacity_provider.lock_scripts.is_empty() {
+        return Err(BalanceTxCapacityError::EmptyCapacityProvider);
+    }
+    let change_lock_script = balancer
+        .change_lock_script
+        .clone()
+        .unwrap_or_else(|| capacity_provider.lock_scripts[0].0.clone());
+    let base_change_output = CellOutput::new_builder().lock(change_lock_script).build();
     let base_change_occupied_capacity = base_change_output
         .occupied_capacity(Capacity::zero())
         .expect("init change occupied capacity")
         .as_u64();
-    // the query is to collect just one cell
-    let base_query = {
-        let mut query = CellQueryOptions::new_lock(capacity_provider.lock_script.clone());
-        query.data_len_range = Some(ValueRangeOption::new_exact(0));
-        query
-    };
-    // check if capacity provider lock script already in inputs
-    let mut has_provider = false;
-    for input in tx.inputs() {
-        let cell = tx_dep_provider.get_cell(&input.previous_output())?;
-        if cell.lock() == capacity_provider.lock_script {
-            has_provider = true;
+
+    let mut lock_scripts = Vec::new();
+    // remove duplicated lock script
+    for (script, placeholder) in &capacity_provider.lock_scripts {
+        if lock_scripts.iter().all(|(target, _)| target != script) {
+            lock_scripts.push((script.clone(), placeholder.clone()));
         }
     }
-
+    let mut lock_script_idx = 0;
     let mut cell_deps = Vec::new();
     let mut inputs = Vec::new();
     let mut change_output: Option<CellOutput> = None;
     let mut witnesses = Vec::new();
     loop {
-        // Fill placehodler witnesses before adjust transaction fee.
-        if !has_provider {
-            while tx.witnesses().item_count() + witnesses.len() < tx.inputs().item_count() {
-                witnesses.push(Default::default());
+        let (lock_script, placeholder_witness) = &lock_scripts[lock_script_idx];
+        let base_query = {
+            let mut query = CellQueryOptions::new_lock(lock_script.clone());
+            query.data_len_range = Some(ValueRangeOption::new_exact(0));
+            query
+        };
+        // check if capacity provider lock script already in inputs
+        let mut has_provider = false;
+        for input in tx.inputs().into_iter().chain(inputs.clone().into_iter()) {
+            let cell = tx_dep_provider.get_cell(&input.previous_output())?;
+            if cell.lock() == *lock_script {
+                has_provider = true;
             }
-            if tx.witnesses().item_count() + witnesses.len()
-                < tx.inputs().item_count() + inputs.len()
-            {
-                let zero_lock = vec![0u8; capacity_provider.init_witness_lock_field_size];
-                let witness_args = WitnessArgs::new_builder()
-                    .lock(Some(Bytes::from(zero_lock)).pack())
-                    .build();
-                witnesses.push(witness_args.as_bytes().pack());
-            }
+        }
+        while tx.witnesses().item_count() + witnesses.len()
+            < tx.inputs().item_count() + inputs.len()
+        {
+            witnesses.push(Default::default());
         }
         let new_tx = {
             let mut builder = tx
@@ -410,8 +414,14 @@ pub fn balance_tx_capacity(
                                 } else {
                                     return Ok(new_tx);
                                 }
+                            } else if lock_script_idx + 1 == lock_scripts.len() {
+                                return Err(BalanceTxCapacityError::CapacityNotEnough(format!(
+                                    "can not create change cell, left capacity={}",
+                                    HumanCapacity(delta)
+                                )));
                             } else {
-                                return Err(BalanceTxCapacityError::CapacityNotEnough);
+                                lock_script_idx += 1;
+                                continue;
                             }
                         } else {
                             // need more input to balance the capacity
@@ -443,10 +453,18 @@ pub fn balance_tx_capacity(
             };
             let (more_cells, _more_capacity) = cell_collector.collect_live_cells(&query, true)?;
             if more_cells.is_empty() {
-                return Err(BalanceTxCapacityError::CapacityNotEnough);
+                if lock_script_idx + 1 == lock_scripts.len() {
+                    return Err(BalanceTxCapacityError::CapacityNotEnough(format!(
+                        "need more capacity, value={}",
+                        HumanCapacity(need_more_capacity)
+                    )));
+                } else {
+                    lock_script_idx += 1;
+                    continue;
+                }
             }
             if cell_deps.is_empty() {
-                let provider_script_id = ScriptId::from(&capacity_provider.lock_script);
+                let provider_script_id = ScriptId::from(lock_script);
                 let provider_cell_dep = cell_dep_resolver.resolve(&provider_script_id).ok_or(
                     BalanceTxCapacityError::ResolveCellDepFailed(provider_script_id),
                 )?;
@@ -458,10 +476,23 @@ pub fn balance_tx_capacity(
                     cell_deps.push(provider_cell_dep);
                 }
             }
+            if !has_provider {
+                witnesses.push(placeholder_witness.pack());
+            }
+            let since = {
+                let lock_arg = lock_script.args().raw_data();
+                if lock_script.code_hash() == MULTISIG_TYPE_HASH.pack() && lock_arg.len() == 28 {
+                    let mut since_bytes = [0u8; 8];
+                    since_bytes.copy_from_slice(&lock_arg[20..]);
+                    u64::from_le_bytes(since_bytes)
+                } else {
+                    0
+                }
+            };
             inputs.extend(
                 more_cells
                     .into_iter()
-                    .map(|cell| CellInput::new(cell.out_point, 0)),
+                    .map(|cell| CellInput::new(cell.out_point, since)),
             );
         }
     }
@@ -499,7 +530,7 @@ pub fn gen_script_groups(
     })
 }
 
-/// Fill placehodler lock script witnesses
+/// Fill placeholder lock script witnesses
 ///
 /// Return value:
 ///   * The updated transaction

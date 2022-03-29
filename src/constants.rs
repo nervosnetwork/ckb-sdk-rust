@@ -29,6 +29,7 @@ pub const MIN_SECP_CELL_CAPACITY: u64 = 61 * ONE_CKB;
 pub const CELLBASE_MATURITY: EpochNumberWithFraction =
     EpochNumberWithFraction::new_unchecked(4, 0, 1);
 
+pub use ckb_chain_spec::consensus::TYPE_ID_CODE_HASH;
 pub const SIGHASH_TYPE_HASH: H256 =
     h256!("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8");
 pub const MULTISIG_TYPE_HASH: H256 =

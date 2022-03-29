@@ -304,7 +304,7 @@ impl SecpMultisigScriptSigner {
 
 impl ScriptSigner for SecpMultisigScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        &self.config_hash[0..20] == args
+        self.config_hash[0..20] == args[0..20]
             && self
                 .config
                 .sighash_addresses

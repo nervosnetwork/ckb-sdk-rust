@@ -221,6 +221,12 @@ pub enum MaturityOption {
     Both,
 }
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum QueryOrder {
+    Desc,
+    Asc,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct CellQueryOptions {
     pub primary_script: Script,
     pub primary_type: PrimaryScriptType,
@@ -229,6 +235,8 @@ pub struct CellQueryOptions {
     pub capacity_range: Option<ValueRangeOption>,
     pub block_range: Option<ValueRangeOption>,
 
+    pub order: QueryOrder,
+    pub limit: Option<u32>,
     /// Filter cell by its maturity
     pub maturity: MaturityOption,
     /// Try to collect at least `min_total_capacity` shannons of cells
@@ -243,6 +251,8 @@ impl CellQueryOptions {
             data_len_range: None,
             capacity_range: None,
             block_range: None,
+            limit: None,
+            order: QueryOrder::Asc,
             maturity: MaturityOption::Mature,
             min_total_capacity: 1,
         }

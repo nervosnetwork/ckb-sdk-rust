@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 
+use crate::constants::TYPE_ID_CODE_HASH;
 use ckb_types::{core::ScriptHashType, packed::Script, prelude::*, H256};
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
@@ -24,6 +25,10 @@ impl ScriptId {
     }
     pub fn new_type(code_hash: H256) -> ScriptId {
         Self::new(code_hash, ScriptHashType::Type)
+    }
+
+    pub fn is_type_id(&self) -> bool {
+        self.code_hash == TYPE_ID_CODE_HASH && self.hash_type == ScriptHashType::Type
     }
 }
 

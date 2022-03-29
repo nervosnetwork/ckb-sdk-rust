@@ -21,7 +21,8 @@ use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
 use crate::rpc::{CkbRpcClient, IndexerRpcClient};
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
-    LiveCell, Signer, SignerError, TransactionDependencyError, TransactionDependencyProvider,
+    LiveCell, QueryOrder, Signer, SignerError, TransactionDependencyError,
+    TransactionDependencyProvider,
 };
 use crate::types::ScriptId;
 use crate::util::{
@@ -215,15 +216,19 @@ impl CellCollector for DefaultCellCollector {
         }
         if total_capacity < query.min_total_capacity {
             self.check_ckb_chain()?;
+            let order = match query.order {
+                QueryOrder::Asc => Order::Asc,
+                QueryOrder::Desc => Order::Desc,
+            };
             let locked_cells = self.locked_cells.clone();
             let search_key = SearchKey::from(query.clone());
-            let max_limit = 4096;
-            let mut limit: u32 = 128;
+            const MAX_LIMIT: u32 = 4096;
+            let mut limit: u32 = query.limit.unwrap_or(128);
             let mut last_cursor: Option<json_types::JsonBytes> = None;
             while total_capacity < query.min_total_capacity {
                 let page = self
                     .indexer_client
-                    .get_cells(search_key.clone(), Order::Asc, limit.into(), last_cursor)
+                    .get_cells(search_key.clone(), order.clone(), limit.into(), last_cursor)
                     .map_err(|err| CellCollectorError::Internal(err.into()))?;
                 if page.objects.is_empty() {
                     break;
@@ -246,7 +251,7 @@ impl CellCollector for DefaultCellCollector {
                     }
                 }
                 last_cursor = Some(page.last_cursor);
-                if limit < max_limit {
+                if limit < MAX_LIMIT {
                     limit *= 2;
                 }
             }

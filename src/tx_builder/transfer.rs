@@ -19,6 +19,12 @@ pub struct CapacityTransferBuilder {
     pub outputs: Vec<(CellOutput, Bytes)>,
 }
 
+impl CapacityTransferBuilder {
+    pub fn new(outputs: Vec<(CellOutput, Bytes)>) -> CapacityTransferBuilder {
+        CapacityTransferBuilder { outputs }
+    }
+}
+
 impl TxBuilder for CapacityTransferBuilder {
     fn build_base(
         &self,
@@ -36,10 +42,12 @@ impl TxBuilder for CapacityTransferBuilder {
             outputs_data.push(output_data.pack());
             if let Some(type_script) = output.type_().to_opt() {
                 let script_id = ScriptId::from(&type_script);
-                let cell_dep = cell_dep_resolver
-                    .resolve(&script_id)
-                    .ok_or(TxBuilderError::ResolveCellDepFailed(script_id))?;
-                cell_deps.insert(cell_dep);
+                if !script_id.is_type_id() {
+                    let cell_dep = cell_dep_resolver
+                        .resolve(&script_id)
+                        .ok_or(TxBuilderError::ResolveCellDepFailed(script_id))?;
+                    cell_deps.insert(cell_dep);
+                }
             }
         }
         Ok(TransactionBuilder::default()
