@@ -154,7 +154,7 @@ impl TxBuilder for ChequeClaimBuilder {
         let sender_lock_hash = self.sender_lock_script.calc_script_hash();
         if sender_lock_hash.as_slice()[0..20] != cheque_lock_args.as_ref()[20..40] {
             return Err(TxBuilderError::InvalidParameter(
-                "sender lock script is match with cheque lock script args"
+                "sender lock script is not match with cheque lock script args"
                     .to_string()
                     .into(),
             ));

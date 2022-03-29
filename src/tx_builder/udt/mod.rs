@@ -16,6 +16,7 @@ use crate::traits::{
 };
 use crate::types::ScriptId;
 
+/// The udt issue type
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum UdtIssueType {
     Sudt,
@@ -23,24 +24,34 @@ pub enum UdtIssueType {
     Xudt(Bytes),
 }
 
+/// The udt issue receiver
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct UdtIssueReceiver {
+    /// The lock script of this udt cell
     pub lock_script: Script,
-    /// The capacity set to this output cell
+    /// The capacity set to this udt cell, if None use minimal capacity.
     pub capacity: Option<u64>,
+    /// The udt amount issue to this udt cell
     pub amount: u128,
     /// Only for <xudt data>
     pub extra_data: Option<Bytes>,
 }
 
+/// The udt issue transaction builder
 pub struct UdtIssueBuilder {
+    /// The udt type (sudt/xudt)
     pub udt_type: UdtIssueType,
+
+    /// The sudt/xudt script id
     pub script_id: ScriptId,
+
     /// We will collect a cell from owner, there must exists a cell that:
     ///   * type script is None
     ///   * data field is empty
     ///   * is mature
     pub owner: Script,
+
+    /// The receivers
     pub receivers: Vec<UdtIssueReceiver>,
 }
 
@@ -156,11 +167,17 @@ impl TxBuilder for UdtIssueBuilder {
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct UdtTransferReceiver {
     pub action: TransferAction,
+
+    /// The lock script set to this udt cell, if `action` is `Update` will query
+    /// input cell by this lock script.
     pub lock_script: Script,
-    /// The capacity set to this output cell when `action` is TransferAction::Create
+
+    /// The capacity set to this udt cell when `action` is TransferAction::Create
     pub capacity: Option<u64>,
+
     /// The amount to transfer
     pub amount: u128,
+
     /// Only for <xudt data> and only used when action == TransferAction::Create
     pub extra_data: Option<Bytes>,
 }
@@ -168,8 +185,12 @@ pub struct UdtTransferReceiver {
 pub struct UdtTransferBuilder {
     /// The udt type script
     pub type_script: Script,
-    /// Sender's lock script (we will asume there is only one udt cell identify by `type_script` and `sender`)
+
+    /// Sender's lock script (we will asume there is only one udt cell identify
+    /// by `type_script` and `sender`)
     pub sender: Script,
+
+    /// The transfer receivers
     pub receivers: Vec<UdtTransferReceiver>,
 }
 
