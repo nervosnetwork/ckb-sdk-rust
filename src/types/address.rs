@@ -14,7 +14,9 @@ use ckb_types::{
 use serde_derive::{Deserialize, Serialize};
 
 use super::NetworkType;
-use crate::constants::{MULTISIG_TYPE_HASH, SIGHASH_TYPE_HASH};
+use crate::constants::{
+    ACP_TYPE_HASH_AGGRON, ACP_TYPE_HASH_LINA, MULTISIG_TYPE_HASH, SIGHASH_TYPE_HASH,
+};
 pub use old_addr::{Address as OldAddress, AddressFormat as OldAddressFormat};
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -22,7 +24,7 @@ pub use old_addr::{Address as OldAddress, AddressFormat as OldAddressFormat};
 pub enum AddressType {
     // full version identifies the hash_type and vm_version
     Full = 0x00,
-    // short version for locks with popular code_hash
+    // short version for locks with popular code_hash, deprecated
     Short = 0x01,
     // full version with hash_type = "Data", deprecated
     FullData = 0x02,
@@ -45,10 +47,12 @@ impl AddressType {
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum CodeHashIndex {
-    // SECP256K1 + blake160
+    /// SECP256K1 + blake160, args: `blake160(PK)`
     Sighash = 0x00,
-    // SECP256K1 + multisig
+    /// SECP256K1 + multisig, args: `multisig script hash`
     Multisig = 0x01,
+    /// anyone_can_pay, args: `blake160(PK)`
+    Acp = 0x02,
 }
 
 impl CodeHashIndex {
@@ -56,6 +60,7 @@ impl CodeHashIndex {
         match value {
             0x00 => Ok(CodeHashIndex::Sighash),
             0x01 => Ok(CodeHashIndex::Multisig),
+            0x02 => Ok(CodeHashIndex::Acp),
             _ => Err(format!("Invalid code hash index value: {}", value)),
         }
     }
@@ -116,11 +121,22 @@ impl AddressPayload {
         }
     }
 
-    pub fn code_hash(&self) -> Byte32 {
+    /// Get the code hash of an address
+    ///
+    /// # Panics
+    ///
+    /// When current addres is short format anyone-can-pay address, and the
+    /// network type is not `Mainnet` or `Testnet` this function will panic.
+    pub fn code_hash(&self, network: Option<NetworkType>) -> Byte32 {
         match self {
             AddressPayload::Short { index, .. } => match index {
                 CodeHashIndex::Sighash => SIGHASH_TYPE_HASH.clone().pack(),
                 CodeHashIndex::Multisig => MULTISIG_TYPE_HASH.clone().pack(),
+                CodeHashIndex::Acp => match network {
+                    Some(NetworkType::Mainnet) => ACP_TYPE_HASH_LINA.clone().pack(),
+                    Some(NetworkType::Testnet) => ACP_TYPE_HASH_AGGRON.clone().pack(),
+                    _ => panic!("network type must be `mainnet` or `testnet` when handle short format anyone-can-pay address"),
+                }
             },
             AddressPayload::Full { code_hash, .. } => code_hash.clone(),
         }
@@ -194,7 +210,7 @@ impl fmt::Debug for AddressPayload {
         };
         f.debug_struct("AddressPayload")
             .field("hash_type", &hash_type)
-            .field("code_hash", &self.code_hash())
+            .field("code_hash", &self.code_hash(None))
             .field("args", &self.args())
             .finish()
     }
@@ -204,7 +220,7 @@ impl From<&AddressPayload> for Script {
     fn from(payload: &AddressPayload) -> Script {
         Script::new_builder()
             .hash_type(payload.hash_type().into())
-            .code_hash(payload.code_hash())
+            .code_hash(payload.code_hash(None))
             .args(payload.args().pack())
             .build()
     }
@@ -231,6 +247,16 @@ impl From<Script> for AddressPayload {
             let index = CodeHashIndex::Multisig;
             let hash = H160::from_slice(args.as_ref()).unwrap();
             AddressPayload::Short { index, hash }
+        } else if hash_type == ScriptHashType::Type
+            && (code_hash_h256 == ACP_TYPE_HASH_LINA || code_hash_h256 == ACP_TYPE_HASH_AGGRON)
+            && args.len() == 20
+        {
+            // NOTE: anoney-can-pay script args can larger than 20 bytes, here
+            // args.len() != 20 is not a short format address, see RFC21 for
+            // more details.
+            let index = CodeHashIndex::Acp;
+            let hash = H160::from_slice(args.as_ref()).unwrap();
+            AddressPayload::Short { index, hash }
         } else {
             AddressPayload::Full {
                 hash_type,
@@ -241,7 +267,7 @@ impl From<Script> for AddressPayload {
     }
 }
 
-#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub struct Address {
     network: NetworkType,
     payload: AddressPayload,
@@ -267,6 +293,33 @@ impl Address {
     /// If true the address is ckb2021 format, short address always use old format, see RFC21 for more details.
     pub fn is_new(&self) -> bool {
         self.is_new
+    }
+}
+
+impl fmt::Debug for Address {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let hash_type = if self.payload.hash_type() == ScriptHashType::Type {
+            "type"
+        } else {
+            "data"
+        };
+        f.debug_struct("Address")
+            .field("network", &self.network)
+            .field("hash_type", &hash_type)
+            .field("code_hash", &self.payload.code_hash(Some(self.network)))
+            .field("args", &self.payload.args())
+            .field("is_new", &self.is_new)
+            .finish()
+    }
+}
+
+impl From<&Address> for Script {
+    fn from(addr: &Address) -> Script {
+        Script::new_builder()
+            .hash_type(addr.payload.hash_type().into())
+            .code_hash(addr.payload.code_hash(Some(addr.network)))
+            .args(addr.payload.args().pack())
+            .build()
     }
 }
 

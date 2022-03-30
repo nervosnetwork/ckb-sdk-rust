@@ -30,12 +30,21 @@ pub const CELLBASE_MATURITY: EpochNumberWithFraction =
     EpochNumberWithFraction::new_unchecked(4, 0, 1);
 
 pub use ckb_chain_spec::consensus::TYPE_ID_CODE_HASH;
+
 pub const SIGHASH_TYPE_HASH: H256 =
     h256!("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8");
 pub const MULTISIG_TYPE_HASH: H256 =
     h256!("0x5c5069eb0857efc65e1bca0c07df34c31663b3622fd3876c876320fc9634e2a8");
 pub const DAO_TYPE_HASH: H256 =
     h256!("0x82d76d1b75fe2fd9a27dfbaa65a039221a380d76c926f378d3f81cf3e7e13f2e");
+
+/// anyone can pay script mainnet code hash, see:
+/// https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0026-anyone-can-pay/0026-anyone-can-pay.md#notes
+pub const ACP_TYPE_HASH_LINA: H256 =
+    h256!("0xd369597ff47f29fbc0d47d2e3775370d1250b85140c670e4718af712983a2354");
+/// anyone can pay script testnet code hash
+pub const ACP_TYPE_HASH_AGGRON: H256 =
+    h256!("0x3419a1c09eb2567f6552ee7a8ecffd64155cffe0f1796e6e61ec088d740c1356");
 
 pub const CHEQUE_CELL_SINCE: u64 = 0xA000000000000006;
 

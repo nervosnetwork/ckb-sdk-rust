@@ -1272,7 +1272,7 @@ mod tests {
             expected_sk
         );
         assert_eq!(
-            &ExtendedPubKeyWrapper::new(pk, network).to_string()[..],
+            &ExtendedPubKeyWrapper::new(pk.clone(), network).to_string()[..],
             expected_pk
         );
         // Check decoded base58 against result
