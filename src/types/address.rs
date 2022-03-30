@@ -114,6 +114,16 @@ impl AddressPayload {
         }
     }
 
+    pub fn is_short_acp(&self) -> bool {
+        matches!(
+            self,
+            AddressPayload::Short {
+                index: CodeHashIndex::Acp,
+                ..
+            }
+        )
+    }
+
     pub fn hash_type(&self) -> ScriptHashType {
         match self {
             AddressPayload::Short { .. } => ScriptHashType::Type,
