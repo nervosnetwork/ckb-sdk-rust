@@ -239,7 +239,9 @@ pub struct CellQueryOptions {
     pub limit: Option<u32>,
     /// Filter cell by its maturity
     pub maturity: MaturityOption,
-    /// Try to collect at least `min_total_capacity` shannons of cells
+    /// Try to collect at least `min_total_capacity` shannons of cells, if
+    /// satisfied will stop collecting. The default value is 1 shannon means
+    /// collect only one cell at most.
     pub min_total_capacity: u64,
 }
 impl CellQueryOptions {

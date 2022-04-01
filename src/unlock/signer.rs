@@ -383,10 +383,19 @@ pub struct AcpScriptSigner {
     sighash_signer: SecpSighashScriptSigner,
 }
 
+impl AcpScriptSigner {
+    pub fn new(signer: Box<dyn Signer>) -> AcpScriptSigner {
+        let sighash_signer = SecpSighashScriptSigner::new(signer);
+        AcpScriptSigner { sighash_signer }
+    }
+}
+
 impl ScriptSigner for AcpScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        let id = &args[0..20];
-        args.len() >= 20 && args.len() <= 22 && self.sighash_signer.signer().match_id(id)
+        args.len() >= 20 && args.len() <= 22 && {
+            let id = &args[0..20];
+            self.sighash_signer.signer().match_id(id)
+        }
     }
 
     fn sign_tx(
@@ -411,10 +420,8 @@ pub struct ChequeScriptSigner {
     action: ChequeAction,
 }
 impl ChequeScriptSigner {
-    pub fn new(
-        sighash_signer: SecpSighashScriptSigner,
-        action: ChequeAction,
-    ) -> ChequeScriptSigner {
+    pub fn new(signer: Box<dyn Signer>, action: ChequeAction) -> ChequeScriptSigner {
+        let sighash_signer = SecpSighashScriptSigner::new(signer);
         ChequeScriptSigner {
             sighash_signer,
             action,

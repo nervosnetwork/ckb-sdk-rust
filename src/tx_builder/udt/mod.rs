@@ -27,7 +27,7 @@ pub enum UdtIssueType {
 /// The udt issue receiver
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct UdtIssueReceiver {
-    /// The lock script of this udt cell
+    /// The lock script of this udt cell, typically is a cheque lock script
     pub lock_script: Script,
     /// The capacity set to this udt cell, if None use minimal capacity.
     pub capacity: Option<u64>,
