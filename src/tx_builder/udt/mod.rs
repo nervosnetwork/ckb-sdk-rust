@@ -316,6 +316,13 @@ impl TxBuilder for UdtTransferBuilder {
                             .into(),
                         ));
                     }
+
+                    let receiver_script_id = ScriptId::from(&receiver.lock_script);
+                    let receiver_cell_dep = cell_dep_resolver
+                        .resolve(&receiver_script_id)
+                        .ok_or(TxBuilderError::ResolveCellDepFailed(receiver_script_id))?;
+                    cell_deps.insert(receiver_cell_dep);
+
                     let receiver_cell = &receiver_cells[0];
                     amount_bytes.copy_from_slice(&receiver_cell.output_data.as_ref()[0..16]);
                     let old_amount = u128::from_le_bytes(amount_bytes);
