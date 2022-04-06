@@ -8,8 +8,8 @@ use ckb_types::{
 use thiserror::Error;
 
 use super::signer::{
-    AcpScriptSigner, ChequeScriptSigner, ScriptSignError, ScriptSigner, SecpMultisigScriptSigner,
-    SecpSighashScriptSigner,
+    AcpScriptSigner, ChequeAction, ChequeScriptSigner, ScriptSignError, ScriptSigner,
+    SecpMultisigScriptSigner, SecpSighashScriptSigner,
 };
 use crate::traits::{TransactionDependencyError, TransactionDependencyProvider};
 
@@ -438,64 +438,48 @@ impl ScriptUnlocker for ChequeUnlocker {
             }
         }
         // NOTE: receiver has higher priority than sender
-        if let Some((input_idx, witness)) = receiver_lock_witness {
-            if group_since_list
-                .iter()
-                .any(|since| *since != CHEQUE_CLAIM_SINCE)
-            {
-                return Err(UnlockError::Other(
-                    "claim action must have all zero since in cheque inputs"
-                        .to_string()
-                        .into(),
-                ));
+        if self.signer.action() == ChequeAction::Claim {
+            if let Some((_input_idx, witness)) = receiver_lock_witness {
+                if group_since_list
+                    .iter()
+                    .any(|since| *since != CHEQUE_CLAIM_SINCE)
+                {
+                    return Err(UnlockError::Other(
+                        "claim action must have all zero since in cheque inputs"
+                            .to_string()
+                            .into(),
+                    ));
+                }
+                let witness_args = match WitnessArgs::from_slice(witness.as_ref()) {
+                    Ok(args) => args,
+                    Err(_) => {
+                        return Ok(false);
+                    }
+                };
+                if witness_args.lock().to_opt().is_none() {
+                    return Ok(false);
+                }
+                return Ok(true);
             }
-            let witness_args = WitnessArgs::from_slice(witness.as_ref()).map_err(|_| {
-                UnlockError::Other(
-                    format!(
-                        "malformed witness for receiver lock, input index: {}",
-                        input_idx
-                    )
-                    .into(),
-                )
-            })?;
-            if witness_args.lock().to_opt().is_none() {
-                return Err(UnlockError::Other(
-                    format!(
-                        "witness has not lock field for receiver lock, input index: {}",
-                        input_idx
-                    )
-                    .into(),
-                ));
-            }
-            return Ok(true);
-        } else if let Some((input_idx, witness)) = sender_lock_witness {
+        } else if let Some((_input_idx, witness)) = sender_lock_witness {
             if group_since_list
                 .iter()
                 .any(|since| *since != CHEQUE_WITHDRAW_SINCE)
             {
                 return Err(UnlockError::Other(
-                    "claim action must have all relative 6 epochs since in cheque inputs"
+                    "withdraw action must have all relative 6 epochs since in cheque inputs"
                         .to_string()
                         .into(),
                 ));
             }
-            let witness_args = WitnessArgs::from_slice(witness.as_ref()).map_err(|_| {
-                UnlockError::Other(
-                    format!(
-                        "malformed witness for sender lock, input index: {}",
-                        input_idx
-                    )
-                    .into(),
-                )
-            })?;
+            let witness_args = match WitnessArgs::from_slice(witness.as_ref()) {
+                Ok(args) => args,
+                Err(_) => {
+                    return Ok(false);
+                }
+            };
             if witness_args.lock().to_opt().is_none() {
-                return Err(UnlockError::Other(
-                    format!(
-                        "witness has not lock field for sender lock, input index: {}",
-                        input_idx
-                    )
-                    .into(),
-                ));
+                return Ok(false);
             }
             return Ok(true);
         }

@@ -410,7 +410,7 @@ impl ScriptSigner for AcpScriptSigner {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum ChequeAction {
     Claim,
     Withdraw,
@@ -435,6 +435,9 @@ impl ChequeScriptSigner {
         } else {
             &args[20..40]
         }
+    }
+    pub fn action(&self) -> ChequeAction {
+        self.action
     }
 }
 

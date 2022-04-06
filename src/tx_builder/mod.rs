@@ -554,11 +554,14 @@ pub fn fill_placeholder_witnesses(
     for script_group in lock_groups.values() {
         let script_id = ScriptId::from(&script_group.script);
         let script_args = script_group.script.args().raw_data();
-        if let Some(unlocker) = unlockers
-            .get(&script_id)
-            .filter(|unlocker| unlocker.match_args(script_args.as_ref()))
-        {
-            tx = unlocker.fill_placeholder_witness(&tx, script_group, tx_dep_provider)?;
+        if let Some(unlocker) = unlockers.get(&script_id) {
+            if !unlocker.is_unlocked(&tx, script_group, tx_dep_provider)? {
+                if unlocker.match_args(script_args.as_ref()) {
+                    tx = unlocker.fill_placeholder_witness(&tx, script_group, tx_dep_provider)?;
+                } else {
+                    not_matched.push(clone_script_group(script_group));
+                }
+            }
         } else {
             not_matched.push(clone_script_group(script_group));
         }
@@ -582,11 +585,14 @@ pub fn unlock_tx(
     for script_group in lock_groups.values() {
         let script_id = ScriptId::from(&script_group.script);
         let script_args = script_group.script.args().raw_data();
-        if let Some(unlocker) = unlockers
-            .get(&script_id)
-            .filter(|unlocker| unlocker.match_args(script_args.as_ref()))
-        {
-            tx = unlocker.unlock(&tx, script_group, tx_dep_provider)?;
+        if let Some(unlocker) = unlockers.get(&script_id) {
+            if !unlocker.is_unlocked(&tx, script_group, tx_dep_provider)? {
+                if unlocker.match_args(script_args.as_ref()) {
+                    tx = unlocker.unlock(&tx, script_group, tx_dep_provider)?;
+                } else {
+                    not_unlocked.push(clone_script_group(script_group));
+                }
+            }
         } else {
             not_unlocked.push(clone_script_group(script_group));
         }
