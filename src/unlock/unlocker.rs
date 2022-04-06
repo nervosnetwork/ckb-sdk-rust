@@ -265,19 +265,13 @@ impl ScriptUnlocker for AcpUnlocker {
             })
             .collect::<Result<Vec<InputWallet>, UnlockError>>()?;
 
-        for output_idx in &script_group.output_indices {
-            let output = tx.output(*output_idx).ok_or_else(|| {
-                UnlockError::Other(
-                    format!(
-                        "output index in script group is out of bound: {}",
-                        output_idx
-                    )
-                    .into(),
-                )
-            })?;
+        for (output_idx, output) in tx.outputs().into_iter().enumerate() {
+            if output.lock() != script_group.script {
+                continue;
+            }
             let output_data: Bytes = tx
                 .outputs_data()
-                .get(*output_idx)
+                .get(output_idx)
                 .map(|data| data.raw_data())
                 .ok_or_else(|| {
                     UnlockError::Other(

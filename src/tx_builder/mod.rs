@@ -524,6 +524,14 @@ pub fn gen_script_groups(
             type_group_entry.input_indices.push(i);
         }
     }
+    for (i, output) in tx.outputs().into_iter().enumerate() {
+        if let Some(t) = &output.type_().to_opt() {
+            let type_group_entry = type_groups
+                .entry(t.calc_script_hash())
+                .or_insert_with(|| ScriptGroup::from_type_script(t));
+            type_group_entry.output_indices.push(i);
+        }
+    }
     Ok(ScriptGroups {
         lock_groups,
         type_groups,
