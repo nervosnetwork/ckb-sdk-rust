@@ -2,15 +2,16 @@ use std::collections::HashSet;
 
 use ckb_types::{
     bytes::Bytes,
-    core::{TransactionBuilder, TransactionView},
+    core::{Capacity, ScriptHashType, TransactionBuilder, TransactionView},
     packed::{CellInput, CellOutput, OutPoint, Script},
     prelude::*,
 };
 
 use super::{TxBuilder, TxBuilderError};
-use crate::constants::CHEQUE_CELL_SINCE;
+use crate::constants::{CHEQUE_CELL_SINCE, SIGHASH_TYPE_HASH};
 use crate::traits::{
-    CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider,
+    CellCollector, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+    TransactionDependencyProvider, ValueRangeOption,
 };
 use crate::types::ScriptId;
 
@@ -188,14 +189,18 @@ pub struct ChequeWithdrawBuilder {
     /// type script and cell data length is equals to 16.
     pub out_points: Vec<OutPoint>,
 
-    /// Sender's lock script, the script hash must match the cheque cell's lock script args.
+    /// Sender's lock script, must be a sighash address, and the script hash
+    /// must match the cheque cell's lock script args.
     pub sender_lock_script: Script,
+
+    /// If `acp_script_id` provided, will withdraw to anyone-can-pay address
+    pub acp_script_id: Option<ScriptId>,
 }
 
 impl TxBuilder for ChequeWithdrawBuilder {
     fn build_base(
         &self,
-        _cell_collector: &mut dyn CellCollector,
+        cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
         _header_dep_resolver: &dyn HeaderDepResolver,
         tx_dep_provider: &dyn TransactionDependencyProvider,
@@ -256,10 +261,10 @@ impl TxBuilder for ChequeWithdrawBuilder {
         let cheque_lock_script = last_lock_script.unwrap();
         let type_script = last_type_script.unwrap();
 
-        let lock_script_id = ScriptId::from(&cheque_lock_script);
-        let lock_cell_dep = cell_dep_resolver
-            .resolve(&lock_script_id)
-            .ok_or(TxBuilderError::ResolveCellDepFailed(lock_script_id))?;
+        let cheque_script_id = ScriptId::from(&cheque_lock_script);
+        let cheque_cell_dep = cell_dep_resolver
+            .resolve(&cheque_script_id)
+            .ok_or(TxBuilderError::ResolveCellDepFailed(cheque_script_id))?;
         let type_script_id = ScriptId::from(&type_script);
         let type_cell_dep = cell_dep_resolver
             .resolve(&type_script_id)
@@ -275,6 +280,18 @@ impl TxBuilder for ChequeWithdrawBuilder {
                 .into(),
             ));
         }
+        if self.sender_lock_script.code_hash() != SIGHASH_TYPE_HASH.pack()
+            || self.sender_lock_script.hash_type() != ScriptHashType::Type.into()
+            || self.sender_lock_script.args().raw_data().len() != 20
+        {
+            return Err(TxBuilderError::InvalidParameter(
+                format!(
+                    "invalid sender lock script, expected: sighash address, got: {:?}",
+                    self.sender_lock_script
+                )
+                .into(),
+            ));
+        }
         let sender_lock_hash = self.sender_lock_script.calc_script_hash();
         if sender_lock_hash.as_slice()[0..20] != cheque_lock_args.as_ref()[20..40] {
             return Err(TxBuilderError::InvalidParameter(
@@ -284,14 +301,57 @@ impl TxBuilder for ChequeWithdrawBuilder {
             ));
         }
 
-        let sender_output = CellOutput::new_builder()
-            .lock(self.sender_lock_script.clone())
-            .type_(Some(type_script).pack())
-            .capacity(cheque_total_capacity.pack())
-            .build();
-        let sender_output_data = Bytes::from(cheque_total_amount.to_le_bytes().to_vec());
+        let mut cell_deps = vec![cheque_cell_dep, type_cell_dep];
+        let (sender_lock, total_capacity, total_amount) =
+            if let Some(script_id) = self.acp_script_id.as_ref() {
+                let acp_lock = Script::new_builder()
+                    .code_hash(script_id.code_hash.pack())
+                    .hash_type(script_id.hash_type.into())
+                    .args(self.sender_lock_script.args())
+                    .build();
+                let mut query = CellQueryOptions::new_lock(acp_lock.clone());
+                query.secondary_script = Some(type_script.clone());
+                query.data_len_range = Some(ValueRangeOption::new_min(16));
+                let (acp_cells, _) = cell_collector.collect_live_cells(&query, true)?;
+                if acp_cells.is_empty() {
+                    return Err(TxBuilderError::Other(
+                        format!("can not find acp cell by lock script: {:?}", acp_lock).into(),
+                    ));
+                }
+                let acp_cell = &acp_cells[0];
+                let mut amount_bytes = [0u8; 16];
+                amount_bytes.copy_from_slice(acp_cell.output_data.as_ref());
+                let acp_amount = u128::from_le_bytes(amount_bytes);
+                let acp_capacity = acp_cell
+                    .output
+                    .occupied_capacity(Capacity::bytes(acp_cell.output_data.len()).unwrap())
+                    .expect("occupied_capacity")
+                    .as_u64();
+                let acp_cell_dep = cell_dep_resolver
+                    .resolve(script_id)
+                    .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(script_id.clone()))?;
+                cell_deps.push(acp_cell_dep);
+                inputs.push(CellInput::new(acp_cell.out_point.clone(), 0));
+                (
+                    acp_lock,
+                    cheque_total_capacity + acp_capacity,
+                    cheque_total_amount + acp_amount,
+                )
+            } else {
+                (
+                    self.sender_lock_script.clone(),
+                    cheque_total_capacity,
+                    cheque_total_amount,
+                )
+            };
 
-        let cell_deps = vec![lock_cell_dep, type_cell_dep];
+        let sender_output = CellOutput::new_builder()
+            .lock(sender_lock)
+            .type_(Some(type_script).pack())
+            .capacity(total_capacity.pack())
+            .build();
+        let sender_output_data = Bytes::from(total_amount.to_le_bytes().to_vec());
+
         let outputs = vec![sender_output];
         let outputs_data = vec![sender_output_data.pack()];
 
