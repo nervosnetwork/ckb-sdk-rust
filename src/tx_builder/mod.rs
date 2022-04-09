@@ -586,7 +586,9 @@ pub fn unlock_tx(
         let script_id = ScriptId::from(&script_group.script);
         let script_args = script_group.script.args().raw_data();
         if let Some(unlocker) = unlockers.get(&script_id) {
-            if unlocker.match_args(script_args.as_ref()) {
+            if unlocker.is_unlocked(&tx, script_group, tx_dep_provider)? {
+                tx = unlocker.clear_placeholder_witness(&tx, script_group)?;
+            } else if unlocker.match_args(script_args.as_ref()) {
                 tx = unlocker.unlock(&tx, script_group, tx_dep_provider)?;
             } else {
                 not_unlocked.push(clone_script_group(script_group));

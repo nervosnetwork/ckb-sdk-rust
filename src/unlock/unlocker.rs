@@ -57,6 +57,14 @@ pub trait ScriptUnlocker {
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError>;
 
+    fn clear_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        _script_group: &ScriptGroup,
+    ) -> Result<TransactionView, UnlockError> {
+        Ok(tx.clone())
+    }
+
     /// Fill a placehodler witness before balance the transaction capacity
     fn fill_placeholder_witness(
         &self,
@@ -357,11 +365,19 @@ impl ScriptUnlocker for AcpUnlocker {
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
-            reset_witness_lock(tx.clone(), script_group.input_indices[0])
-                .map_err(UnlockError::InvalidWitnessArgs)
+            self.clear_placeholder_witness(tx, script_group)
         } else {
             Ok(self.signer.sign_tx(tx, script_group)?)
         }
+    }
+
+    fn clear_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+    ) -> Result<TransactionView, UnlockError> {
+        reset_witness_lock(tx.clone(), script_group.input_indices[0])
+            .map_err(UnlockError::InvalidWitnessArgs)
     }
 
     fn fill_placeholder_witness(
@@ -497,11 +513,19 @@ impl ScriptUnlocker for ChequeUnlocker {
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
-            reset_witness_lock(tx.clone(), script_group.input_indices[0])
-                .map_err(UnlockError::InvalidWitnessArgs)
+            self.clear_placeholder_witness(tx, script_group)
         } else {
             Ok(self.signer.sign_tx(tx, script_group)?)
         }
+    }
+
+    fn clear_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+    ) -> Result<TransactionView, UnlockError> {
+        reset_witness_lock(tx.clone(), script_group.input_indices[0])
+            .map_err(UnlockError::InvalidWitnessArgs)
     }
 
     fn fill_placeholder_witness(
