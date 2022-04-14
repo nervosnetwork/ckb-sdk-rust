@@ -16,6 +16,8 @@ use crate::traits::{
 };
 use crate::types::ScriptId;
 
+pub use xudt::xudt_rce;
+
 /// The udt issue type
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum UdtIssueType {

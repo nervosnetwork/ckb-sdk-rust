@@ -310,6 +310,13 @@ pub struct DefaultTransactionDependencyProvider {
     inner: Arc<Mutex<DefaultTxDepProviderInner>>,
 }
 
+impl Clone for DefaultTransactionDependencyProvider {
+    fn clone(&self) -> DefaultTransactionDependencyProvider {
+        let inner = Arc::clone(&self.inner);
+        DefaultTransactionDependencyProvider { inner }
+    }
+}
+
 impl DefaultTransactionDependencyProvider {
     /// Arguments:
     ///   * `url` is the ckb http jsonrpc server url
