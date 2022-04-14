@@ -13,7 +13,7 @@ use ckb_script::ScriptGroup;
 use ckb_types::{
     bytes::Bytes,
     core::{error::OutPointError, Capacity, CapacityError, FeeRate, TransactionView},
-    packed::{Byte32, CellInput, CellOutput, Script},
+    packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
 };
 
@@ -271,6 +271,9 @@ pub enum BalanceTxCapacityError {
 
     #[error("resolve cell dep failed: `{0}`")]
     ResolveCellDepFailed(ScriptId),
+
+    #[error("invalid witness args: `{0}`")]
+    InvalidWitnessArgs(Box<dyn std::error::Error>),
 }
 
 /// Transaction capacity balancer config
@@ -325,6 +328,7 @@ pub fn balance_tx_capacity(
     let mut cell_deps = Vec::new();
     let mut inputs = Vec::new();
     let mut change_output: Option<CellOutput> = None;
+    let mut changed_witnesses: HashMap<usize, WitnessArgs> = HashMap::default();
     let mut witnesses = Vec::new();
     loop {
         let (lock_script, placeholder_witness) = &lock_scripts[lock_script_idx];
@@ -347,12 +351,17 @@ pub fn balance_tx_capacity(
             witnesses.push(Default::default());
         }
         let new_tx = {
+            let mut all_witnesses = tx.witnesses().into_iter().collect::<Vec<_>>();
+            for (idx, witness_args) in &changed_witnesses {
+                all_witnesses[*idx] = witness_args.as_bytes().pack();
+            }
+            all_witnesses.extend(witnesses.clone());
             let mut builder = tx
                 .data()
                 .as_advanced_builder()
                 .cell_deps(cell_deps.clone())
                 .inputs(inputs.clone())
-                .witnesses(witnesses.clone());
+                .set_witnesses(all_witnesses);
             if let Some(output) = change_output.clone() {
                 builder = builder.output(output).output_data(Default::default());
             }
@@ -477,7 +486,40 @@ pub fn balance_tx_capacity(
                 }
             }
             if !has_provider {
-                witnesses.push(placeholder_witness.pack());
+                if tx.witnesses().item_count() > tx.inputs().item_count() + inputs.len() {
+                    let idx = tx.inputs().item_count() + inputs.len();
+                    let witness_data = tx.witnesses().get(idx).expect("get witness").raw_data();
+                    // in case witness filled before balance tx
+                    let mut witness = if witness_data.is_empty() {
+                        WitnessArgs::default()
+                    } else {
+                        WitnessArgs::from_slice(witness_data.as_ref())
+                            .map_err(|err| BalanceTxCapacityError::InvalidWitnessArgs(err.into()))?
+                    };
+                    let placeholder_witness = WitnessArgs::from_slice(placeholder_witness.as_ref())
+                        .map_err(|err| BalanceTxCapacityError::InvalidWitnessArgs(err.into()))?;
+                    if let Some(data) = placeholder_witness.input_type().to_opt() {
+                        witness = witness
+                            .as_builder()
+                            .input_type(Some(data.raw_data()).pack())
+                            .build();
+                    }
+                    if let Some(data) = placeholder_witness.output_type().to_opt() {
+                        witness = witness
+                            .as_builder()
+                            .output_type(Some(data.raw_data()).pack())
+                            .build();
+                    }
+                    if let Some(data) = placeholder_witness.lock().to_opt() {
+                        witness = witness
+                            .as_builder()
+                            .lock(Some(data.raw_data()).pack())
+                            .build();
+                    }
+                    changed_witnesses.insert(idx, witness);
+                } else {
+                    witnesses.push(placeholder_witness.pack());
+                }
             }
             let since = {
                 let lock_arg = lock_script.args().raw_data();
