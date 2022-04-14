@@ -4,7 +4,7 @@ mod xudt;
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     core::{Capacity, TransactionBuilder, TransactionView},
-    packed::{CellDep, CellInput, CellOutput, Script},
+    packed::{Byte32, CellDep, CellInput, CellOutput, Script},
     prelude::*,
 };
 use std::collections::HashSet;
@@ -24,6 +24,25 @@ pub enum UdtType {
     Sudt,
     /// The parameter is <xudt args>
     Xudt(Bytes),
+}
+
+impl UdtType {
+    pub fn build_script(&self, script_id: &ScriptId, owner_lock_hash: &Byte32) -> Script {
+        let type_script_args = match self {
+            UdtType::Sudt => owner_lock_hash.as_bytes(),
+            UdtType::Xudt(extra_args) => {
+                let mut data = BytesMut::with_capacity(32 + extra_args.len());
+                data.put(owner_lock_hash.as_slice());
+                data.put(extra_args.as_ref());
+                data.freeze()
+            }
+        };
+        Script::new_builder()
+            .code_hash(script_id.code_hash.pack())
+            .hash_type(script_id.hash_type.into())
+            .args(type_script_args.pack())
+            .build()
+    }
 }
 
 /// The udt issue/transfer receiver
@@ -195,20 +214,9 @@ impl TxBuilder for UdtIssueBuilder {
 
         // Build output type script
         let owner_lock_hash = self.owner.calc_script_hash();
-        let type_script_args = match &self.udt_type {
-            UdtType::Sudt => owner_lock_hash.as_bytes(),
-            UdtType::Xudt(extra_args) => {
-                let mut data = BytesMut::with_capacity(32 + extra_args.len());
-                data.put(owner_lock_hash.as_slice());
-                data.put(extra_args.as_ref());
-                data.freeze()
-            }
-        };
-        let type_script = Script::new_builder()
-            .code_hash(self.script_id.code_hash.pack())
-            .hash_type(self.script_id.hash_type.into())
-            .args(type_script_args.pack())
-            .build();
+        let type_script = self
+            .udt_type
+            .build_script(&self.script_id, &owner_lock_hash);
 
         let owner_script_id = ScriptId::from(&self.owner);
         let owner_cell_dep = cell_dep_resolver
