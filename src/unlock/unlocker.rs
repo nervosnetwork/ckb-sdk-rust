@@ -98,6 +98,33 @@ pub fn fill_witness_lock(
     Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
 }
 
+pub fn reset_witness_lock(
+    tx: TransactionView,
+    witness_idx: usize,
+) -> Result<TransactionView, usize> {
+    let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+    if let Some(witness_data) = witnesses
+        .get(witness_idx)
+        .map(|data| data.raw_data())
+        .filter(|data| !data.is_empty())
+    {
+        let witness = WitnessArgs::from_slice(witness_data.as_ref()).map_err(|_| witness_idx)?;
+        let data = if witness.input_type().is_none() && witness.output_type().is_none() {
+            Bytes::default()
+        } else {
+            witness
+                .as_builder()
+                .lock(BytesOpt::default())
+                .build()
+                .as_bytes()
+        };
+        witnesses[witness_idx] = data.pack();
+        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+    } else {
+        Ok(tx)
+    }
+}
+
 pub struct SecpSighashUnlocker {
     signer: SecpSighashScriptSigner,
 }
@@ -539,32 +566,5 @@ impl ScriptUnlocker for ChequeUnlocker {
         } else {
             fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
         }
-    }
-}
-
-pub fn reset_witness_lock(
-    tx: TransactionView,
-    witness_idx: usize,
-) -> Result<TransactionView, usize> {
-    let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
-    if let Some(witness_data) = witnesses
-        .get(witness_idx)
-        .map(|data| data.raw_data())
-        .filter(|data| !data.is_empty())
-    {
-        let witness = WitnessArgs::from_slice(witness_data.as_ref()).map_err(|_| witness_idx)?;
-        let data = if witness.input_type().is_none() && witness.output_type().is_none() {
-            Bytes::default()
-        } else {
-            witness
-                .as_builder()
-                .lock(BytesOpt::default())
-                .build()
-                .as_bytes()
-        };
-        witnesses[witness_idx] = data.pack();
-        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
-    } else {
-        Ok(tx)
     }
 }

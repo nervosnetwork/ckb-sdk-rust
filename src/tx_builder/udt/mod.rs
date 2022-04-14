@@ -18,9 +18,9 @@ use crate::types::ScriptId;
 
 pub use xudt::xudt_rce;
 
-/// The udt issue type
+/// The udt type
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub enum UdtIssueType {
+pub enum UdtType {
     Sudt,
     /// The parameter is <xudt args>
     Xudt(Bytes),
@@ -155,7 +155,7 @@ impl UdtTargetReceiver {
 /// The udt issue transaction builder
 pub struct UdtIssueBuilder {
     /// The udt type (sudt/xudt)
-    pub udt_type: UdtIssueType,
+    pub udt_type: UdtType,
 
     /// The sudt/xudt script id
     pub script_id: ScriptId,
@@ -196,8 +196,8 @@ impl TxBuilder for UdtIssueBuilder {
         // Build output type script
         let owner_lock_hash = self.owner.calc_script_hash();
         let type_script_args = match &self.udt_type {
-            UdtIssueType::Sudt => owner_lock_hash.as_bytes(),
-            UdtIssueType::Xudt(extra_args) => {
+            UdtType::Sudt => owner_lock_hash.as_bytes(),
+            UdtType::Xudt(extra_args) => {
                 let mut data = BytesMut::with_capacity(32 + extra_args.len());
                 data.put(owner_lock_hash.as_slice());
                 data.put(extra_args.as_ref());
