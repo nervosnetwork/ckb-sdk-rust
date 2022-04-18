@@ -1,5 +1,4 @@
 mod sudt;
-mod xudt;
 
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
@@ -16,13 +15,11 @@ use crate::traits::{
 };
 use crate::types::ScriptId;
 
-pub use xudt::xudt_rce;
-
 /// The udt type
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum UdtType {
     Sudt,
-    /// The parameter is <xudt args>
+    /// The parameter is <xudt args> (xudt is current not supported, this variant is for future support)
     Xudt(Bytes),
 }
 
