@@ -19,7 +19,7 @@ use crate::types::ScriptId;
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum UdtType {
     Sudt,
-    /// The parameter is <xudt args> (xudt is current not supported, this variant is for future support)
+    /// The parameter is <xudt args> (NOTE: xudt is current not supported, this variant is for future support)
     Xudt(Bytes),
 }
 

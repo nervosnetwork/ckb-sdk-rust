@@ -39,7 +39,7 @@ pub const DAO_TYPE_HASH: H256 =
     h256!("0x82d76d1b75fe2fd9a27dfbaa65a039221a380d76c926f378d3f81cf3e7e13f2e");
 
 /// anyone can pay script mainnet code hash, see:
-/// https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0026-anyone-can-pay/0026-anyone-can-pay.md#notes
+/// <https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0026-anyone-can-pay/0026-anyone-can-pay.md#notes>
 pub const ACP_TYPE_HASH_LINA: H256 =
     h256!("0xd369597ff47f29fbc0d47d2e3775370d1250b85140c670e4718af712983a2354");
 /// anyone can pay script testnet code hash
