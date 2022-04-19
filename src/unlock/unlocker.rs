@@ -1,4 +1,3 @@
-use ckb_script::ScriptGroup;
 use ckb_types::{
     bytes::Bytes,
     core::TransactionView,
@@ -12,6 +11,7 @@ use super::signer::{
     SecpMultisigScriptSigner, SecpSighashScriptSigner,
 };
 use crate::traits::{TransactionDependencyError, TransactionDependencyProvider};
+use crate::types::ScriptGroup;
 
 const CHEQUE_CLAIM_SINCE: u64 = 0;
 const CHEQUE_WITHDRAW_SINCE: u64 = 0xA000000000000006;

@@ -1,7 +1,6 @@
 use std::{ptr, sync::atomic};
 
 use ckb_dao_utils::extract_dao_data;
-use ckb_script::ScriptGroup;
 use ckb_types::{
     core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
     packed::CellOutput,
@@ -24,16 +23,6 @@ pub fn zeroize_slice(data: &mut [u8]) {
     for elem in data {
         unsafe { ptr::write_volatile(elem, Default::default()) }
         atomic::compiler_fence(atomic::Ordering::SeqCst);
-    }
-}
-
-// FIXME: should derive `Clone` for ScriptGroup
-pub fn clone_script_group(script_group: &ScriptGroup) -> ScriptGroup {
-    ScriptGroup {
-        script: script_group.script.clone(),
-        group_type: script_group.group_type,
-        input_indices: script_group.input_indices.clone(),
-        output_indices: script_group.output_indices.clone(),
     }
 }
 

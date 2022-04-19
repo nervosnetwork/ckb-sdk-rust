@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 use ckb_dao_utils::DaoError;
-use ckb_script::ScriptGroup;
 use ckb_types::{
     bytes::Bytes,
     core::{error::OutPointError, Capacity, CapacityError, FeeRate, TransactionView},
@@ -22,9 +21,10 @@ use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
     TransactionDependencyError, TransactionDependencyProvider, ValueRangeOption,
 };
+use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
-use crate::util::{calculate_dao_maximum_withdraw4, clone_script_group};
+use crate::util::calculate_dao_maximum_withdraw4;
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
@@ -601,11 +601,11 @@ pub fn fill_placeholder_witnesses(
                 if unlocker.match_args(script_args.as_ref()) {
                     tx = unlocker.fill_placeholder_witness(&tx, script_group, tx_dep_provider)?;
                 } else {
-                    not_matched.push(clone_script_group(script_group));
+                    not_matched.push(script_group.clone());
                 }
             }
         } else {
-            not_matched.push(clone_script_group(script_group));
+            not_matched.push(script_group.clone());
         }
     }
     Ok((tx, not_matched))
@@ -633,10 +633,10 @@ pub fn unlock_tx(
             } else if unlocker.match_args(script_args.as_ref()) {
                 tx = unlocker.unlock(&tx, script_group, tx_dep_provider)?;
             } else {
-                not_unlocked.push(clone_script_group(script_group));
+                not_unlocked.push(script_group.clone());
             }
         } else {
-            not_unlocked.push(clone_script_group(script_group));
+            not_unlocked.push(script_group.clone());
         }
     }
     Ok((tx, not_unlocked))

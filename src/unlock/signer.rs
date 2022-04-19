@@ -1,5 +1,4 @@
 use ckb_hash::{blake2b_256, new_blake2b};
-use ckb_script::ScriptGroup;
 use ckb_types::{
     bytes::{Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
@@ -13,7 +12,7 @@ use thiserror::Error;
 
 use crate::constants::MULTISIG_TYPE_HASH;
 use crate::traits::{Signer, SignerError};
-use crate::types::{AddressPayload, CodeHashIndex, Since};
+use crate::types::{AddressPayload, CodeHashIndex, ScriptGroup, Since};
 
 #[derive(Error, Debug)]
 pub enum ScriptSignError {
