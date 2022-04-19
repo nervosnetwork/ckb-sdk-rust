@@ -11,7 +11,7 @@ use ckb_jsonrpc_types as json_types;
 use ckb_types::{
     bytes::Bytes,
     core::{HeaderView, ScriptHashType, TransactionView},
-    packed::{Byte32, CellDep, CellOutput, OutPoint, Transaction},
+    packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction},
     prelude::*,
     H160, H256,
 };
@@ -75,8 +75,9 @@ impl DefaultCellDepResolver {
     }
 }
 impl CellDepResolver for DefaultCellDepResolver {
-    fn resolve(&self, script_id: &ScriptId) -> Option<CellDep> {
-        self.get(script_id).map(|(cell_dep, _)| cell_dep.clone())
+    fn resolve(&self, script: &Script) -> Option<CellDep> {
+        let script_id = ScriptId::from(script);
+        self.get(&script_id).map(|(cell_dep, _)| cell_dep.clone())
     }
 }
 

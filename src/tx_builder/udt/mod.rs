@@ -142,10 +142,12 @@ impl UdtTargetReceiver {
                     ));
                 }
 
-                let receiver_script_id = ScriptId::from(&self.lock_script);
-                let receiver_cell_dep = cell_dep_resolver
-                    .resolve(&receiver_script_id)
-                    .ok_or(TxBuilderError::ResolveCellDepFailed(receiver_script_id))?;
+                let receiver_cell_dep =
+                    cell_dep_resolver
+                        .resolve(&self.lock_script)
+                        .ok_or_else(|| {
+                            TxBuilderError::ResolveCellDepFailed(self.lock_script.clone())
+                        })?;
 
                 let mut amount_bytes = [0u8; 16];
                 let receiver_cell = &receiver_cells[0];
@@ -215,13 +217,12 @@ impl TxBuilder for UdtIssueBuilder {
             .udt_type
             .build_script(&self.script_id, &owner_lock_hash);
 
-        let owner_script_id = ScriptId::from(&self.owner);
         let owner_cell_dep = cell_dep_resolver
-            .resolve(&owner_script_id)
-            .ok_or(TxBuilderError::ResolveCellDepFailed(owner_script_id))?;
+            .resolve(&self.owner)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(self.owner.clone()))?;
         let udt_cell_dep = cell_dep_resolver
-            .resolve(&self.script_id)
-            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(self.script_id.clone()))?;
+            .resolve(&type_script)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(type_script.clone()))?;
         #[allow(clippy::mutable_key_type)]
         let mut cell_deps = HashSet::new();
         cell_deps.insert(owner_cell_dep);
@@ -290,14 +291,12 @@ impl TxBuilder for UdtTransferBuilder {
         }
         let sender_cell = &sender_cells[0];
 
-        let sender_script_id = ScriptId::from(&self.sender);
         let sender_cell_dep = cell_dep_resolver
-            .resolve(&sender_script_id)
-            .ok_or(TxBuilderError::ResolveCellDepFailed(sender_script_id))?;
-        let type_script_id = ScriptId::from(&self.type_script);
+            .resolve(&self.sender)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(self.sender.clone()))?;
         let udt_cell_dep = cell_dep_resolver
-            .resolve(&type_script_id)
-            .ok_or(TxBuilderError::ResolveCellDepFailed(type_script_id))?;
+            .resolve(&self.type_script)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(self.type_script.clone()))?;
         #[allow(clippy::mutable_key_type)]
         let mut cell_deps = HashSet::new();
         cell_deps.insert(sender_cell_dep);

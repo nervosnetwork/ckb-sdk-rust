@@ -42,7 +42,7 @@ pub enum TxBuilderError {
     BalanceCapacity(#[from] BalanceTxCapacityError),
 
     #[error("resolve cell dep failed: `{0}`")]
-    ResolveCellDepFailed(ScriptId),
+    ResolveCellDepFailed(Script),
 
     #[error("resolve header dep by transaction hash failed: `{0}`")]
     ResolveHeaderDepByTxHashFailed(Byte32),
@@ -270,7 +270,7 @@ pub enum BalanceTxCapacityError {
     CellCollector(#[from] CellCollectorError),
 
     #[error("resolve cell dep failed: `{0}`")]
-    ResolveCellDepFailed(ScriptId),
+    ResolveCellDepFailed(Script),
 
     #[error("invalid witness args: `{0}`")]
     InvalidWitnessArgs(Box<dyn std::error::Error>),
@@ -473,10 +473,10 @@ pub fn balance_tx_capacity(
                 }
             }
             if cell_deps.is_empty() {
-                let provider_script_id = ScriptId::from(lock_script);
-                let provider_cell_dep = cell_dep_resolver.resolve(&provider_script_id).ok_or(
-                    BalanceTxCapacityError::ResolveCellDepFailed(provider_script_id),
-                )?;
+                let provider_cell_dep =
+                    cell_dep_resolver.resolve(lock_script).ok_or_else(|| {
+                        BalanceTxCapacityError::ResolveCellDepFailed(lock_script.clone())
+                    })?;
                 if tx
                     .cell_deps()
                     .into_iter()

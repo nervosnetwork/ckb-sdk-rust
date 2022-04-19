@@ -72,14 +72,12 @@ impl TxBuilder for ChequeClaimBuilder {
             u128::from_le_bytes(amount_bytes)
         };
 
-        let receiver_type_script_id = ScriptId::from(&receiver_type_script);
-        let receiver_type_cell_dep = cell_dep_resolver.resolve(&receiver_type_script_id).ok_or(
-            TxBuilderError::ResolveCellDepFailed(receiver_type_script_id),
-        )?;
-        let receiver_lock_script_id = ScriptId::from(&receiver_input_cell.lock());
-        let receiver_lock_cell_dep = cell_dep_resolver.resolve(&receiver_lock_script_id).ok_or(
-            TxBuilderError::ResolveCellDepFailed(receiver_lock_script_id),
-        )?;
+        let receiver_type_cell_dep = cell_dep_resolver
+            .resolve(&receiver_type_script)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(receiver_type_script.clone()))?;
+        let receiver_lock_cell_dep = cell_dep_resolver
+            .resolve(&receiver_input_cell.lock())
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(receiver_input_cell.lock()))?;
         cell_deps.insert(receiver_type_cell_dep);
         cell_deps.insert(receiver_lock_cell_dep);
 
@@ -131,10 +129,9 @@ impl TxBuilder for ChequeClaimBuilder {
                         .into(),
                 ));
             }
-            let lock_script_id = ScriptId::from(&lock_script);
             let lock_cell_dep = cell_dep_resolver
-                .resolve(&lock_script_id)
-                .ok_or(TxBuilderError::ResolveCellDepFailed(lock_script_id))?;
+                .resolve(&lock_script)
+                .ok_or(TxBuilderError::ResolveCellDepFailed(lock_script))?;
 
             cell_deps.insert(lock_cell_dep);
             cheque_total_amount += input_amount;
@@ -261,14 +258,12 @@ impl TxBuilder for ChequeWithdrawBuilder {
         let cheque_lock_script = last_lock_script.unwrap();
         let type_script = last_type_script.unwrap();
 
-        let cheque_script_id = ScriptId::from(&cheque_lock_script);
         let cheque_cell_dep = cell_dep_resolver
-            .resolve(&cheque_script_id)
-            .ok_or(TxBuilderError::ResolveCellDepFailed(cheque_script_id))?;
-        let type_script_id = ScriptId::from(&type_script);
+            .resolve(&cheque_lock_script)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(cheque_lock_script.clone()))?;
         let type_cell_dep = cell_dep_resolver
-            .resolve(&type_script_id)
-            .ok_or(TxBuilderError::ResolveCellDepFailed(type_script_id))?;
+            .resolve(&type_script)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(type_script.clone()))?;
 
         let cheque_lock_args = cheque_lock_script.args().raw_data();
         if cheque_lock_args.len() != 40 {
@@ -328,8 +323,8 @@ impl TxBuilder for ChequeWithdrawBuilder {
                     .expect("occupied_capacity")
                     .as_u64();
                 let acp_cell_dep = cell_dep_resolver
-                    .resolve(script_id)
-                    .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(script_id.clone()))?;
+                    .resolve(&acp_lock)
+                    .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(acp_lock.clone()))?;
                 cell_deps.push(acp_cell_dep);
                 inputs.push(CellInput::new(acp_cell.out_point.clone(), 0));
                 (

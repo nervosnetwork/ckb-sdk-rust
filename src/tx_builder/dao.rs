@@ -12,7 +12,7 @@ use crate::constants::DAO_TYPE_HASH;
 use crate::traits::{
     CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider,
 };
-use crate::types::{ScriptId, Since, SinceType};
+use crate::types::{Since, SinceType};
 use crate::util::{calculate_dao_maximum_withdraw4, minimal_unlock_point};
 
 /// Deposit target
@@ -60,10 +60,9 @@ impl TxBuilder for DaoDepositBuilder {
             .code_hash(DAO_TYPE_HASH.pack())
             .hash_type(ScriptHashType::Type.into())
             .build();
-        let dao_script_id = ScriptId::from(&dao_type_script);
         let dao_cell_dep = cell_dep_resolver
-            .resolve(&dao_script_id)
-            .ok_or(TxBuilderError::ResolveCellDepFailed(dao_script_id))?;
+            .resolve(&dao_type_script)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(dao_type_script.clone()))?;
 
         let mut outputs = Vec::new();
         let mut outputs_data = Vec::new();
@@ -132,10 +131,9 @@ impl TxBuilder for DaoPrepareBuilder {
             .code_hash(DAO_TYPE_HASH.pack())
             .hash_type(ScriptHashType::Type.into())
             .build();
-        let dao_script_id = ScriptId::from(&dao_type_script);
         let dao_cell_dep = cell_dep_resolver
-            .resolve(&dao_script_id)
-            .ok_or(TxBuilderError::ResolveCellDepFailed(dao_script_id))?;
+            .resolve(&dao_type_script)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(dao_type_script.clone()))?;
         #[allow(clippy::mutable_key_type)]
         let mut cell_deps = HashSet::new();
         cell_deps.insert(dao_cell_dep);
@@ -157,10 +155,9 @@ impl TxBuilder for DaoPrepareBuilder {
                     "the input cell has invalid type script".to_string().into(),
                 ));
             }
-            let input_lock_script_id = ScriptId::from(&input_cell.lock());
             let input_lock_cell_dep = cell_dep_resolver
-                .resolve(&input_lock_script_id)
-                .ok_or(TxBuilderError::ResolveCellDepFailed(input_lock_script_id))?;
+                .resolve(&input_cell.lock())
+                .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(input_cell.lock()))?;
             let output = {
                 let mut builder = input_cell.as_builder();
                 if let Some(script) = lock_script {
@@ -254,10 +251,9 @@ impl TxBuilder for DaoWithdrawBuilder {
             .code_hash(DAO_TYPE_HASH.pack())
             .hash_type(ScriptHashType::Type.into())
             .build();
-        let dao_script_id = ScriptId::from(&dao_type_script);
         let dao_cell_dep = cell_dep_resolver
-            .resolve(&dao_script_id)
-            .ok_or(TxBuilderError::ResolveCellDepFailed(dao_script_id))?;
+            .resolve(&dao_type_script)
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(dao_type_script.clone()))?;
         #[allow(clippy::mutable_key_type)]
         let mut cell_deps = HashSet::new();
         cell_deps.insert(dao_cell_dep);
@@ -279,15 +275,14 @@ impl TxBuilder for DaoWithdrawBuilder {
                 .ok_or_else(|| TxBuilderError::ResolveHeaderDepByTxHashFailed(tx_hash.clone()))?;
             prepare_block_hashes.push(prepare_header.hash());
             let input_cell = tx_dep_provider.get_cell(out_point)?;
-            let input_lock_script_id = ScriptId::from(&input_cell.lock());
             if input_cell.type_().to_opt().as_ref() != Some(&dao_type_script) {
                 return Err(TxBuilderError::InvalidParameter(
                     "the input cell has invalid type script".to_string().into(),
                 ));
             }
             let input_lock_cell_dep = cell_dep_resolver
-                .resolve(&input_lock_script_id)
-                .ok_or(TxBuilderError::ResolveCellDepFailed(input_lock_script_id))?;
+                .resolve(&input_cell.lock())
+                .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(input_cell.lock()))?;
             let data = tx_dep_provider.get_cell_data(out_point)?;
             if data.len() != 8 {
                 return Err(TxBuilderError::InvalidParameter(

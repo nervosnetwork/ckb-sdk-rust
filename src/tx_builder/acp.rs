@@ -11,7 +11,6 @@ use crate::traits::{
     CellCollector, CellDepResolver, CellQueryOptions, HeaderDepResolver,
     TransactionDependencyProvider,
 };
-use crate::types::ScriptId;
 
 #[derive(Clone, Debug)]
 pub struct AcpTransferReceiver {
@@ -60,16 +59,16 @@ impl TxBuilder for AcpTransferBuilder {
                 .build();
             let output_data = input_cell.output_data.clone();
 
-            let lock_script_id = ScriptId::from(&receiver.lock_script);
             let lock_cell_dep = cell_dep_resolver
-                .resolve(&lock_script_id)
-                .ok_or(TxBuilderError::ResolveCellDepFailed(lock_script_id))?;
+                .resolve(&receiver.lock_script)
+                .ok_or_else(|| {
+                    TxBuilderError::ResolveCellDepFailed(receiver.lock_script.clone())
+                })?;
             cell_deps.insert(lock_cell_dep);
             if let Some(type_script) = input_cell.output.type_().to_opt() {
-                let script_id = ScriptId::from(&type_script);
                 let cell_dep = cell_dep_resolver
-                    .resolve(&script_id)
-                    .ok_or(TxBuilderError::ResolveCellDepFailed(script_id))?;
+                    .resolve(&type_script)
+                    .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(type_script.clone()))?;
                 cell_deps.insert(cell_dep);
             }
 

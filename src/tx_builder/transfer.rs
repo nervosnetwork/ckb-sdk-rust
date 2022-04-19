@@ -44,8 +44,8 @@ impl TxBuilder for CapacityTransferBuilder {
                 let script_id = ScriptId::from(&type_script);
                 if !script_id.is_type_id() {
                     let cell_dep = cell_dep_resolver
-                        .resolve(&script_id)
-                        .ok_or(TxBuilderError::ResolveCellDepFailed(script_id))?;
+                        .resolve(&type_script)
+                        .ok_or(TxBuilderError::ResolveCellDepFailed(type_script))?;
                     cell_deps.insert(cell_dep);
                 }
             }
