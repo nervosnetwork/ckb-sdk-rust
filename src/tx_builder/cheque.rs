@@ -56,9 +56,10 @@ impl TxBuilder for ChequeClaimBuilder {
                 "receiver input missing type script".to_string().into(),
             )
         })?;
-        let receiver_input_lock_cell_dep = cell_dep_resolver
-            .resolve(&receiver_input_cell.lock())
-            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(receiver_input_cell.lock()))?;
+        let receiver_input_lock_cell_dep =
+            cell_dep_resolver
+                .resolve(&receiver_input_cell.lock())
+                .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(receiver_input_cell.lock()))?;
         cell_deps.insert(receiver_input_lock_cell_dep);
 
         if receiver_input_data.len() != 16 {
