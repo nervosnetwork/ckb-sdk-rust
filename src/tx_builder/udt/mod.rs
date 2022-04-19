@@ -62,8 +62,7 @@ pub struct UdtTargetReceiver {
 }
 
 pub struct ReceiverBuildOutput {
-    pub input: Option<CellInput>,
-    pub cell_dep: Option<CellDep>,
+    pub input: Option<(CellInput, CellDep)>,
     pub output: CellOutput,
     pub output_data: Bytes,
 }
@@ -118,7 +117,6 @@ impl UdtTargetReceiver {
                     .build();
                 Ok(ReceiverBuildOutput {
                     input: None,
-                    cell_dep: None,
                     output,
                     output_data: data.freeze(),
                 })
@@ -160,8 +158,7 @@ impl UdtTargetReceiver {
 
                 let input = CellInput::new(receiver_cell.out_point.clone(), 0);
                 Ok(ReceiverBuildOutput {
-                    input: Some(input),
-                    cell_dep: Some(receiver_cell_dep),
+                    input: Some((input, receiver_cell_dep)),
                     output: receiver_cell.output.clone(),
                     output_data,
                 })
@@ -234,17 +231,13 @@ impl TxBuilder for UdtIssueBuilder {
         for receiver in &self.receivers {
             let ReceiverBuildOutput {
                 input,
-                cell_dep,
                 output,
                 output_data,
             } = receiver.build(&type_script, cell_collector, cell_dep_resolver)?;
-            if let Some(input) = input {
+            if let Some((input, input_lock_cell_dep)) = input {
                 inputs.push(input);
+                cell_deps.insert(input_lock_cell_dep);
             }
-            if let Some(cell_dep) = cell_dep {
-                cell_deps.insert(cell_dep);
-            }
-
             outputs.push(output);
             outputs_data.push(output_data.pack());
         }
@@ -330,15 +323,12 @@ impl TxBuilder for UdtTransferBuilder {
         for receiver in &self.receivers {
             let ReceiverBuildOutput {
                 input,
-                cell_dep,
                 output,
                 output_data,
             } = receiver.build(&self.type_script, cell_collector, cell_dep_resolver)?;
-            if let Some(input) = input {
+            if let Some((input, input_lock_cell_dep)) = input {
                 inputs.push(input);
-            }
-            if let Some(cell_dep) = cell_dep {
-                cell_deps.insert(cell_dep);
+                cell_deps.insert(input_lock_cell_dep);
             }
             outputs.push(output);
             outputs_data.push(output_data.pack());

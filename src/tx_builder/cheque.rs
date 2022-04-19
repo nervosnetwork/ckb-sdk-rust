@@ -56,6 +56,10 @@ impl TxBuilder for ChequeClaimBuilder {
                 "receiver input missing type script".to_string().into(),
             )
         })?;
+        let receiver_input_lock_cell_dep = cell_dep_resolver
+            .resolve(&receiver_input_cell.lock())
+            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(receiver_input_cell.lock()))?;
+        cell_deps.insert(receiver_input_lock_cell_dep);
 
         if receiver_input_data.len() != 16 {
             return Err(TxBuilderError::InvalidParameter(
@@ -75,11 +79,7 @@ impl TxBuilder for ChequeClaimBuilder {
         let receiver_type_cell_dep = cell_dep_resolver
             .resolve(&receiver_type_script)
             .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(receiver_type_script.clone()))?;
-        let receiver_lock_cell_dep = cell_dep_resolver
-            .resolve(&receiver_input_cell.lock())
-            .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(receiver_input_cell.lock()))?;
         cell_deps.insert(receiver_type_cell_dep);
-        cell_deps.insert(receiver_lock_cell_dep);
 
         let mut cheque_total_amount = 0;
         let mut cheque_total_capacity = 0;
