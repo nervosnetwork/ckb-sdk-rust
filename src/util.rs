@@ -1,16 +1,10 @@
 use std::{ptr, sync::atomic};
 
-use ckb_chain_spec::consensus::{Consensus, ProposalWindow};
 use ckb_dao_utils::extract_dao_data;
-use ckb_jsonrpc_types as json_types;
-use ckb_pow::Pow;
 use ckb_script::ScriptGroup;
 use ckb_types::{
-    core::{
-        hardfork::HardForkSwitchBuilder, Capacity, EpochNumber, EpochNumberWithFraction,
-        HeaderView, Ratio,
-    },
-    packed::{Block, CellOutput},
+    core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
+    packed::CellOutput,
     prelude::*,
     U256,
 };
@@ -40,79 +34,6 @@ pub fn clone_script_group(script_group: &ScriptGroup) -> ScriptGroup {
         group_type: script_group.group_type,
         input_indices: script_group.input_indices.clone(),
         output_indices: script_group.output_indices.clone(),
-    }
-}
-
-pub fn to_consensus_struct(json: json_types::Consensus) -> Consensus {
-    let (proposer_reward_ratio_number, proposer_reward_ratio_denom): (u64, u64) = {
-        let proposer_reward_ratio_json =
-            serde_json::to_value(&json.proposer_reward_ratio).expect("to json value");
-        let u256_hex_to_u64 = |v| serde_json::from_value::<U256>(v).expect("convert u256").0[0];
-        (
-            u256_hex_to_u64(proposer_reward_ratio_json["numer"].clone()),
-            u256_hex_to_u64(proposer_reward_ratio_json["denom"].clone()),
-        )
-    };
-    let hardfork_switch = {
-        let mut builder = HardForkSwitchBuilder::default();
-        for feature in json.hardfork_features {
-            match feature.rfc.as_str() {
-                "0028" => builder.rfc_0028 = feature.epoch_number.map(|v| v.value()),
-                "0029" => builder.rfc_0029 = feature.epoch_number.map(|v| v.value()),
-                "0030" => builder.rfc_0030 = feature.epoch_number.map(|v| v.value()),
-                "0031" => builder.rfc_0031 = feature.epoch_number.map(|v| v.value()),
-                "0032" => builder.rfc_0032 = feature.epoch_number.map(|v| v.value()),
-                "0036" => builder.rfc_0036 = feature.epoch_number.map(|v| v.value()),
-                "0038" => builder.rfc_0038 = feature.epoch_number.map(|v| v.value()),
-                _ => panic!("unexpected rfc number: {}", feature.rfc),
-            }
-        }
-        builder.build().expect("build hardfork switch")
-    };
-    Consensus {
-        id: json.id,
-        // NOTE: dummy value
-        genesis_block: Block::default().into_view(),
-        genesis_hash: json.genesis_hash.pack(),
-        dao_type_hash: json.dao_type_hash.map(|v| v.pack()),
-        secp256k1_blake160_sighash_all_type_hash: json
-            .secp256k1_blake160_sighash_all_type_hash
-            .map(|v| v.pack()),
-        secp256k1_blake160_multisig_all_type_hash: json
-            .secp256k1_blake160_multisig_all_type_hash
-            .map(|v| v.pack()),
-        initial_primary_epoch_reward: Capacity::shannons(json.initial_primary_epoch_reward.value()),
-        secondary_epoch_reward: Capacity::shannons(json.secondary_epoch_reward.value()),
-        max_uncles_num: json.max_uncles_num.value() as usize,
-        orphan_rate_target: json.orphan_rate_target,
-        epoch_duration_target: json.epoch_duration_target.value(),
-        tx_proposal_window: ProposalWindow(
-            json.tx_proposal_window.closest.value(),
-            json.tx_proposal_window.farthest.value(),
-        ),
-        proposer_reward_ratio: Ratio::new(
-            proposer_reward_ratio_number,
-            proposer_reward_ratio_denom,
-        ),
-        // NOTE: dummy value
-        pow: Pow::Dummy,
-        cellbase_maturity: EpochNumberWithFraction::from_full_value(json.cellbase_maturity.value()),
-        median_time_block_count: json.median_time_block_count.value() as usize,
-        max_block_cycles: json.max_block_cycles.value(),
-        max_block_bytes: json.max_block_bytes.value(),
-        block_version: json.block_version.value(),
-        tx_version: json.tx_version.value(),
-        type_id_code_hash: json.type_id_code_hash,
-        max_block_proposals_limit: json.max_block_proposals_limit.value(),
-        // NOTE: dummy value
-        genesis_epoch_ext: Default::default(),
-        // NOTE: dummy value
-        satoshi_pubkey_hash: Default::default(),
-        // NOTE: dummy value
-        satoshi_cell_occupied_ratio: Ratio::new(0, 0),
-        primary_epoch_reward_halving_interval: json.primary_epoch_reward_halving_interval.value(),
-        permanent_difficulty_in_dummy: json.permanent_difficulty_in_dummy,
-        hardfork_switch,
     }
 }
 

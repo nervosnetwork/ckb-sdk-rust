@@ -6,7 +6,6 @@ use std::time::Duration;
 use lru::LruCache;
 use parking_lot::Mutex;
 
-use ckb_chain_spec::consensus::Consensus;
 use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types as json_types;
 use ckb_types::{
@@ -25,9 +24,7 @@ use crate::traits::{
     TransactionDependencyProvider,
 };
 use crate::types::ScriptId;
-use crate::util::{
-    get_max_mature_number, serialize_signature, to_consensus_struct, zeroize_privkey,
-};
+use crate::util::{get_max_mature_number, serialize_signature, zeroize_privkey};
 use crate::GenesisInfo;
 use crate::SECP256K1;
 
@@ -298,7 +295,6 @@ impl CellCollector for DefaultCellCollector {
 
 struct DefaultTxDepProviderInner {
     rpc_client: CkbRpcClient,
-    consensus: Option<Consensus>,
     tx_cache: LruCache<Byte32, TransactionView>,
     cell_cache: LruCache<OutPoint, (CellOutput, Bytes)>,
     header_cache: LruCache<Byte32, HeaderView>,
@@ -325,7 +321,6 @@ impl DefaultTransactionDependencyProvider {
         let rpc_client = CkbRpcClient::new(url);
         let inner = DefaultTxDepProviderInner {
             rpc_client,
-            consensus: None,
             tx_cache: LruCache::new(cache_capacity),
             cell_cache: LruCache::new(cache_capacity),
             header_cache: LruCache::new(cache_capacity),
@@ -364,19 +359,6 @@ impl DefaultTransactionDependencyProvider {
 }
 
 impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
-    fn get_consensus(&self) -> Result<Consensus, TransactionDependencyError> {
-        let mut inner = self.inner.lock();
-        if let Some(consensus) = inner.consensus.as_ref() {
-            return Ok(consensus.clone());
-        }
-        let consensus = inner
-            .rpc_client
-            .get_consensus()
-            .map(to_consensus_struct)
-            .map_err(|err| TransactionDependencyError::Other(err.into()))?;
-        inner.consensus = Some(consensus.clone());
-        Ok(consensus)
-    }
     fn get_transaction(
         &self,
         tx_hash: &Byte32,

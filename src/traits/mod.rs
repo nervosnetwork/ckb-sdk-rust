@@ -11,7 +11,6 @@ pub use default_impls::{
 
 use thiserror::Error;
 
-use ckb_chain_spec::consensus::Consensus;
 use ckb_hash::blake2b_256;
 use ckb_traits::{BlockEpoch, CellDataProvider, EpochProvider, HeaderProvider};
 use ckb_types::{
@@ -82,13 +81,6 @@ pub enum TransactionDependencyError {
 ///   * cell_deps
 ///   * header_deps
 pub trait TransactionDependencyProvider {
-    /// Please note that follow consensus fields are dummy values:
-    ///   * `genesis_block`               (due to its big size, please load genesis block by your need)
-    ///   * `pow`                         (not included in jsonrpc result)
-    ///   * `genesis_epoch_ext`           (not included in jsonrpc result)
-    ///   * `satoshi_pubkey_hash`         (not included in jsonrpc result)
-    ///   * `satoshi_cell_occupied_ratio` (not included in jsonrpc result)
-    fn get_consensus(&self) -> Result<Consensus, TransactionDependencyError>;
     // For verify certain cell belong to certain transaction
     fn get_transaction(
         &self,

@@ -1,4 +1,3 @@
-use ckb_chain_spec::consensus::Consensus;
 use ckb_types::{
     bytes::Bytes,
     core::{HeaderView, TransactionView},
@@ -63,11 +62,6 @@ impl HeaderDepResolver for DummyHeaderDepResolver {
 pub struct DummyTransactionDependencyProvider;
 
 impl TransactionDependencyProvider for DummyTransactionDependencyProvider {
-    fn get_consensus(&self) -> Result<Consensus, TransactionDependencyError> {
-        Err(TransactionDependencyError::Other(
-            "dummy get_consensus".to_string().into(),
-        ))
-    }
     // For verify certain cell belong to certain transaction
     fn get_transaction(
         &self,
