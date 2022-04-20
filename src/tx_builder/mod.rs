@@ -10,7 +10,6 @@ use thiserror::Error;
 
 use ckb_dao_utils::DaoError;
 use ckb_types::{
-    bytes::Bytes,
     core::{error::OutPointError, Capacity, CapacityError, FeeRate, TransactionView},
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
@@ -240,11 +239,11 @@ pub fn tx_fee(
 pub struct CapacityProvider {
     /// The lock scripts provider capacity. The second field of the tuple is the
     /// placeholder witness of the lock script.
-    pub lock_scripts: Vec<(Script, Bytes)>,
+    pub lock_scripts: Vec<(Script, WitnessArgs)>,
 }
 
 impl CapacityProvider {
-    pub fn new(lock_scripts: Vec<(Script, Bytes)>) -> CapacityProvider {
+    pub fn new(lock_scripts: Vec<(Script, WitnessArgs)>) -> CapacityProvider {
         CapacityProvider { lock_scripts }
     }
 }
@@ -297,7 +296,7 @@ pub struct CapacityBalancer {
 impl CapacityBalancer {
     pub fn new_simple(
         capacity_provider: Script,
-        placeholder_withess: Bytes,
+        placeholder_withess: WitnessArgs,
         fee_rate: u64,
     ) -> CapacityBalancer {
         CapacityBalancer {
@@ -514,8 +513,6 @@ pub fn balance_tx_capacity(
                         WitnessArgs::from_slice(witness_data.as_ref())
                             .map_err(|err| BalanceTxCapacityError::InvalidWitnessArgs(err.into()))?
                     };
-                    let placeholder_witness = WitnessArgs::from_slice(placeholder_witness.as_ref())
-                        .map_err(|err| BalanceTxCapacityError::InvalidWitnessArgs(err.into()))?;
                     if let Some(data) = placeholder_witness.input_type().to_opt() {
                         witness = witness
                             .as_builder()
@@ -536,7 +533,7 @@ pub fn balance_tx_capacity(
                     }
                     changed_witnesses.insert(idx, witness);
                 } else {
-                    witnesses.push(placeholder_witness.pack());
+                    witnesses.push(placeholder_witness.as_bytes().pack());
                 }
             }
             let since = {

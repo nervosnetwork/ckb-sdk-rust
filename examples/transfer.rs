@@ -87,8 +87,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     // Build CapacityBalancer
     let placeholder_withess = WitnessArgs::new_builder()
         .lock(Some(Bytes::from(vec![0u8; 65])).pack())
-        .build()
-        .as_bytes();
+        .build();
     let balancer = CapacityBalancer::new_simple(sender, placeholder_withess, 1000);
 
     // Build:
