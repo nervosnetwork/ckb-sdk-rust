@@ -1,0 +1,69 @@
+name: CI workflow
+
+on:
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+  push:
+    branches:
+      - "develop"
+      - "master"
+      - "pkg/*"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+
+jobs:
+  unit-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    steps:
+    - uses: actions/checkout@v2
+    - if: matrix.os == 'windows-latest'
+      name: Windows Dependencies
+      run: |
+        Set-ExecutionPolicy RemoteSigned -scope CurrentUser
+        Invoke-Expression (New-Object System.Net.WebClient).DownloadString('https://get.scoop.sh')
+        scoop install yasm
+        echo ("PATH=" + $env:PATH + ";" + $env:USERPROFILE + "\scoop\shims;C:\msys64\mingw64\bin") >> $env:GITHUB_ENV
+    - name: UnitTest
+      run: make test
+
+  linters:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Linters
+      run: |
+        cargo fmt --version || rustup component add rustfmt
+        cargo clippy --version || rustup component add clippy
+        make fmt
+        make clippy
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Security Audit & Licenses
+      run: |
+        rustup toolchain install nightly --allow-downgrade --profile minimal
+        cargo deny --version || cargo +nightly install cargo-deny --locked
+        make security-audit
+        make check-crates
+        make check-licenses
+
+  ci-success:
+    name: ci
+    needs:
+      - unit-test
+      - linters
+      - security-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: CI succeeded
+        run: exit 0
