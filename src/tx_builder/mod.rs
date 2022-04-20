@@ -232,7 +232,7 @@ pub fn tx_fee(
         .ok_or_else(|| TransactionFeeError::CapacityOverflow(output_total - input_total))
 }
 
-/// Provide capacity locked by a lock script.
+/// Provide capacity locked by a list of lock scripts.
 ///
 /// The cells collected by `lock_script` will filter out those have type script
 /// or data length is not `0` or is not mature.
@@ -292,6 +292,24 @@ pub struct CapacityBalancer {
     /// transaction capacity, force the addition capacity as fee, the value is
     /// actual maximum transaction fee.
     pub force_small_change_as_fee: Option<u64>,
+}
+
+impl CapacityBalancer {
+    pub fn new_simple(
+        capacity_provider: Script,
+        placeholder_withess: Bytes,
+        fee_rate: u64,
+    ) -> CapacityBalancer {
+        CapacityBalancer {
+            fee_rate: FeeRate::from_u64(fee_rate),
+            capacity_provider: CapacityProvider::new(vec![(
+                capacity_provider,
+                placeholder_withess,
+            )]),
+            change_lock_script: None,
+            force_small_change_as_fee: None,
+        }
+    }
 }
 
 /// Fill more inputs to balance the transaction capacity

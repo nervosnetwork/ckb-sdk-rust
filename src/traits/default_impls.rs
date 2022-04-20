@@ -86,8 +86,8 @@ pub struct DefaultHeaderDepResolver {
     ckb_client: Arc<Mutex<CkbRpcClient>>,
 }
 impl DefaultHeaderDepResolver {
-    pub fn new(ckb_client: CkbRpcClient) -> DefaultHeaderDepResolver {
-        let ckb_client = Arc::new(Mutex::new(ckb_client));
+    pub fn new(ckb_client: &str) -> DefaultHeaderDepResolver {
+        let ckb_client = Arc::new(Mutex::new(CkbRpcClient::new(ckb_client)));
         DefaultHeaderDepResolver { ckb_client }
     }
 }
@@ -132,7 +132,9 @@ pub struct DefaultCellCollector {
 }
 
 impl DefaultCellCollector {
-    pub fn new(indexer_client: IndexerRpcClient, ckb_client: CkbRpcClient) -> DefaultCellCollector {
+    pub fn new(indexer_client: &str, ckb_client: &str) -> DefaultCellCollector {
+        let indexer_client = IndexerRpcClient::new(indexer_client);
+        let ckb_client = CkbRpcClient::new(ckb_client);
         DefaultCellCollector {
             indexer_client,
             ckb_client,
@@ -415,6 +417,13 @@ pub struct SecpCkbRawKeySigner {
 impl SecpCkbRawKeySigner {
     pub fn new(keys: HashMap<H160, secp256k1::SecretKey>) -> SecpCkbRawKeySigner {
         SecpCkbRawKeySigner { keys }
+    }
+    pub fn new_with_secret_keys(keys: Vec<secp256k1::SecretKey>) -> SecpCkbRawKeySigner {
+        let mut signer = SecpCkbRawKeySigner::default();
+        for key in keys {
+            signer.add_secret_key(key);
+        }
+        signer
     }
     pub fn add_secret_key(&mut self, key: secp256k1::SecretKey) {
         let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
