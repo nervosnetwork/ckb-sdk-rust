@@ -173,30 +173,31 @@ impl AddressPayload {
 
     pub fn display_with_network(&self, network: NetworkType, is_new: bool) -> String {
         let hrp = network.to_prefix();
-        let (data, variant) = match self {
-            // payload = 0x01 | code_hash_index | args
-            AddressPayload::Short { index, hash } => {
-                let mut data = vec![0u8; 22];
-                data[0] = self.ty(is_new) as u8;
-                data[1] = (*index) as u8;
-                data[2..].copy_from_slice(hash.as_bytes());
-                // short address always use bech32
-                (data, bech32::Variant::Bech32)
-            }
-            AddressPayload::Full {
-                code_hash,
-                hash_type,
-                args,
-            } => {
-                if is_new {
-                    // payload = 0x00 | code_hash | hash_type | args
-                    let mut data = vec![0u8; 34 + args.len()];
-                    data[0] = self.ty(is_new) as u8;
-                    data[1..33].copy_from_slice(code_hash.as_slice());
-                    data[33] = (*hash_type) as u8;
-                    data[34..].copy_from_slice(args.as_ref());
-                    (data, bech32::Variant::Bech32m)
-                } else {
+        let (data, variant) = if is_new {
+            // payload = 0x00 | code_hash | hash_type | args
+            let code_hash = self.code_hash(Some(network));
+            let hash_type = self.hash_type();
+            let args = self.args();
+            let mut data = vec![0u8; 34 + args.len()];
+            data[0] = 0x00;
+            data[1..33].copy_from_slice(code_hash.as_slice());
+            data[33] = hash_type as u8;
+            data[34..].copy_from_slice(args.as_ref());
+            (data, bech32::Variant::Bech32m)
+        } else {
+            match self {
+                // payload = 0x01 | code_hash_index | args
+                AddressPayload::Short { index, hash } => {
+                    let mut data = vec![0u8; 22];
+                    data[0] = 0x01;
+                    data[1] = (*index) as u8;
+                    data[2..].copy_from_slice(hash.as_bytes());
+                    // short address always use bech32
+                    (data, bech32::Variant::Bech32)
+                }
+                AddressPayload::Full {
+                    code_hash, args, ..
+                } => {
                     // payload = 0x02/0x04 | code_hash | args
                     let mut data = vec![0u8; 33 + args.len()];
                     data[0] = self.ty(is_new) as u8;
@@ -300,7 +301,11 @@ impl Address {
     pub fn payload(&self) -> &AddressPayload {
         &self.payload
     }
-    /// If true the address is ckb2021 format, short address always use old format, see RFC21 for more details.
+    /// If set to true will display the address as ckb2021 format
+    pub fn set_is_new(&mut self, value: bool) {
+        self.is_new = value;
+    }
+    /// If true the address is ckb2021 format
     pub fn is_new(&self) -> bool {
         self.is_new
     }
@@ -572,10 +577,15 @@ mod test {
 
         let payload =
             AddressPayload::from_pubkey_hash(h160!("0xb39bbc0b3673c7d36450bc14cfcdad2d559c6c64"));
-        let address = Address::new(NetworkType::Mainnet, payload, true);
+        let address = Address::new(NetworkType::Mainnet, payload.clone(), false);
+        let address_new = Address::new(NetworkType::Mainnet, payload, true);
         assert_eq!(
             address.to_string(),
             "ckb1qyqt8xaupvm8837nv3gtc9x0ekkj64vud3jqfwyw5v"
+        );
+        assert_eq!(
+            address_new.to_string(),
+            "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqdnnw7qkdnnclfkg59uzn8umtfd2kwxceqxwquc4"
         );
 
         let index = CodeHashIndex::Multisig;
