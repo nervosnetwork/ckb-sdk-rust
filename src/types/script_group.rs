@@ -8,7 +8,7 @@ use serde_derive::{Deserialize, Serialize};
 /// A script group will only be executed once per transaction, the
 /// script itself should check against all inputs/outputs in its group
 /// if needed.
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct ScriptGroup {
     /// The script.
     ///

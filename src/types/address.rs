@@ -114,6 +114,9 @@ impl AddressPayload {
         }
     }
 
+    pub fn is_short(&self) -> bool {
+        matches!(self, AddressPayload::Short { .. })
+    }
     pub fn is_short_acp(&self) -> bool {
         matches!(
             self,
@@ -300,10 +303,6 @@ impl Address {
     /// The address payload
     pub fn payload(&self) -> &AddressPayload {
         &self.payload
-    }
-    /// If set to true will display the address as ckb2021 format
-    pub fn set_is_new(&mut self, value: bool) {
-        self.is_new = value;
     }
     /// If true the address is ckb2021 format
     pub fn is_new(&self) -> bool {

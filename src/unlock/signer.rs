@@ -276,6 +276,15 @@ impl MultisigConfig {
         }
         witness_data
     }
+
+    pub fn placeholder_withess(&self) -> WitnessArgs {
+        let config_data = self.to_witness_data();
+        let mut zero_lock = vec![0u8; config_data.len() + 65 * self.threshold() as usize];
+        zero_lock[0..config_data.len()].copy_from_slice(config_data.as_ref());
+        WitnessArgs::new_builder()
+            .lock(Some(Bytes::from(zero_lock)).pack())
+            .build()
+    }
 }
 /// Signer for secp256k1 multisig all lock script
 pub struct SecpMultisigScriptSigner {
@@ -352,6 +361,16 @@ impl ScriptSigner for SecpMultisigScriptSigner {
             .to_opt()
             .map(|data| data.raw_data().as_ref().to_vec())
             .unwrap_or(zero_lock);
+        if lock_field.len() != config_data.len() + self.config.threshold() as usize * 65 {
+            return Err(ScriptSignError::Other(
+                format!(
+                    "invalid witness lock field length: {}, expected: {}",
+                    lock_field.len(),
+                    config_data.len() + self.config.threshold() as usize * 65,
+                )
+                .into(),
+            ));
+        }
         for signature in signatures {
             let mut idx = config_data.len();
             while idx < lock_field.len() {
