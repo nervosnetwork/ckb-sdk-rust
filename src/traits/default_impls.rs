@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -13,9 +13,10 @@ use ckb_types::{
     core::{HeaderView, ScriptHashType, TransactionView},
     packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction},
     prelude::*,
-    H160, H256,
+    H160,
 };
 
+use super::{OffchainCellCollector, OffchainCellDepResolver};
 use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
 use crate::rpc::{CkbRpcClient, IndexerRpcClient};
 use crate::traits::{
@@ -31,7 +32,7 @@ use crate::SECP256K1;
 /// A cell_dep resolver use genesis info resolve system scripts and can register more cell_dep info.
 #[derive(Default, Clone)]
 pub struct DefaultCellDepResolver {
-    items: HashMap<ScriptId, (CellDep, String)>,
+    offchain: OffchainCellDepResolver,
 }
 impl DefaultCellDepResolver {
     pub fn new(info: &GenesisInfo) -> DefaultCellDepResolver {
@@ -54,7 +55,8 @@ impl DefaultCellDepResolver {
             ScriptId::new(info.dao_type_hash().unpack(), ScriptHashType::Type),
             (info.dao_dep(), "Nervos DAO".to_string()),
         );
-        DefaultCellDepResolver { items }
+        let offchain = OffchainCellDepResolver { items };
+        DefaultCellDepResolver { offchain }
     }
     pub fn insert(
         &mut self,
@@ -62,22 +64,21 @@ impl DefaultCellDepResolver {
         cell_dep: CellDep,
         name: String,
     ) -> Option<(CellDep, String)> {
-        self.items.insert(script_id, (cell_dep, name))
+        self.offchain.items.insert(script_id, (cell_dep, name))
     }
     pub fn remove(&mut self, script_id: &ScriptId) -> Option<(CellDep, String)> {
-        self.items.remove(script_id)
+        self.offchain.items.remove(script_id)
     }
     pub fn contains(&self, script_id: &ScriptId) -> bool {
-        self.items.contains_key(script_id)
+        self.offchain.items.contains_key(script_id)
     }
     pub fn get(&self, script_id: &ScriptId) -> Option<&(CellDep, String)> {
-        self.items.get(script_id)
+        self.offchain.items.get(script_id)
     }
 }
 impl CellDepResolver for DefaultCellDepResolver {
     fn resolve(&self, script: &Script) -> Option<CellDep> {
-        let script_id = ScriptId::from(script);
-        self.get(&script_id).map(|(cell_dep, _)| cell_dep.clone())
+        self.offchain.resolve(script)
     }
 }
 
@@ -127,8 +128,7 @@ impl HeaderDepResolver for DefaultHeaderDepResolver {
 pub struct DefaultCellCollector {
     indexer_client: IndexerRpcClient,
     ckb_client: CkbRpcClient,
-    locked_cells: HashSet<(H256, u32)>,
-    offchain_live_cells: Vec<LiveCell>,
+    offchain: OffchainCellCollector,
 }
 
 impl DefaultCellCollector {
@@ -138,8 +138,7 @@ impl DefaultCellCollector {
         DefaultCellCollector {
             indexer_client,
             ckb_client,
-            locked_cells: Default::default(),
-            offchain_live_cells: Default::default(),
+            offchain: OffchainCellCollector::default(),
         }
     }
 
@@ -195,32 +194,17 @@ impl CellCollector for DefaultCellCollector {
     ) -> Result<(Vec<LiveCell>, u64), CellCollectorError> {
         let max_mature_number = get_max_mature_number(&mut self.ckb_client)
             .map_err(|err| CellCollectorError::Internal(err.into()))?;
-        let mut total_capacity = 0;
-        let (mut cells, rest_cells): (Vec<_>, Vec<_>) = self
-            .offchain_live_cells
-            .clone()
-            .into_iter()
-            .partition(|cell| {
-                if total_capacity < query.min_total_capacity
-                    && query.match_cell(cell, Some(max_mature_number))
-                {
-                    let capacity: u64 = cell.output.capacity().unpack();
-                    total_capacity += capacity;
-                    true
-                } else {
-                    false
-                }
-            });
-        if apply_changes {
-            self.offchain_live_cells = rest_cells;
-        }
+
+        self.offchain.max_mature_number = Some(max_mature_number);
+        let (mut cells, rest_cells, mut total_capacity) = self.offchain.collect(query);
+
         if total_capacity < query.min_total_capacity {
             self.check_ckb_chain()?;
             let order = match query.order {
                 QueryOrder::Asc => Order::Asc,
                 QueryOrder::Desc => Order::Desc,
             };
-            let locked_cells = self.locked_cells.clone();
+            let locked_cells = self.offchain.locked_cells.clone();
             let search_key = SearchKey::from(query.clone());
             const MAX_LIMIT: u32 = 4096;
             let mut limit: u32 = query.limit.unwrap_or(128);
@@ -257,42 +241,22 @@ impl CellCollector for DefaultCellCollector {
             }
         }
         if apply_changes {
+            self.offchain.live_cells = rest_cells;
             for cell in &cells {
                 self.lock_cell(cell.out_point.clone())?;
             }
         }
-
         Ok((cells, total_capacity))
     }
 
     fn lock_cell(&mut self, out_point: OutPoint) -> Result<(), CellCollectorError> {
-        self.locked_cells
-            .insert((out_point.tx_hash().unpack(), out_point.index().unpack()));
-        Ok(())
+        self.offchain.lock_cell(out_point)
     }
     fn apply_tx(&mut self, tx: Transaction) -> Result<(), CellCollectorError> {
-        let tx_view = tx.into_view();
-        let tx_hash = tx_view.hash();
-        for out_point in tx_view.input_pts_iter() {
-            self.lock_cell(out_point)?;
-        }
-        for (output_index, (output, data)) in tx_view.outputs_with_data_iter().enumerate() {
-            let out_point = OutPoint::new(tx_hash.clone(), output_index as u32);
-            let info = LiveCell {
-                output: output.clone(),
-                output_data: data.clone(),
-                out_point,
-                block_number: 0,
-                tx_index: 0,
-            };
-            self.offchain_live_cells.push(info);
-        }
-        Ok(())
+        self.offchain.apply_tx(tx)
     }
-
     fn reset(&mut self) {
-        self.locked_cells.clear();
-        self.offchain_live_cells.clear();
+        self.offchain.reset();
     }
 }
 

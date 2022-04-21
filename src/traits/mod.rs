@@ -3,10 +3,15 @@
 
 pub mod default_impls;
 pub mod dummy_impls;
+pub mod offchain_impls;
 
 pub use default_impls::{
     DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
     DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
+};
+pub use offchain_impls::{
+    OffchainCellCollector, OffchainCellDepResolver, OffchainHeaderDepResolver,
+    OffchainTransactionDependencyProvider,
 };
 
 use thiserror::Error;
