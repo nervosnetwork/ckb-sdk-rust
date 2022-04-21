@@ -74,18 +74,9 @@ struct Args {
 fn main() -> Result<(), Box<dyn StdErr>> {
     // Parse arguments
     let args = Args::parse();
-
-    if args.sender_key.len() != args.threshold as usize {
-        return Err(format!(
-            "invalid sender key length: {}, expected: {}",
-            args.sender_key.len(),
-            args.threshold
-        )
-        .into());
-    }
     let multisig_config = {
         if args.sighash_address.is_empty() {
-            return Err(format!("Must have at least one sighash_address").into());
+            return Err("Must have at least one sighash_address".to_string().into());
         }
         let mut sighash_addresses = Vec::with_capacity(args.sighash_address.len());
         for addr in args.sighash_address.clone() {
@@ -117,10 +108,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
 
     // Send transaction
     let json_tx = json_types::TransactionView::from(tx);
-    println!(
-        "tx: {}",
-        serde_json::to_string_pretty(&json_tx).expect("to json")
-    );
+    println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
     let outputs_validator = Some(json_types::OutputsValidator::Passthrough);
     let _tx_hash = CkbRpcClient::new(args.ckb_rpc.as_str())
         .send_transaction(json_tx.inner, outputs_validator)
@@ -163,7 +151,7 @@ fn build_transfer_tx(
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
 
     // Build base transaction
-    let unlockers = build_multisig_unlockers(sender_keys[0].clone(), multisig_config.clone());
+    let unlockers = build_multisig_unlockers(sender_keys[0], multisig_config.clone());
     let output = CellOutput::new_builder()
         .lock(Script::from(&args.receiver))
         .capacity(args.capacity.0.pack())

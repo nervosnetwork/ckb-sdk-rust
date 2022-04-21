@@ -16,7 +16,7 @@ use ckb_sdk::{
 };
 use ckb_types::{
     bytes::Bytes,
-    core::{BlockView, ScriptHashType},
+    core::{BlockView, ScriptHashType, TransactionView},
     packed::{CellOutput, Script, WitnessArgs},
     prelude::*,
     H256,
@@ -56,10 +56,10 @@ struct Args {
 fn main() -> Result<(), Box<dyn StdErr>> {
     // Parse arguments
     let args = Args::parse();
-    let sender_privkey = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
+    let sender_key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))?;
     let sender = {
-        let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_privkey);
+        let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
         let hash160 = blake2b_256(&pubkey.serialize()[..])[0..20].to_vec();
         Script::new_builder()
             .code_hash(SIGHASH_TYPE_HASH.pack())
@@ -68,8 +68,27 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             .build()
     };
 
+    let tx = build_transfer_tx(&args, sender, sender_key)?;
+
+    // Send transaction
+    let json_tx = json_types::TransactionView::from(tx);
+    println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
+    let outputs_validator = Some(json_types::OutputsValidator::Passthrough);
+    let _tx_hash = CkbRpcClient::new(args.ckb_rpc.as_str())
+        .send_transaction(json_tx.inner, outputs_validator)
+        .expect("send transaction");
+    println!(">>> tx sent! <<<");
+
+    Ok(())
+}
+
+fn build_transfer_tx(
+    args: &Args,
+    sender: Script,
+    sender_key: secp256k1::SecretKey,
+) -> Result<TransactionView, Box<dyn StdErr>> {
     // Build ScriptUnlocker
-    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_privkey]);
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_key]);
     let sighash_signer = SecpSighashScriptSigner::new(Box::new(signer));
     let sighash_unlocker = SecpSighashUnlocker::new(sighash_signer);
     let sighash_script_id = ScriptId::new_type(SIGHASH_TYPE_HASH.clone());
@@ -116,18 +135,5 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         &unlockers,
     )?;
     assert!(locked_groups.is_empty());
-
-    // Send transaction
-    let json_tx = json_types::TransactionView::from(tx);
-    println!(
-        "tx: {}",
-        serde_json::to_string_pretty(&json_tx).expect("to json")
-    );
-    let outputs_validator = Some(json_types::OutputsValidator::Passthrough);
-    let _tx_hash = ckb_client
-        .send_transaction(json_tx.inner, outputs_validator)
-        .expect("send transaction");
-    println!(">>> tx sent! <<<");
-
-    Ok(())
+    Ok(tx)
 }
