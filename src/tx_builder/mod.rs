@@ -8,7 +8,6 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-use ckb_dao_utils::DaoError;
 use ckb_types::{
     core::{error::OutPointError, Capacity, CapacityError, FeeRate, TransactionView},
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
@@ -145,9 +144,6 @@ pub enum TransactionFeeError {
 
     #[error("out point error: `{0}`")]
     OutPoint(#[from] OutPointError),
-
-    #[error("dao error: `{0}`")]
-    Dao(#[from] DaoError),
 
     #[error("unexpected dao withdraw cell in inputs")]
     UnexpectedDaoWithdrawInput,

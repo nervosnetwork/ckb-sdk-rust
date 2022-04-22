@@ -29,12 +29,9 @@ parking_lot = "0.11"
 lru = "0.7.1"
 
 ckb-types = "=0.101.4"
-ckb-pow = "=0.101.4"
-ckb-dao = "=0.101.4"
 ckb-dao-utils = "=0.101.4"
 ckb-traits = "=0.101.4"
 ckb-jsonrpc-types = "=0.101.4"
-ckb-chain-spec = "=0.101.4"
 ckb-hash = "=0.101.4"
 ckb-resource = "=0.101.4"
 ckb-crypto = { version = "=0.101.4", features = ["secp"] }
