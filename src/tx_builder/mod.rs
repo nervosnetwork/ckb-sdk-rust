@@ -296,14 +296,14 @@ pub struct CapacityBalancer {
 impl CapacityBalancer {
     pub fn new_simple(
         capacity_provider: Script,
-        placeholder_withess: WitnessArgs,
+        placeholder_witness: WitnessArgs,
         fee_rate: u64,
     ) -> CapacityBalancer {
         CapacityBalancer {
             fee_rate: FeeRate::from_u64(fee_rate),
             capacity_provider: CapacityProvider::new(vec![(
                 capacity_provider,
-                placeholder_withess,
+                placeholder_witness,
             )]),
             change_lock_script: None,
             force_small_change_as_fee: None,

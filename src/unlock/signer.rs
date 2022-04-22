@@ -277,7 +277,7 @@ impl MultisigConfig {
         witness_data
     }
 
-    pub fn placeholder_withess(&self) -> WitnessArgs {
+    pub fn placeholder_witness(&self) -> WitnessArgs {
         let config_data = self.to_witness_data();
         let mut zero_lock = vec![0u8; config_data.len() + 65 * self.threshold() as usize];
         zero_lock[0..config_data.len()].copy_from_slice(config_data.as_ref());

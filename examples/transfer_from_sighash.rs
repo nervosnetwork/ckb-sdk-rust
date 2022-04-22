@@ -99,10 +99,10 @@ fn build_transfer_tx(
     );
 
     // Build CapacityBalancer
-    let placeholder_withess = WitnessArgs::new_builder()
+    let placeholder_witness = WitnessArgs::new_builder()
         .lock(Some(Bytes::from(vec![0u8; 65])).pack())
         .build();
-    let balancer = CapacityBalancer::new_simple(sender, placeholder_withess, 1000);
+    let balancer = CapacityBalancer::new_simple(sender, placeholder_witness, 1000);
 
     // Build:
     //   * CellDepResolver

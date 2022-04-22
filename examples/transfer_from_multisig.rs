@@ -131,8 +131,8 @@ fn build_transfer_tx(
         .build();
     let sender_addr = Address::new(args.receiver.network(), sender.clone().into(), true);
     println!("sender address: {}", sender_addr);
-    let placeholder_withess = multisig_config.placeholder_withess();
-    let balancer = CapacityBalancer::new_simple(sender, placeholder_withess, 1000);
+    let placeholder_witness = multisig_config.placeholder_witness();
+    let balancer = CapacityBalancer::new_simple(sender, placeholder_witness, 1000);
 
     // Build:
     //   * CellDepResolver
