@@ -28,13 +28,13 @@ jsonrpc-core = "18"
 parking_lot = "0.11"
 lru = "0.7.1"
 
-ckb-types = "=0.101.4"
-ckb-dao-utils = "=0.101.4"
-ckb-traits = "=0.101.4"
-ckb-jsonrpc-types = "=0.101.4"
-ckb-hash = "=0.101.4"
-ckb-resource = "=0.101.4"
-ckb-crypto = { version = "=0.101.4", features = ["secp"] }
+ckb-types = "=0.103.0"
+ckb-dao-utils = "=0.103.0"
+ckb-traits = "=0.103.0"
+ckb-jsonrpc-types = "=0.103.0"
+ckb-hash = "=0.103.0"
+ckb-resource = "=0.103.0"
+ckb-crypto = { version = "=0.103.0", features = ["secp"] }
 
 [dev-dependencies]
 clap = { version = "3.1.9", features = ["derive"] }
