@@ -38,3 +38,6 @@ ckb-crypto = { version = "=0.103.0", features = ["secp"] }
 
 [dev-dependencies]
 clap = { version = "3.1.9", features = ["derive"] }
+
+[workspace]
+members = ["test-utils"]
