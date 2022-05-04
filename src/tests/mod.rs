@@ -18,7 +18,7 @@ use crate::traits::SecpCkbRawKeySigner;
 use crate::tx_builder::{
     acp::{AcpTransferBuilder, AcpTransferReceiver},
     cheque::{ChequeClaimBuilder, ChequeWithdrawBuilder},
-    dao::{DaoDepositBuilder, DaoDepositReceiver},
+    dao::{DaoDepositBuilder, DaoDepositReceiver, DaoPrepareBuilder},
     transfer::CapacityTransferBuilder,
     unlock_tx, CapacityBalancer, TxBuilder,
 };
@@ -530,15 +530,7 @@ fn test_cheque_withdraw() {
         .type_(Some(type_script).pack())
         .build();
     let cheque_data = Bytes::from(500u128.to_le_bytes().to_vec());
-    let cheque_header = HeaderBuilder::default().number(1.pack()).build();
-    let cheque_block_hash = cheque_header.hash();
-    ctx.add_live_cell(
-        cheque_input,
-        cheque_output.clone(),
-        cheque_data,
-        Some(cheque_block_hash),
-    );
-    ctx.add_header(cheque_header);
+    ctx.add_live_cell(cheque_input, cheque_output.clone(), cheque_data, None);
 
     let builder = ChequeWithdrawBuilder::new(vec![cheque_out_point], sender.clone(), None);
     let placeholder_witness = WitnessArgs::new_builder()
@@ -653,6 +645,13 @@ fn test_dao_deposit() {
         .build();
     assert_eq!(tx.output(0).unwrap(), deposit_output);
     assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let expected_outputs_data = vec![Bytes::from(vec![0u8; 8]), Bytes::default()];
+    let outputs_data = tx
+        .outputs_data()
+        .into_iter()
+        .map(|d| d.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(outputs_data, expected_outputs_data);
     let witnesses_len = tx
         .witnesses()
         .into_iter()
@@ -663,7 +662,88 @@ fn test_dao_deposit() {
 }
 
 #[test]
-fn test_dao_prepare() {}
+fn test_dao_prepare() {
+    let sender = build_sighash_script(ACCOUNT1_ARG);
+    let mut ctx = init_context(
+        Vec::new(),
+        vec![
+            (sender.clone(), Some(100 * ONE_CKB)),
+            (sender.clone(), Some(200 * ONE_CKB)),
+            (sender.clone(), Some(300 * ONE_CKB)),
+        ],
+    );
+
+    let deposit_input = CellInput::new(random_out_point(), 0);
+    let deposit_output = CellOutput::new_builder()
+        .capacity((220 * ONE_CKB).pack())
+        .lock(sender.clone())
+        .type_(Some(build_dao_script()).pack())
+        .build();
+    let deposit_number: u64 = 1;
+    let deposit_header = HeaderBuilder::default()
+        .number(deposit_number.pack())
+        .build();
+    let deposit_block_hash = deposit_header.hash();
+    ctx.add_live_cell(
+        deposit_input.clone(),
+        deposit_output.clone(),
+        Bytes::from(vec![0u8; 8]),
+        Some(deposit_block_hash.clone()),
+    );
+    ctx.add_header(deposit_header);
+
+    let builder = DaoPrepareBuilder::from(vec![deposit_input]);
+    let placeholder_witness = WitnessArgs::new_builder()
+        .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+        .build();
+    let balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+
+    let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
+    let script_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+    let mut unlockers: HashMap<ScriptId, Box<dyn ScriptUnlocker>> = HashMap::default();
+    unlockers.insert(
+        ScriptId::new_type(SIGHASH_TYPE_HASH.clone()),
+        Box::new(script_unlocker),
+    );
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let (tx, locked_groups) = builder
+        .build_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+        .unwrap();
+
+    assert!(locked_groups.is_empty());
+    assert_eq!(
+        tx.header_deps().into_iter().collect::<Vec<_>>(),
+        vec![deposit_block_hash]
+    );
+    assert_eq!(tx.cell_deps().len(), 2);
+    assert_eq!(tx.inputs().len(), 2);
+    for out_point in tx.input_pts_iter() {
+        assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    assert_eq!(tx.output(0).unwrap(), deposit_output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let expected_outputs_data = vec![
+        Bytes::from(deposit_number.to_le_bytes().to_vec()),
+        Bytes::default(),
+    ];
+    let outputs_data = tx
+        .outputs_data()
+        .into_iter()
+        .map(|d| d.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(outputs_data, expected_outputs_data);
+    let witnesses_len = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data().len())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses_len, vec![placeholder_witness.as_slice().len(), 0]);
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
 
 #[test]
 fn test_dao_withdraw() {}
