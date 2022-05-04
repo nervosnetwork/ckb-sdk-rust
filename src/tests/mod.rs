@@ -11,11 +11,14 @@ use ckb_types::{
     H160, H256,
 };
 
-use crate::constants::{CHEQUE_CELL_SINCE, MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_TYPE_HASH};
+use crate::constants::{
+    CHEQUE_CELL_SINCE, DAO_TYPE_HASH, MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_TYPE_HASH,
+};
 use crate::traits::SecpCkbRawKeySigner;
 use crate::tx_builder::{
     acp::{AcpTransferBuilder, AcpTransferReceiver},
     cheque::{ChequeClaimBuilder, ChequeWithdrawBuilder},
+    dao::{DaoDepositBuilder, DaoDepositReceiver},
     transfer::CapacityTransferBuilder,
     unlock_tx, CapacityBalancer, TxBuilder,
 };
@@ -61,6 +64,13 @@ fn build_multisig_script(cfg: &MultisigConfig) -> Script {
         .code_hash(MULTISIG_TYPE_HASH.pack())
         .hash_type(ScriptHashType::Type.into())
         .args(Bytes::from(cfg.hash160().0.to_vec()).pack())
+        .build()
+}
+
+fn build_dao_script() -> Script {
+    Script::new_builder()
+        .code_hash(DAO_TYPE_HASH.pack())
+        .hash_type(ScriptHashType::Type.into())
         .build()
 }
 
@@ -595,7 +605,62 @@ fn test_cheque_withdraw() {
 }
 
 #[test]
-fn test_dao_deposit() {}
+fn test_dao_deposit() {
+    let sender = build_sighash_script(ACCOUNT1_ARG);
+    let ctx = init_context(
+        Vec::new(),
+        vec![
+            (sender.clone(), Some(100 * ONE_CKB)),
+            (sender.clone(), Some(200 * ONE_CKB)),
+            (sender.clone(), Some(300 * ONE_CKB)),
+        ],
+    );
+
+    let deposit_receiver = DaoDepositReceiver::new(sender.clone(), 120 * ONE_CKB);
+    let builder = DaoDepositBuilder::new(vec![deposit_receiver]);
+    let placeholder_witness = WitnessArgs::new_builder()
+        .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+        .build();
+    let balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+
+    let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
+    let script_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+    let mut unlockers: HashMap<ScriptId, Box<dyn ScriptUnlocker>> = HashMap::default();
+    unlockers.insert(
+        ScriptId::new_type(SIGHASH_TYPE_HASH.clone()),
+        Box::new(script_unlocker),
+    );
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let (tx, locked_groups) = builder
+        .build_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+        .unwrap();
+
+    assert!(locked_groups.is_empty());
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 2);
+    assert_eq!(tx.inputs().len(), 2);
+    for out_point in tx.input_pts_iter() {
+        assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    let deposit_output = CellOutput::new_builder()
+        .capacity((120 * ONE_CKB).pack())
+        .lock(sender.clone())
+        .type_(Some(build_dao_script()).pack())
+        .build();
+    assert_eq!(tx.output(0).unwrap(), deposit_output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let witnesses_len = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data().len())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses_len, vec![placeholder_witness.as_slice().len(), 0]);
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
 
 #[test]
 fn test_dao_prepare() {}
