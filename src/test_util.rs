@@ -1,23 +1,27 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 
 use rand::{thread_rng, Rng};
 use thiserror::Error;
 
+use crate::{
+    constants::{
+        MULTISIG_GROUP_OUTPUT_LOC, MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_GROUP_OUTPUT_LOC,
+        SIGHASH_TYPE_HASH,
+    },
+    traits::{
+        CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+        LiveCell, TransactionDependencyError, TransactionDependencyProvider,
+    },
+    tx_builder::tx_fee,
+    GenesisInfo, ScriptId,
+};
 use ckb_chain_spec::consensus::ConsensusBuilder;
 use ckb_hash::blake2b_256;
 use ckb_mock_tx_types::{
     MockCellDep, MockInfo, MockInput, MockResourceLoader, MockTransaction, Resource,
 };
 use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
-use ckb_sdk::{
-    constants::{MULTISIG_GROUP_OUTPUT_LOC, ONE_CKB, SIGHASH_GROUP_OUTPUT_LOC},
-    traits::{
-        CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
-        LiveCell, TransactionDependencyError, TransactionDependencyProvider,
-    },
-    tx_builder::tx_fee,
-    GenesisInfo,
-};
 use ckb_types::{
     bytes::Bytes,
     core::{
@@ -53,6 +57,13 @@ pub struct Context {
     pub dep_data_hashes: Vec<H256>,
     /// cell dep type script hashes
     pub dep_type_hashes: Vec<Option<H256>>,
+    /// For resolve dep group cell dep
+    pub cell_dep_map: HashMap<ScriptId, CellDep>,
+}
+
+pub struct LiveCellsContext {
+    pub inputs: Vec<MockInput>,
+    pub header_deps: Vec<HeaderView>,
     pub used_inputs: HashSet<usize>,
 }
 
@@ -70,6 +81,12 @@ impl Context {
             let tx = block.transaction(tx_idx).expect("get tx");
             let (output, data) = tx.output_with_data(output_idx).expect("get output+data");
             ctx.add_cell_dep(cell_dep, output, data, Some(block_hash.clone()));
+        }
+        for (code_hash, cell_dep) in [
+            (SIGHASH_TYPE_HASH, genesis_info.sighash_dep()),
+            (MULTISIG_TYPE_HASH, genesis_info.multisig_dep()),
+        ] {
+            ctx.add_cell_dep_map(ScriptId::new_type(code_hash), cell_dep);
         }
         for tx in block.transactions().iter() {
             for (idx, (output, data)) in tx
@@ -126,16 +143,17 @@ impl Context {
         &mut self,
         out_point: OutPoint,
         lock_script: Script,
+        capacity: Option<u64>,
     ) -> Option<(CellOutput, Vec<u8>, Option<Byte32>)> {
         let input = CellInput::new(out_point, 0);
-        let lock_size = 33 + lock_script.args().raw_data().len();
+        let capacity = capacity.unwrap_or_else(|| {
+            let lock_size = 33 + lock_script.args().raw_data().len();
+            Capacity::bytes((8 + lock_size) * ONE_CKB as usize)
+                .unwrap()
+                .as_u64()
+        });
         let output = CellOutput::new_builder()
-            .capacity(
-                Capacity::bytes((8 + lock_size) * ONE_CKB as usize)
-                    .unwrap()
-                    .as_u64()
-                    .pack(),
-            )
+            .capacity(capacity.pack())
             .lock(lock_script)
             .build();
         self.add_live_cell(input, output, Bytes::default(), None)
@@ -144,13 +162,7 @@ impl Context {
     /// Deploy a cell
     /// return the out-point of the cell
     pub fn deploy_cell(&mut self, data: Bytes) -> OutPoint {
-        let mut rng = thread_rng();
-        let tx_hash = {
-            let mut buf = [0u8; 32];
-            rng.fill(&mut buf);
-            buf.pack()
-        };
-        let out_point = OutPoint::new(tx_hash, 0);
+        let out_point = random_out_point();
         let cell_dep = CellDep::new_builder()
             .out_point(out_point.clone())
             .dep_type(DepType::Code.into())
@@ -196,6 +208,10 @@ impl Context {
         None
     }
 
+    pub fn add_cell_dep_map(&mut self, script_id: ScriptId, cell_dep: CellDep) -> Option<CellDep> {
+        self.cell_dep_map.insert(script_id, cell_dep)
+    }
+
     pub fn add_header(&mut self, header: HeaderView) {
         self.header_deps.push(header);
     }
@@ -230,13 +246,21 @@ impl Context {
         MockTransaction { mock_info, tx }
     }
 
+    pub fn to_live_cells_context(&self) -> LiveCellsContext {
+        LiveCellsContext {
+            inputs: self.inputs.clone(),
+            header_deps: self.header_deps.clone(),
+            used_inputs: Default::default(),
+        }
+    }
+
     /// Verify:
     ///  * the transaction fee is greater than fee rate
     ///  * cell output capacity can hold the cell
     ///  * run the transaction in ckb-vm
-    pub fn verify(&self, tx: TransactionView, fee_rate: FeeRate) -> Result<Cycle, Error> {
+    pub fn verify(&self, tx: TransactionView, fee_rate: u64) -> Result<Cycle, Error> {
         // check transaction fee
-        let min_fee = fee_rate
+        let min_fee = FeeRate::from_u64(fee_rate)
             .fee(tx.data().as_reader().serialized_size_in_block())
             .as_u64();
         let fee = tx_fee(tx.clone(), self, self).map_err(|err| Error::Other(err.to_string()))?;
@@ -368,6 +392,13 @@ impl CellDepResolver for Context {
     fn resolve(&self, script: &Script) -> Option<CellDep> {
         let code_hash: H256 = script.code_hash().unpack();
         let hash_type = script.hash_type();
+        let script_id = ScriptId::new(
+            code_hash.clone(),
+            ScriptHashType::try_from(hash_type).unwrap(),
+        );
+        if let Some(cell_dep) = self.cell_dep_map.get(&script_id) {
+            return Some(cell_dep.clone());
+        }
         if hash_type == ScriptHashType::Type.into() {
             for (idx, hash_opt) in self.dep_type_hashes.iter().enumerate() {
                 if hash_opt.as_ref() == Some(&code_hash) {
@@ -385,7 +416,7 @@ impl CellDepResolver for Context {
     }
 }
 
-impl CellCollector for Context {
+impl CellCollector for LiveCellsContext {
     fn collect_live_cells(
         &mut self,
         query: &CellQueryOptions,
@@ -449,4 +480,14 @@ impl MockResourceLoader for DummyLoader {
             out_point
         ))
     }
+}
+
+pub fn random_out_point() -> OutPoint {
+    let mut rng = thread_rng();
+    let tx_hash = {
+        let mut buf = [0u8; 32];
+        rng.fill(&mut buf);
+        buf.pack()
+    };
+    OutPoint::new(tx_hash, 0)
 }
