@@ -47,6 +47,7 @@ pub const ACP_TYPE_HASH_LINA: H256 =
 pub const ACP_TYPE_HASH_AGGRON: H256 =
     h256!("0x3419a1c09eb2567f6552ee7a8ecffd64155cffe0f1796e6e61ec088d740c1356");
 
+/// cheque withdraw since value
 pub const CHEQUE_CELL_SINCE: u64 = 0xA000000000000006;
 
 #[cfg(test)]

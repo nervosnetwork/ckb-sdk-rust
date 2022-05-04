@@ -209,6 +209,20 @@ pub struct ChequeWithdrawBuilder {
     pub acp_script_id: Option<ScriptId>,
 }
 
+impl ChequeWithdrawBuilder {
+    pub fn new(
+        out_points: Vec<OutPoint>,
+        sender_lock_script: Script,
+        acp_script_id: Option<ScriptId>,
+    ) -> ChequeWithdrawBuilder {
+        ChequeWithdrawBuilder {
+            out_points,
+            sender_lock_script,
+            acp_script_id,
+        }
+    }
+}
+
 impl TxBuilder for ChequeWithdrawBuilder {
     fn build_base(
         &self,
