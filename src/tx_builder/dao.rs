@@ -216,7 +216,6 @@ pub struct DaoWithdrawItem {
     /// unlock action.
     pub init_witness: Option<WitnessArgs>,
 }
-
 /// Build a Nervos DAO withdraw Phase 2 transaction
 #[derive(Debug, Clone)]
 pub struct DaoWithdrawBuilder {
