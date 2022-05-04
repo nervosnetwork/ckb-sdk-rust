@@ -68,6 +68,10 @@ pub struct LiveCellsContext {
 }
 
 impl Context {
+    /// When the contract is a lock script will combine the deployed out point
+    /// with secp256k1_data and map the script id to dep_group cell_dep. The
+    /// contracts can only be referenced by data hash and with
+    /// hash_type="data1".
     pub fn new(block: &BlockView, contracts: Vec<(&[u8], bool)>) -> Context {
         let block_number: u64 = block.number();
         assert_eq!(block_number, 0);
