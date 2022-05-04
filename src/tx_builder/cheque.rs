@@ -28,6 +28,20 @@ pub struct ChequeClaimBuilder {
     pub sender_lock_script: Script,
 }
 
+impl ChequeClaimBuilder {
+    pub fn new(
+        inputs: Vec<CellInput>,
+        receiver_input: CellInput,
+        sender_lock_script: Script,
+    ) -> ChequeClaimBuilder {
+        ChequeClaimBuilder {
+            inputs,
+            receiver_input,
+            sender_lock_script,
+        }
+    }
+}
+
 impl TxBuilder for ChequeClaimBuilder {
     fn build_base(
         &self,
