@@ -216,22 +216,21 @@ impl Context {
         self.header_deps.push(header);
     }
 
-    pub fn get_live_cell(&self, tx_hash: &Byte32, index: u32) -> Option<(CellOutput, Vec<u8>)> {
-        for mock_input in &self.inputs {
-            let out_point = &mock_input.input.previous_output();
-            let idx: u32 = out_point.index().unpack();
-            if out_point.tx_hash() == *tx_hash && idx == index {
-                return Some((mock_input.output.clone(), mock_input.data.as_ref().to_vec()));
-            }
+    pub fn get_live_cell(&self, out_point: &OutPoint) -> Option<(CellOutput, Bytes)> {
+        if let Some(result) = self.get_input(out_point) {
+            return Some(result);
         }
         for mock_cell_dep in &self.cell_deps {
-            let out_point = &mock_cell_dep.cell_dep.out_point();
-            let idx: u32 = out_point.index().unpack();
-            if out_point.tx_hash() == *tx_hash && idx == index {
-                return Some((
-                    mock_cell_dep.output.clone(),
-                    mock_cell_dep.data.as_ref().to_vec(),
-                ));
+            if out_point == &mock_cell_dep.cell_dep.out_point() {
+                return Some((mock_cell_dep.output.clone(), mock_cell_dep.data.clone()));
+            }
+        }
+        None
+    }
+    pub fn get_input(&self, out_point: &OutPoint) -> Option<(CellOutput, Bytes)> {
+        for mock_input in &self.inputs {
+            if out_point == &mock_input.input.previous_output() {
+                return Some((mock_input.output.clone(), mock_input.data.clone()));
             }
         }
         None
@@ -328,16 +327,14 @@ impl TransactionDependencyProvider for Context {
     }
     // For get the output information of inputs or cell_deps, those cell should be live cell
     fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
-        let index: u32 = out_point.index().unpack();
-        self.get_live_cell(&out_point.tx_hash(), index)
+        self.get_live_cell(out_point)
             .map(|(output, _)| output)
             .ok_or_else(|| TransactionDependencyError::NotFound("cell not found".to_string()))
     }
     // For get the output data information of inputs or cell_deps
     fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
-        let index: u32 = out_point.index().unpack();
-        self.get_live_cell(&out_point.tx_hash(), index)
-            .map(|(_, data)| Bytes::from(data))
+        self.get_live_cell(out_point)
+            .map(|(_, data)| data)
             .ok_or_else(|| TransactionDependencyError::NotFound("cell data not found".to_string()))
     }
     // For get the header information of header_deps
@@ -450,6 +447,9 @@ impl CellCollector for LiveCellsContext {
                 if apply_changes {
                     self.used_inputs.insert(idx);
                 }
+            }
+            if total_capacity >= query.min_total_capacity {
+                break;
             }
         }
         Ok((cells, total_capacity))

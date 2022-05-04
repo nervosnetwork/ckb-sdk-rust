@@ -602,7 +602,7 @@ mod tests {
     const GENESIS_JSON: &str = include_str!("../test-data/genesis_block.json");
 
     #[test]
-    fn test_sighash_signer() {
+    fn test_sighash_unlocker() {
         let genesis_block: json_types::BlockView = serde_json::from_str(GENESIS_JSON).unwrap();
         let genesis_block: BlockView = genesis_block.into();
         let mut ctx = Context::from_genesis_block(&genesis_block);
@@ -625,17 +625,16 @@ mod tests {
                 Some(capacity_ckb * ONE_CKB),
             );
         }
-        let mut cell_collector = ctx.to_live_cells_context();
         let output = CellOutput::new_builder()
             .capacity((120 * ONE_CKB).pack())
             .lock(receiver)
             .build();
-        let data = Bytes::default();
-        let builder = CapacityTransferBuilder::new(vec![(output, data)]);
+        let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
         let placeholder_witness = WitnessArgs::new_builder()
             .lock(Some(Bytes::from(vec![0u8; 65])).pack())
             .build();
-        let balancer = CapacityBalancer::new_simple(sender, placeholder_witness, 1000);
+        let balancer =
+            CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), 1000);
 
         let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
         let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
@@ -647,14 +646,28 @@ mod tests {
             Box::new(script_unlocker),
         );
 
+        let mut cell_collector = ctx.to_live_cells_context();
         let (tx, unlocked_groups) = builder
             .build_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
             .unwrap();
+
         assert!(unlocked_groups.is_empty());
-        println!(
-            "tx: {}",
-            serde_json::to_string_pretty(&json_types::TransactionView::from(tx.clone())).unwrap()
-        );
+        assert_eq!(tx.header_deps().len(), 0);
+        assert_eq!(tx.cell_deps().len(), 1);
+        assert_eq!(tx.inputs().len(), 2);
+        for out_point in tx.input_pts_iter() {
+            assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
+        }
+        assert_eq!(tx.outputs().len(), 2);
+        assert_eq!(tx.output(1).unwrap().lock(), sender);
+        let witnesses = tx
+            .witnesses()
+            .into_iter()
+            .map(|w| w.raw_data())
+            .collect::<Vec<_>>();
+        assert_eq!(witnesses.len(), 2);
+        assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+        assert_eq!(witnesses[1].len(), 0);
         ctx.verify(tx, 1000).unwrap();
     }
 }
