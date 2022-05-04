@@ -28,7 +28,7 @@ use ckb_types::{
         cell::resolve_transaction, hardfork::HardForkSwitch, BlockView, Capacity, Cycle, DepType,
         EpochNumberWithFraction, FeeRate, HeaderView, ScriptHashType, TransactionView,
     },
-    packed::{Byte32, CellDep, CellInput, CellOutput, OutPoint, Script, Transaction},
+    packed::{Byte32, CellDep, CellInput, CellOutput, OutPoint, OutPointVec, Script, Transaction},
     prelude::*,
     H256,
 };
@@ -68,7 +68,7 @@ pub struct LiveCellsContext {
 }
 
 impl Context {
-    pub fn from_genesis_block(block: &BlockView) -> Context {
+    pub fn new(block: &BlockView, contracts: Vec<(&[u8], bool)>) -> Context {
         let block_number: u64 = block.number();
         assert_eq!(block_number, 0);
         let genesis_info = GenesisInfo::from_block(block).expect("genesis info");
@@ -102,6 +102,25 @@ impl Context {
                 ctx.add_cell_dep(cell_dep, output, data.raw_data(), Some(block_hash.clone()));
             }
         }
+
+        if !contracts.is_empty() {
+            let secp_data_out_point = OutPoint::new(block.transaction(0).unwrap().hash(), 3);
+            for (bin, is_lock) in contracts {
+                let data_hash = H256::from(blake2b_256(bin));
+                let out_point = ctx.deploy_cell(Bytes::from(bin.to_vec()));
+                if is_lock {
+                    let out_points: OutPointVec =
+                        vec![secp_data_out_point.clone(), out_point].pack();
+                    let group_out_point = ctx.deploy_cell(out_points.as_bytes());
+                    let cell_dep = CellDep::new_builder()
+                        .out_point(group_out_point)
+                        .dep_type(DepType::DepGroup.into())
+                        .build();
+                    let script_id = ScriptId::new_data1(data_hash);
+                    ctx.add_cell_dep_map(script_id, cell_dep);
+                }
+            }
+        }
         ctx.add_header(block.header());
         ctx
     }
@@ -117,11 +136,11 @@ impl Context {
         output: CellOutput,
         data: Bytes,
         header: Option<Byte32>,
-    ) -> Option<(CellOutput, Vec<u8>, Option<Byte32>)> {
+    ) -> Option<(CellOutput, Bytes, Option<Byte32>)> {
         for mock_input in &mut self.inputs {
             if mock_input.input == input {
                 let old_output = mock_input.output.clone();
-                let old_data = mock_input.data.as_ref().to_vec();
+                let old_data = mock_input.data.clone();
                 let old_header = mock_input.header.clone();
                 mock_input.output = output;
                 mock_input.data = data;
@@ -144,7 +163,7 @@ impl Context {
         out_point: OutPoint,
         lock_script: Script,
         capacity: Option<u64>,
-    ) -> Option<(CellOutput, Vec<u8>, Option<Byte32>)> {
+    ) -> Option<(CellOutput, Bytes, Option<Byte32>)> {
         let input = CellInput::new(out_point, 0);
         let capacity = capacity.unwrap_or_else(|| {
             let lock_size = 33 + lock_script.args().raw_data().len();
@@ -178,7 +197,7 @@ impl Context {
         output: CellOutput,
         data: Bytes,
         header: Option<Byte32>,
-    ) -> Option<(CellOutput, Vec<u8>, Option<Byte32>)> {
+    ) -> Option<(CellOutput, Bytes, Option<Byte32>)> {
         let data_hash = H256::from(blake2b_256(data.as_ref()));
         let script_hash_opt = output
             .type_()
@@ -187,7 +206,7 @@ impl Context {
         for (idx, mock_cell_dep) in self.cell_deps.iter_mut().enumerate() {
             if mock_cell_dep.cell_dep == cell_dep {
                 let old_output = mock_cell_dep.output.clone();
-                let old_data = mock_cell_dep.data.as_ref().to_vec();
+                let old_data = mock_cell_dep.data.clone();
                 let old_header = mock_cell_dep.header.clone();
                 mock_cell_dep.output = output;
                 mock_cell_dep.data = data;
@@ -253,12 +272,8 @@ impl Context {
         }
     }
 
-    /// Verify:
-    ///  * the transaction fee is greater than fee rate
-    ///  * cell output capacity can hold the cell
-    ///  * run the transaction in ckb-vm
-    pub fn verify(&self, tx: TransactionView, fee_rate: u64) -> Result<Cycle, Error> {
-        // check transaction fee
+    /// Check if the transaction fee is greater than fee rate
+    pub fn verify_tx_fee(&self, tx: &TransactionView, fee_rate: u64) -> Result<(), Error> {
         let min_fee = FeeRate::from_u64(fee_rate)
             .fee(tx.data().as_reader().serialized_size_in_block())
             .as_u64();
@@ -269,18 +284,11 @@ impl Context {
                 min_fee, fee
             )));
         }
-        // check output capacity
-        for (output, data) in tx.outputs_with_data_iter() {
-            let occupied = output
-                .occupied_capacity(Capacity::bytes(data.len()).unwrap())
-                .unwrap()
-                .as_u64();
-            let capacity: u64 = output.capacity().unpack();
-            if occupied > capacity {
-                return Err(Error::NoEnoughCapacityForCell { occupied, capacity });
-            }
-        }
-        // Run the transaction in ckb-vm
+        Ok(())
+    }
+
+    /// Run all scripts in the transaction in ckb-vm
+    pub fn verify_scripts(&self, tx: TransactionView) -> Result<Cycle, Error> {
         let (consensus, tx_env) = {
             let enable_epoch_number = 200;
             let commit_epoch_number = 200 + 100;
@@ -312,6 +320,14 @@ impl Context {
         verifier
             .verify(u64::max_value())
             .map_err(|err| Error::VerifyScript(format!("Verify script error: {:?}", err)))
+    }
+
+    /// Verify:
+    ///  * the transaction fee is greater than fee rate
+    ///  * run the transaction in ckb-vm
+    pub fn verify(&self, tx: TransactionView, fee_rate: u64) -> Result<Cycle, Error> {
+        self.verify_tx_fee(&tx, fee_rate)?;
+        self.verify_scripts(tx)
     }
 }
 

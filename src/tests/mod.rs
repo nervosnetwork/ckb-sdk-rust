@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types as json_types;
 use ckb_types::{
     bytes::Bytes,
@@ -13,11 +14,13 @@ use ckb_types::{
 use crate::constants::{MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_TYPE_HASH};
 use crate::traits::SecpCkbRawKeySigner;
 use crate::tx_builder::{
-    transfer::CapacityTransferBuilder, unlock_tx, CapacityBalancer, TxBuilder,
+    acp::{AcpTransferBuilder, AcpTransferReceiver},
+    transfer::CapacityTransferBuilder,
+    unlock_tx, CapacityBalancer, TxBuilder,
 };
 use crate::unlock::{
-    MultisigConfig, ScriptUnlocker, SecpMultisigScriptSigner, SecpMultisigUnlocker,
-    SecpSighashScriptSigner, SecpSighashUnlocker,
+    AcpUnlocker, ChequeUnlocker, MultisigConfig, ScriptUnlocker, SecpMultisigUnlocker,
+    SecpSighashUnlocker,
 };
 use crate::ScriptId;
 
@@ -34,37 +37,70 @@ const ACCOUNT1_KEY: H256 =
 const ACCOUNT1_ARG: H160 = h160!("0x9943f8613bd23d45631265ccef19a6edff7dac4d");
 
 // ckt1qyq9qaekmruccau7u3eff4wsv8v74gxmlptqj2lcte
-// const ACCOUNT2_KEY: H256 =
-//     h256!("0x5f9eceb1af9fe48b97e2df350450d7416887ccca62f537733f1377ee9efb8906");
+const ACCOUNT2_KEY: H256 =
+    h256!("0x5f9eceb1af9fe48b97e2df350450d7416887ccca62f537733f1377ee9efb8906");
 const ACCOUNT2_ARG: H160 = h160!("0x507736d8f98c779ee47294d5d061d9eaa0dbf856");
 
 const FEE_RATE: u64 = 1000;
 const GENESIS_JSON: &str = include_str!("../test-data/genesis_block.json");
+const SUDT_BIN: &[u8] = include_bytes!("../test-data/simple_udt");
+const ACP_BIN: &[u8] = include_bytes!("../test-data/anyone_can_pay");
+const CHEQUE_BIN: &[u8] = include_bytes!("../test-data/ckb-cheque-script");
 
-#[test]
-fn test_sighash_unlocker() {
+fn build_sighash_script(args: H160) -> Script {
+    Script::new_builder()
+        .code_hash(SIGHASH_TYPE_HASH.pack())
+        .hash_type(ScriptHashType::Type.into())
+        .args(Bytes::from(args.0.to_vec()).pack())
+        .build()
+}
+
+fn build_multisig_script(cfg: &MultisigConfig) -> Script {
+    Script::new_builder()
+        .code_hash(MULTISIG_TYPE_HASH.pack())
+        .hash_type(ScriptHashType::Type.into())
+        .args(Bytes::from(cfg.hash160().0.to_vec()).pack())
+        .build()
+}
+
+fn build_multisig_unlockers(
+    key: secp256k1::SecretKey,
+    config: MultisigConfig,
+) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![key]);
+    let multisig_unlocker = SecpMultisigUnlocker::from((Box::new(signer) as Box<_>, config));
+    let multisig_script_id = ScriptId::new_type(MULTISIG_TYPE_HASH.clone());
+    let mut unlockers = HashMap::default();
+    unlockers.insert(
+        multisig_script_id,
+        Box::new(multisig_unlocker) as Box<dyn ScriptUnlocker>,
+    );
+    unlockers
+}
+
+fn init_context(contracts: Vec<(&[u8], bool)>, live_cells: Vec<(Script, Option<u64>)>) -> Context {
     let genesis_block: json_types::BlockView = serde_json::from_str(GENESIS_JSON).unwrap();
     let genesis_block: BlockView = genesis_block.into();
-    let mut ctx = Context::from_genesis_block(&genesis_block);
-
-    let sender = Script::new_builder()
-        .code_hash(SIGHASH_TYPE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
-        .args(Bytes::from(ACCOUNT1_ARG.0.to_vec()).pack())
-        .build();
-    let receiver = Script::new_builder()
-        .code_hash(SIGHASH_TYPE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
-        .args(Bytes::from(ACCOUNT2_ARG.0.to_vec()).pack())
-        .build();
-
-    for capacity_ckb in [100, 200, 300] {
-        ctx.add_simple_live_cell(
-            random_out_point(),
-            sender.clone(),
-            Some(capacity_ckb * ONE_CKB),
-        );
+    let mut ctx = Context::new(&genesis_block, contracts);
+    for (lock, capacity_opt) in live_cells {
+        ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
     }
+    ctx
+}
+
+#[test]
+fn test_transfer_from_sighash() {
+    let sender = build_sighash_script(ACCOUNT1_ARG);
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+    let ctx = init_context(
+        Vec::new(),
+        vec![
+            (sender.clone(), Some(100 * ONE_CKB)),
+            (sender.clone(), Some(200 * ONE_CKB)),
+            (sender.clone(), Some(300 * ONE_CKB)),
+        ],
+    );
+
     let output = CellOutput::new_builder()
         .capacity((120 * ONE_CKB).pack())
         .lock(receiver)
@@ -78,8 +114,7 @@ fn test_sighash_unlocker() {
 
     let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
-    let script_signer = SecpSighashScriptSigner::new(Box::new(signer));
-    let script_unlocker = SecpSighashUnlocker::new(script_signer);
+    let script_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
     let mut unlockers: HashMap<ScriptId, Box<dyn ScriptUnlocker>> = HashMap::default();
     unlockers.insert(
         ScriptId::new_type(SIGHASH_TYPE_HASH.clone()),
@@ -112,28 +147,8 @@ fn test_sighash_unlocker() {
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 
-fn build_multisig_unlockers(
-    key: secp256k1::SecretKey,
-    config: MultisigConfig,
-) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
-    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![key]);
-    let multisig_signer = SecpMultisigScriptSigner::new(Box::new(signer), config);
-    let multisig_unlocker = SecpMultisigUnlocker::new(multisig_signer);
-    let multisig_script_id = ScriptId::new_type(MULTISIG_TYPE_HASH.clone());
-    let mut unlockers = HashMap::default();
-    unlockers.insert(
-        multisig_script_id,
-        Box::new(multisig_unlocker) as Box<dyn ScriptUnlocker>,
-    );
-    unlockers
-}
-
 #[test]
-fn test_multisig_unlocker() {
-    let genesis_block: json_types::BlockView = serde_json::from_str(GENESIS_JSON).unwrap();
-    let genesis_block: BlockView = genesis_block.into();
-    let mut ctx = Context::from_genesis_block(&genesis_block);
-
+fn test_transfer_from_multisig() {
     let lock_args = vec![
         ACCOUNT0_ARG.clone(),
         ACCOUNT1_ARG.clone(),
@@ -141,24 +156,18 @@ fn test_multisig_unlocker() {
     ];
     let cfg = MultisigConfig::new_with(lock_args, 0, 2).unwrap();
 
-    let sender = Script::new_builder()
-        .code_hash(MULTISIG_TYPE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
-        .args(Bytes::from(cfg.hash160().0.to_vec()).pack())
-        .build();
-    let receiver = Script::new_builder()
-        .code_hash(SIGHASH_TYPE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
-        .args(Bytes::from(ACCOUNT2_ARG.0.to_vec()).pack())
-        .build();
+    let sender = build_multisig_script(&cfg);
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    for capacity_ckb in [100, 200, 300] {
-        ctx.add_simple_live_cell(
-            random_out_point(),
-            sender.clone(),
-            Some(capacity_ckb * ONE_CKB),
-        );
-    }
+    let ctx = init_context(
+        Vec::new(),
+        vec![
+            (sender.clone(), Some(100 * ONE_CKB)),
+            (sender.clone(), Some(200 * ONE_CKB)),
+            (sender.clone(), Some(300 * ONE_CKB)),
+        ],
+    );
+
     let output = CellOutput::new_builder()
         .capacity((120 * ONE_CKB).pack())
         .lock(receiver)
@@ -170,14 +179,14 @@ fn test_multisig_unlocker() {
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
-    let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
+    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes()).unwrap();
     let unlockers = build_multisig_unlockers(account0_key.clone(), cfg.clone());
     let mut tx = builder
         .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
         .unwrap();
 
     let mut locked_groups = None;
-    for key in [account0_key, account1_key] {
+    for key in [account0_key, account2_key] {
         let unlockers = build_multisig_unlockers(key, cfg.clone());
         let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
         tx = new_tx;
@@ -204,3 +213,170 @@ fn test_multisig_unlocker() {
     assert_eq!(witnesses[1].len(), 0);
     ctx.verify(tx, FEE_RATE).unwrap();
 }
+
+#[test]
+fn test_transfer_from_acp() {
+    let data_hash = H256::from(blake2b_256(ACP_BIN));
+    let sender = Script::new_builder()
+        .code_hash(data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .args(Bytes::from(ACCOUNT1_ARG.0.to_vec()).pack())
+        .build();
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+    let ctx = init_context(
+        vec![(ACP_BIN, true)],
+        vec![
+            (sender.clone(), Some(100 * ONE_CKB)),
+            (sender.clone(), Some(200 * ONE_CKB)),
+            (sender.clone(), Some(300 * ONE_CKB)),
+        ],
+    );
+
+    let output = CellOutput::new_builder()
+        .capacity((120 * ONE_CKB).pack())
+        .lock(receiver)
+        .build();
+    let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
+    let placeholder_witness = WitnessArgs::new_builder()
+        .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+        .build();
+    let balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+
+    let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
+    let script_unlocker = AcpUnlocker::from(Box::new(signer) as Box<_>);
+    let mut unlockers: HashMap<ScriptId, Box<dyn ScriptUnlocker>> = HashMap::default();
+    unlockers.insert(ScriptId::new_data1(data_hash), Box::new(script_unlocker));
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let (tx, locked_groups) = builder
+        .build_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+        .unwrap();
+
+    assert!(locked_groups.is_empty());
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 1);
+    assert_eq!(tx.inputs().len(), 2);
+    for out_point in tx.input_pts_iter() {
+        assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    assert_eq!(tx.output(0).unwrap(), output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 2);
+    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+    assert_eq!(witnesses[1].len(), 0);
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
+fn test_transfer_to_acp() {
+    let data_hash = H256::from(blake2b_256(ACP_BIN));
+    let sender = build_sighash_script(ACCOUNT1_ARG);
+    let receiver = Script::new_builder()
+        .code_hash(data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .args(Bytes::from(ACCOUNT2_ARG.0.to_vec()).pack())
+        .build();
+    let ctx = init_context(
+        vec![(ACP_BIN, true)],
+        vec![
+            (sender.clone(), Some(100 * ONE_CKB)),
+            (sender.clone(), Some(200 * ONE_CKB)),
+            (sender.clone(), Some(300 * ONE_CKB)),
+            (receiver.clone(), Some(99 * ONE_CKB)),
+        ],
+    );
+
+    let acp_receiver = AcpTransferReceiver::new(receiver.clone(), 150 * ONE_CKB);
+    let builder = AcpTransferBuilder::new(vec![acp_receiver]);
+    let placeholder_witness = WitnessArgs::new_builder()
+        .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+        .build();
+    let balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+
+    let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
+    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes()).unwrap();
+    let signer1 = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
+    let signer2 = SecpCkbRawKeySigner::new_with_secret_keys(vec![account2_key]);
+    let sighash_unlocker = AcpUnlocker::from(Box::new(signer1) as Box<_>);
+    let acp_unlocker = AcpUnlocker::from(Box::new(signer2) as Box<_>);
+    let mut unlockers: HashMap<ScriptId, Box<dyn ScriptUnlocker>> = HashMap::default();
+    unlockers.insert(
+        ScriptId::new_type(SIGHASH_TYPE_HASH),
+        Box::new(sighash_unlocker),
+    );
+    unlockers.insert(ScriptId::new_data1(data_hash), Box::new(acp_unlocker));
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let (tx, locked_groups) = builder
+        .build_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+        .unwrap();
+
+    assert!(locked_groups.is_empty());
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 2);
+    assert_eq!(tx.inputs().len(), 3);
+    let input_cells = vec![
+        CellOutput::new_builder()
+            .capacity((99 * ONE_CKB).pack())
+            .lock(receiver.clone())
+            .build(),
+        CellOutput::new_builder()
+            .capacity((100 * ONE_CKB).pack())
+            .lock(sender.clone())
+            .build(),
+        CellOutput::new_builder()
+            .capacity((200 * ONE_CKB).pack())
+            .lock(sender.clone())
+            .build(),
+    ];
+    for (idx, out_point) in tx.input_pts_iter().enumerate() {
+        assert_eq!(ctx.get_input(&out_point).unwrap().0, input_cells[idx]);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    let acp_output = CellOutput::new_builder()
+        .capacity(((99 + 150) * ONE_CKB).pack())
+        .lock(receiver)
+        .build();
+    assert_eq!(tx.output(0).unwrap(), acp_output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 3);
+    assert_eq!(witnesses[0].len(), 0);
+    assert_eq!(witnesses[1].len(), placeholder_witness.as_slice().len());
+    assert_eq!(witnesses[2].len(), 0);
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
+fn test_cheque_claim() {}
+
+#[test]
+fn test_cheque_withdraw() {}
+
+#[test]
+fn test_dao_deposit() {}
+
+#[test]
+fn test_dao_prepare() {}
+
+#[test]
+fn test_dao_withdraw() {}
+
+#[test]
+fn test_udt_issue() {}
+
+#[test]
+fn test_udt_transfer() {}

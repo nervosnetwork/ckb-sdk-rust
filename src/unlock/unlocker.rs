@@ -7,10 +7,10 @@ use ckb_types::{
 use thiserror::Error;
 
 use super::signer::{
-    AcpScriptSigner, ChequeAction, ChequeScriptSigner, ScriptSignError, ScriptSigner,
-    SecpMultisigScriptSigner, SecpSighashScriptSigner,
+    AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig, ScriptSignError,
+    ScriptSigner, SecpMultisigScriptSigner, SecpSighashScriptSigner,
 };
-use crate::traits::{TransactionDependencyError, TransactionDependencyProvider};
+use crate::traits::{Signer, TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptGroup;
 
 const CHEQUE_CLAIM_SINCE: u64 = 0;
@@ -133,6 +133,11 @@ impl SecpSighashUnlocker {
         SecpSighashUnlocker { signer }
     }
 }
+impl From<Box<dyn Signer>> for SecpSighashUnlocker {
+    fn from(signer: Box<dyn Signer>) -> SecpSighashUnlocker {
+        SecpSighashUnlocker::new(SecpSighashScriptSigner::new(signer))
+    }
+}
 impl ScriptUnlocker for SecpSighashUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
@@ -163,6 +168,11 @@ pub struct SecpMultisigUnlocker {
 impl SecpMultisigUnlocker {
     pub fn new(signer: SecpMultisigScriptSigner) -> SecpMultisigUnlocker {
         SecpMultisigUnlocker { signer }
+    }
+}
+impl From<(Box<dyn Signer>, MultisigConfig)> for SecpMultisigUnlocker {
+    fn from((signer, config): (Box<dyn Signer>, MultisigConfig)) -> SecpMultisigUnlocker {
+        SecpMultisigUnlocker::new(SecpMultisigScriptSigner::new(signer, config))
     }
 }
 impl ScriptUnlocker for SecpMultisigUnlocker {
@@ -200,6 +210,11 @@ pub struct AcpUnlocker {
 impl AcpUnlocker {
     pub fn new(signer: AcpScriptSigner) -> AcpUnlocker {
         AcpUnlocker { signer }
+    }
+}
+impl From<Box<dyn Signer>> for AcpUnlocker {
+    fn from(signer: Box<dyn Signer>) -> AcpUnlocker {
+        AcpUnlocker::new(AcpScriptSigner::new(signer))
     }
 }
 impl ScriptUnlocker for AcpUnlocker {
@@ -427,6 +442,11 @@ pub struct ChequeUnlocker {
 impl ChequeUnlocker {
     pub fn new(signer: ChequeScriptSigner) -> ChequeUnlocker {
         ChequeUnlocker { signer }
+    }
+}
+impl From<(Box<dyn Signer>, ChequeAction)> for ChequeUnlocker {
+    fn from((signer, action): (Box<dyn Signer>, ChequeAction)) -> ChequeUnlocker {
+        ChequeUnlocker::new(ChequeScriptSigner::new(signer, action))
     }
 }
 
