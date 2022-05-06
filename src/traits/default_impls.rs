@@ -373,7 +373,7 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
 }
 
 /// A signer use secp256k1 raw key, the id is `blake160(pubkey)`.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SecpCkbRawKeySigner {
     keys: HashMap<H160, secp256k1::SecretKey>,
 }

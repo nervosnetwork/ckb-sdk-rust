@@ -4,7 +4,7 @@ use std::fmt;
 use crate::constants::TYPE_ID_CODE_HASH;
 use ckb_types::{core::ScriptHashType, packed::Script, prelude::*, H256};
 
-#[derive(Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Clone, Hash, Eq, PartialEq, Debug, Default)]
 pub struct ScriptId {
     pub code_hash: H256,
     pub hash_type: ScriptHashType,

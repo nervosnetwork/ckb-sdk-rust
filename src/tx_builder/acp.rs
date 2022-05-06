@@ -17,10 +17,23 @@ pub struct AcpTransferReceiver {
     pub lock_script: Script,
     pub capacity: u64,
 }
+impl AcpTransferReceiver {
+    pub fn new(lock_script: Script, capacity: u64) -> AcpTransferReceiver {
+        AcpTransferReceiver {
+            lock_script,
+            capacity,
+        }
+    }
+}
 /// Transfer capacity to already exists acp cell, the type script and cell data
 /// will be copied.
 pub struct AcpTransferBuilder {
     pub receivers: Vec<AcpTransferReceiver>,
+}
+impl AcpTransferBuilder {
+    pub fn new(receivers: Vec<AcpTransferReceiver>) -> AcpTransferBuilder {
+        AcpTransferBuilder { receivers }
+    }
 }
 
 impl TxBuilder for AcpTransferBuilder {

@@ -28,6 +28,20 @@ pub struct ChequeClaimBuilder {
     pub sender_lock_script: Script,
 }
 
+impl ChequeClaimBuilder {
+    pub fn new(
+        inputs: Vec<CellInput>,
+        receiver_input: CellInput,
+        sender_lock_script: Script,
+    ) -> ChequeClaimBuilder {
+        ChequeClaimBuilder {
+            inputs,
+            receiver_input,
+            sender_lock_script,
+        }
+    }
+}
+
 impl TxBuilder for ChequeClaimBuilder {
     fn build_base(
         &self,
@@ -193,6 +207,20 @@ pub struct ChequeWithdrawBuilder {
 
     /// If `acp_script_id` provided, will withdraw to anyone-can-pay address
     pub acp_script_id: Option<ScriptId>,
+}
+
+impl ChequeWithdrawBuilder {
+    pub fn new(
+        out_points: Vec<OutPoint>,
+        sender_lock_script: Script,
+        acp_script_id: Option<ScriptId>,
+    ) -> ChequeWithdrawBuilder {
+        ChequeWithdrawBuilder {
+            out_points,
+            sender_lock_script,
+            acp_script_id,
+        }
+    }
 }
 
 impl TxBuilder for ChequeWithdrawBuilder {

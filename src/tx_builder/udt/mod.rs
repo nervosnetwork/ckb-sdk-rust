@@ -68,6 +68,16 @@ pub struct ReceiverBuildOutput {
 }
 
 impl UdtTargetReceiver {
+    pub fn new(action: TransferAction, lock_script: Script, amount: u128) -> UdtTargetReceiver {
+        UdtTargetReceiver {
+            action,
+            lock_script,
+            capacity: None,
+            amount,
+            extra_data: None,
+        }
+    }
+
     pub fn build(
         &self,
         type_script: &Script,

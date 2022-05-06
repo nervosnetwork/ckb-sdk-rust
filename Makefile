@@ -9,7 +9,7 @@ clippy:
 	cargo clippy --all --all-targets --all-features -- ${CLIPPY_OPTS}
 
 test:
-	RUST_BACKTRACE=full cargo test --all
+	RUST_BACKTRACE=full cargo test --all --all-features
 
 ci: fmt clippy test security-audit check-crates check-licenses
 

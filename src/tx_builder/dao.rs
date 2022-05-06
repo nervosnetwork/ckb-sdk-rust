@@ -108,11 +108,17 @@ pub struct DaoPrepareBuilder {
     pub items: Vec<DaoPrepareItem>,
 }
 impl DaoPrepareBuilder {
-    pub fn new(inputs: Vec<CellInput>) -> DaoPrepareBuilder {
+    pub fn new(items: Vec<DaoPrepareItem>) -> DaoPrepareBuilder {
+        DaoPrepareBuilder { items }
+    }
+}
+impl From<Vec<CellInput>> for DaoPrepareBuilder {
+    fn from(inputs: Vec<CellInput>) -> DaoPrepareBuilder {
         let items: Vec<_> = inputs.into_iter().map(DaoPrepareItem::from).collect();
         DaoPrepareBuilder { items }
     }
 }
+
 impl TxBuilder for DaoPrepareBuilder {
     fn build_base(
         &self,
@@ -210,7 +216,6 @@ pub struct DaoWithdrawItem {
     /// unlock action.
     pub init_witness: Option<WitnessArgs>,
 }
-
 /// Build a Nervos DAO withdraw Phase 2 transaction
 #[derive(Debug, Clone)]
 pub struct DaoWithdrawBuilder {

@@ -10,6 +10,13 @@ pub mod types;
 pub mod unlock;
 pub mod util;
 
+#[cfg(feature = "test")]
+pub mod test_util;
+
+#[cfg(feature = "test")]
+#[cfg(test)]
+mod tests;
+
 pub use chain::{calc_max_mature_number, GenesisInfo, ParseGenesisInfoError};
 pub use rpc::{CkbRpcClient, IndexerRpcClient, RpcError};
 pub use types::{
