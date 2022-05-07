@@ -12,6 +12,7 @@ test:
 	RUST_BACKTRACE=full cargo test --all --all-features
 
 ci: fmt clippy test security-audit check-crates check-licenses
+	bash check-cargotoml.sh
 
 security-audit: ## Use cargo-deny to audit Cargo.lock for crates with security vulnerabilities.
 	cargo deny check --hide-inclusion-graph --show-stats advisories sources
