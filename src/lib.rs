@@ -1,4 +1,3 @@
-pub mod bip32;
 pub mod constants;
 pub mod pubsub;
 pub mod rpc;
