@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use ckb_hash::{blake2b_256, new_blake2b};
 use ckb_types::{
     bytes::{Bytes, BytesMut},
@@ -7,7 +9,7 @@ use ckb_types::{
     prelude::*,
     H160,
 };
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::constants::MULTISIG_TYPE_HASH;
@@ -185,7 +187,7 @@ impl ScriptSigner for SecpSighashScriptSigner {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Hash)]
+#[derive(Eq, PartialEq, Clone, Hash, Serialize, Deserialize)]
 pub struct MultisigConfig {
     sighash_addresses: Vec<H160>,
     require_first_n: u8,

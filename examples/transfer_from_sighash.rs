@@ -11,7 +11,7 @@ use ckb_sdk::{
         DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
     },
     tx_builder::{transfer::CapacityTransferBuilder, CapacityBalancer, TxBuilder},
-    unlock::{ScriptUnlocker, SecpSighashScriptSigner, SecpSighashUnlocker},
+    unlock::{ScriptUnlocker, SecpSighashUnlocker},
     Address, GenesisInfo, HumanCapacity, ScriptId, SECP256K1,
 };
 use ckb_types::{
@@ -89,8 +89,7 @@ fn build_transfer_tx(
 ) -> Result<TransactionView, Box<dyn StdErr>> {
     // Build ScriptUnlocker
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_key]);
-    let sighash_signer = SecpSighashScriptSigner::new(Box::new(signer));
-    let sighash_unlocker = SecpSighashUnlocker::new(sighash_signer);
+    let sighash_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
     let sighash_script_id = ScriptId::new_type(SIGHASH_TYPE_HASH.clone());
     let mut unlockers = HashMap::default();
     unlockers.insert(
@@ -126,7 +125,7 @@ fn build_transfer_tx(
         .capacity(args.capacity.0.pack())
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
-    let (tx, locked_groups) = builder.build_unlocked(
+    let (tx, still_locked_groups) = builder.build_unlocked(
         &mut cell_collector,
         &cell_dep_resolver,
         &header_dep_resolver,
@@ -134,6 +133,6 @@ fn build_transfer_tx(
         &balancer,
         &unlockers,
     )?;
-    assert!(locked_groups.is_empty());
+    assert!(still_locked_groups.is_empty());
     Ok(tx)
 }
