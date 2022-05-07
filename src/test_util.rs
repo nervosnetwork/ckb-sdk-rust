@@ -10,11 +10,12 @@ use crate::{
         SIGHASH_TYPE_HASH,
     },
     traits::{
-        CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
-        LiveCell, TransactionDependencyError, TransactionDependencyProvider,
+        CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions,
+        DefaultCellDepResolver, HeaderDepResolver, LiveCell, TransactionDependencyError,
+        TransactionDependencyProvider,
     },
     tx_builder::tx_fee,
-    GenesisInfo, ScriptId,
+    ScriptId,
 };
 use ckb_chain_spec::consensus::ConsensusBuilder;
 use ckb_hash::blake2b_256;
@@ -75,20 +76,32 @@ impl Context {
     pub fn new(block: &BlockView, contracts: Vec<(&[u8], bool)>) -> Context {
         let block_number: u64 = block.number();
         assert_eq!(block_number, 0);
-        let genesis_info = GenesisInfo::from_block(block).expect("genesis info");
+        let cell_dep_resolver = DefaultCellDepResolver::from_genesis(block).expect("genesis info");
         let block_hash = block.hash();
         let mut ctx = Context::default();
         for (cell_dep, (tx_idx, output_idx)) in [
-            (genesis_info.sighash_dep(), SIGHASH_GROUP_OUTPUT_LOC),
-            (genesis_info.multisig_dep(), MULTISIG_GROUP_OUTPUT_LOC),
+            (
+                cell_dep_resolver.sighash_dep().unwrap().clone().0,
+                SIGHASH_GROUP_OUTPUT_LOC,
+            ),
+            (
+                cell_dep_resolver.multisig_dep().unwrap().clone().0,
+                MULTISIG_GROUP_OUTPUT_LOC,
+            ),
         ] {
             let tx = block.transaction(tx_idx).expect("get tx");
             let (output, data) = tx.output_with_data(output_idx).expect("get output+data");
             ctx.add_cell_dep(cell_dep, output, data, Some(block_hash.clone()));
         }
         for (code_hash, cell_dep) in [
-            (SIGHASH_TYPE_HASH, genesis_info.sighash_dep()),
-            (MULTISIG_TYPE_HASH, genesis_info.multisig_dep()),
+            (
+                SIGHASH_TYPE_HASH,
+                cell_dep_resolver.sighash_dep().unwrap().0.clone(),
+            ),
+            (
+                MULTISIG_TYPE_HASH,
+                cell_dep_resolver.multisig_dep().unwrap().0.clone(),
+            ),
         ] {
             ctx.add_cell_dep_map(ScriptId::new_type(code_hash), cell_dep);
         }

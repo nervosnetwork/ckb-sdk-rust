@@ -26,6 +26,7 @@ pub fn zeroize_slice(data: &mut [u8]) {
     }
 }
 
+// Calculate max mature block number
 pub fn calc_max_mature_number(
     tip_epoch: EpochNumberWithFraction,
     max_mature_epoch: Option<(u64, u64)>,
@@ -137,6 +138,7 @@ pub fn serialize_signature(signature: &secp256k1::recovery::RecoverableSignature
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::CELLBASE_MATURITY;
     use ckb_dao_utils::pack_dao_data;
     use ckb_types::{
         bytes::Bytes,
@@ -218,5 +220,41 @@ mod tests {
             Capacity::bytes(data.len()).unwrap().as_u64(),
         );
         assert_eq!(result, 100_000_000_009_999);
+    }
+
+    #[test]
+    fn test_calc_max_mature_number() {
+        assert_eq!(
+            calc_max_mature_number(
+                EpochNumberWithFraction::new(3, 86, 1800),
+                Some((0, 3)),
+                CELLBASE_MATURITY,
+            ),
+            0
+        );
+        assert_eq!(
+            calc_max_mature_number(
+                EpochNumberWithFraction::new(4, 86, 1800),
+                Some((0, 1000)),
+                CELLBASE_MATURITY,
+            ),
+            47
+        );
+        assert_eq!(
+            calc_max_mature_number(
+                EpochNumberWithFraction::new(4, 0, 1800),
+                Some((0, 1000)),
+                CELLBASE_MATURITY,
+            ),
+            0
+        );
+        assert_eq!(
+            calc_max_mature_number(
+                EpochNumberWithFraction::new(5, 900, 1800),
+                Some((2000, 1000)),
+                CELLBASE_MATURITY,
+            ),
+            2500
+        );
     }
 }

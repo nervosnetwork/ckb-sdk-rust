@@ -5,18 +5,23 @@ use std::time::Duration;
 
 use lru::LruCache;
 use parking_lot::Mutex;
+use thiserror::Error;
 
 use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types as json_types;
 use ckb_types::{
     bytes::Bytes,
-    core::{HeaderView, ScriptHashType, TransactionView},
+    core::{BlockView, DepType, HeaderView, TransactionView},
     packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction},
     prelude::*,
     H160,
 };
 
 use super::{OffchainCellCollector, OffchainCellDepResolver};
+use crate::constants::{
+    DAO_OUTPUT_LOC, DAO_TYPE_HASH, MULTISIG_GROUP_OUTPUT_LOC, MULTISIG_OUTPUT_LOC,
+    MULTISIG_TYPE_HASH, SIGHASH_GROUP_OUTPUT_LOC, SIGHASH_OUTPUT_LOC, SIGHASH_TYPE_HASH,
+};
 use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
 use crate::rpc::{CkbRpcClient, IndexerRpcClient};
 use crate::traits::{
@@ -26,37 +31,140 @@ use crate::traits::{
 };
 use crate::types::ScriptId;
 use crate::util::{get_max_mature_number, serialize_signature, zeroize_privkey};
-use crate::GenesisInfo;
 use crate::SECP256K1;
+use ckb_resource::{
+    CODE_HASH_DAO, CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
+    CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL,
+};
+
+/// Parse Genesis Info errors
+#[derive(Error, Debug)]
+pub enum ParseGenesisInfoError {
+    #[error("invalid block number, expected: 0, got: `{0}`")]
+    InvalidBlockNumber(u64),
+    #[error("data not found: `{0}`")]
+    DataHashNotFound(String),
+    #[error("type not found: `{0}`")]
+    TypeHashNotFound(String),
+}
 
 /// A cell_dep resolver use genesis info resolve system scripts and can register more cell_dep info.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct DefaultCellDepResolver {
     offchain: OffchainCellDepResolver,
 }
 impl DefaultCellDepResolver {
-    pub fn new(info: &GenesisInfo) -> DefaultCellDepResolver {
+    pub fn from_genesis(
+        genesis_block: &BlockView,
+    ) -> Result<DefaultCellDepResolver, ParseGenesisInfoError> {
+        let header = genesis_block.header();
+        if header.number() != 0 {
+            return Err(ParseGenesisInfoError::InvalidBlockNumber(header.number()));
+        }
+        let mut sighash_data_hash = None;
+        let mut sighash_type_hash = None;
+        let mut multisig_data_hash = None;
+        let mut multisig_type_hash = None;
+        let mut dao_data_hash = None;
+        let mut dao_type_hash = None;
+        let out_points = genesis_block
+            .transactions()
+            .iter()
+            .enumerate()
+            .map(|(tx_index, tx)| {
+                tx.outputs()
+                    .into_iter()
+                    .zip(tx.outputs_data().into_iter())
+                    .enumerate()
+                    .map(|(index, (output, data))| {
+                        if tx_index == SIGHASH_OUTPUT_LOC.0 && index == SIGHASH_OUTPUT_LOC.1 {
+                            sighash_type_hash = output
+                                .type_()
+                                .to_opt()
+                                .map(|script| script.calc_script_hash());
+                            let data_hash = CellOutput::calc_data_hash(&data.raw_data());
+                            if data_hash != CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL.pack() {
+                                log::error!(
+                                    "System sighash script code hash error! found: {}, expected: {}",
+                                    data_hash,
+                                    CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL,
+                                );
+                            }
+                            sighash_data_hash = Some(data_hash);
+                        }
+                        if tx_index == MULTISIG_OUTPUT_LOC.0 && index == MULTISIG_OUTPUT_LOC.1 {
+                            multisig_type_hash = output
+                                .type_()
+                                .to_opt()
+                                .map(|script| script.calc_script_hash());
+                            let data_hash = CellOutput::calc_data_hash(&data.raw_data());
+                            if data_hash != CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL.pack() {
+                                log::error!(
+                                    "System multisig script code hash error! found: {}, expected: {}",
+                                    data_hash,
+                                    CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
+                                );
+                            }
+                            multisig_data_hash = Some(data_hash);
+                        }
+                        if tx_index == DAO_OUTPUT_LOC.0 && index == DAO_OUTPUT_LOC.1 {
+                            dao_type_hash = output
+                                .type_()
+                                .to_opt()
+                                .map(|script| script.calc_script_hash());
+                            let data_hash = CellOutput::calc_data_hash(&data.raw_data());
+                            if data_hash != CODE_HASH_DAO.pack() {
+                                log::error!(
+                                    "System dao script code hash error! found: {}, expected: {}",
+                                    data_hash,
+                                    CODE_HASH_DAO,
+                                );
+                            }
+                            dao_data_hash = Some(data_hash);
+                        }
+                        OutPoint::new(tx.hash(), index as u32)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        let sighash_type_hash = sighash_type_hash
+            .ok_or_else(|| "No type hash(sighash) found in txs[0][1]".to_owned())
+            .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
+        let multisig_type_hash = multisig_type_hash
+            .ok_or_else(|| "No type hash(multisig) found in txs[0][4]".to_owned())
+            .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
+        let dao_type_hash = dao_type_hash
+            .ok_or_else(|| "No type hash(dao) found in txs[0][2]".to_owned())
+            .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
+
+        let sighash_dep = CellDep::new_builder()
+            .out_point(out_points[SIGHASH_GROUP_OUTPUT_LOC.0][SIGHASH_GROUP_OUTPUT_LOC.1].clone())
+            .dep_type(DepType::DepGroup.into())
+            .build();
+        let multisig_dep = CellDep::new_builder()
+            .out_point(out_points[MULTISIG_GROUP_OUTPUT_LOC.0][MULTISIG_GROUP_OUTPUT_LOC.1].clone())
+            .dep_type(DepType::DepGroup.into())
+            .build();
+        let dao_dep = CellDep::new_builder()
+            .out_point(out_points[DAO_OUTPUT_LOC.0][DAO_OUTPUT_LOC.1].clone())
+            .build();
+
         let mut items = HashMap::default();
         items.insert(
-            ScriptId::new(info.sighash_type_hash().unpack(), ScriptHashType::Type),
-            (
-                info.sighash_dep(),
-                "Secp256k1 blake160 sighash all".to_string(),
-            ),
+            ScriptId::new_type(sighash_type_hash.unpack()),
+            (sighash_dep, "Secp256k1 blake160 sighash all".to_string()),
         );
         items.insert(
-            ScriptId::new(info.multisig_type_hash().unpack(), ScriptHashType::Type),
-            (
-                info.multisig_dep(),
-                "Secp256k1 blake160 multisig all".to_string(),
-            ),
+            ScriptId::new_type(multisig_type_hash.unpack()),
+            (multisig_dep, "Secp256k1 blake160 multisig all".to_string()),
         );
         items.insert(
-            ScriptId::new(info.dao_type_hash().unpack(), ScriptHashType::Type),
-            (info.dao_dep(), "Nervos DAO".to_string()),
+            ScriptId::new_type(dao_type_hash.unpack()),
+            (dao_dep, "Nervos DAO".to_string()),
         );
         let offchain = OffchainCellDepResolver { items };
-        DefaultCellDepResolver { offchain }
+        Ok(DefaultCellDepResolver { offchain })
     }
     pub fn insert(
         &mut self,
@@ -75,7 +183,17 @@ impl DefaultCellDepResolver {
     pub fn get(&self, script_id: &ScriptId) -> Option<&(CellDep, String)> {
         self.offchain.items.get(script_id)
     }
+    pub fn sighash_dep(&self) -> Option<&(CellDep, String)> {
+        self.get(&ScriptId::new_type(SIGHASH_TYPE_HASH))
+    }
+    pub fn multisig_dep(&self) -> Option<&(CellDep, String)> {
+        self.get(&ScriptId::new_type(MULTISIG_TYPE_HASH))
+    }
+    pub fn dao_dep(&self) -> Option<&(CellDep, String)> {
+        self.get(&ScriptId::new_type(DAO_TYPE_HASH))
+    }
 }
+
 impl CellDepResolver for DefaultCellDepResolver {
     fn resolve(&self, script: &Script) -> Option<CellDep> {
         self.offchain.resolve(script)
