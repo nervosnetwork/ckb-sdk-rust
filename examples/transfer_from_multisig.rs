@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 /// Transfer some CKB from one multisig(without since) address to other address
 /// # Example:
-///     ./target/debug/examples/transfer_from_multisig gen-tx \
+///     ./target/debug/examples/transfer_from_multisig gen \
 ///       --receiver <address> \
 ///       --capacity 120.0 \
 ///       --require-first-n 0 \
@@ -39,11 +39,11 @@ use serde::{Deserialize, Serialize};
 ///       --sighash-address <address> \
 ///       --tx-file tx.json
 ///
-///     ./target/debug/examples/transfer_from_multisig sign-tx \
+///     ./target/debug/examples/transfer_from_multisig sign \
 ///       --sender-key <key-hex> \
 ///       --tx-file tx.json
 ///
-///     ./target/debug/examples/transfer_from_multisig send-tx --tx-file tx.json
+///     ./target/debug/examples/transfer_from_multisig send --tx-file tx.json
 ///
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -106,11 +106,11 @@ struct SignTxArgs {
 #[derive(Subcommand)]
 enum Commands {
     /// Generate the transaction
-    GenTx(GenTxArgs),
+    Gen(GenTxArgs),
     /// Sign the transaction
-    SignTx(SignTxArgs),
+    Sign(SignTxArgs),
     /// Send the transaction
-    SendTx {
+    Send {
         /// The transaction info file (.json)
         #[clap(long, value_name = "PATH")]
         tx_file: PathBuf,
@@ -131,7 +131,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     // Parse arguments
     let cli = Cli::parse();
     match cli.command {
-        Commands::GenTx(args) => {
+        Commands::Gen(args) => {
             let multisig_config = {
                 if args.sighash_address.is_empty() {
                     return Err("Must have at least one sighash_address".to_string().into());
@@ -158,7 +158,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             };
             fs::write(&args.tx_file, serde_json::to_string_pretty(&tx_info)?)?;
         }
-        Commands::SignTx(args) => {
+        Commands::Sign(args) => {
             if args.sender_key.is_empty() {
                 return Err("sender key is missing".to_string().into());
             }
@@ -204,7 +204,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             };
             fs::write(&args.tx_file, serde_json::to_string_pretty(&tx_info)?)?;
         }
-        Commands::SendTx { tx_file, ckb_rpc } => {
+        Commands::Send { tx_file, ckb_rpc } => {
             // Send transaction
             let tx_info: TxInfo = serde_json::from_slice(&fs::read(&tx_file)?)?;
             println!(
