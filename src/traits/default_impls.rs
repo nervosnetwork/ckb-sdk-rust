@@ -313,7 +313,7 @@ impl CellCollector for DefaultCellCollector {
         let max_mature_number = get_max_mature_number(&mut self.ckb_client)
             .map_err(|err| CellCollectorError::Internal(err.into()))?;
 
-        self.offchain.max_mature_number = Some(max_mature_number);
+        self.offchain.max_mature_number = max_mature_number;
         let (mut cells, rest_cells, mut total_capacity) = self.offchain.collect(query);
 
         if total_capacity < query.min_total_capacity {
@@ -337,7 +337,7 @@ impl CellCollector for DefaultCellCollector {
                 }
                 for cell in page.objects {
                     let live_cell = LiveCell::from(cell);
-                    if !query.match_cell(&live_cell, Some(max_mature_number))
+                    if !query.match_cell(&live_cell, max_mature_number)
                         || locked_cells.contains(&(
                             live_cell.out_point.tx_hash().unpack(),
                             live_cell.out_point.index().unpack(),

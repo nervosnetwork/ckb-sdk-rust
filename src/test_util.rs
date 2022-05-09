@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 
+use ckb_jsonrpc_types::Serialize;
 use rand::{thread_rng, Rng};
 use thiserror::Error;
 
@@ -474,7 +475,7 @@ impl CellCollector for LiveCellsContext {
                 block_number,
                 tx_index: 0,
             };
-            if query.match_cell(&live_cell, None) {
+            if query.match_cell(&live_cell, 0) {
                 total_capacity += capacity;
                 cells.push(live_cell);
                 if apply_changes {
@@ -523,4 +524,25 @@ pub fn random_out_point() -> OutPoint {
         buf.pack()
     };
     OutPoint::new(tx_hash, 0)
+}
+
+#[derive(serde::Serialize)]
+pub struct MockRpcResult<T> {
+    id: u64,
+    jsonrpc: String,
+    result: T,
+}
+
+impl<T: Serialize> MockRpcResult<T> {
+    pub fn new(result: T) -> Self {
+        Self {
+            id: 42,
+            jsonrpc: "2.0".to_string(),
+            result,
+        }
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(&self).unwrap()
+    }
 }

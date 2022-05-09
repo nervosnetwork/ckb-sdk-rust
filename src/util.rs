@@ -1,4 +1,4 @@
-use std::{ptr, sync::atomic};
+use std::{convert::TryInto, ptr, sync::atomic};
 
 use ckb_dao_utils::extract_dao_data;
 use ckb_types::{
@@ -26,28 +26,6 @@ pub fn zeroize_slice(data: &mut [u8]) {
     }
 }
 
-// Calculate max mature block number
-pub fn calc_max_mature_number(
-    tip_epoch: EpochNumberWithFraction,
-    max_mature_epoch: Option<(u64, u64)>,
-    cellbase_maturity: EpochNumberWithFraction,
-) -> u64 {
-    if tip_epoch.to_rational() < cellbase_maturity.to_rational() {
-        0
-    } else if let Some((start_number, length)) = max_mature_epoch {
-        let epoch_delta = tip_epoch.to_rational() - cellbase_maturity.to_rational();
-        let index_bytes: [u8; 32] = ((epoch_delta.clone() - epoch_delta.into_u256())
-            * U256::from(length))
-        .into_u256()
-        .to_le_bytes();
-        let mut index_bytes_u64 = [0u8; 8];
-        index_bytes_u64.copy_from_slice(&index_bytes[0..8]);
-        u64::from_le_bytes(index_bytes_u64) + start_number
-    } else {
-        0
-    }
-}
-
 pub fn get_max_mature_number(rpc_client: &mut CkbRpcClient) -> Result<u64, String> {
     let cellbase_maturity = EpochNumberWithFraction::from_full_value(
         rpc_client
@@ -60,21 +38,38 @@ pub fn get_max_mature_number(rpc_client: &mut CkbRpcClient) -> Result<u64, Strin
         .get_tip_header()
         .map(|header| EpochNumberWithFraction::from_full_value(header.inner.epoch.value()))
         .map_err(|err| err.to_string())?;
-    let tip_epoch_number = tip_epoch.number();
-    if tip_epoch_number < cellbase_maturity.number() {
+
+    let tip_epoch_rational = tip_epoch.to_rational();
+    let cellbase_maturity_rational = cellbase_maturity.to_rational();
+
+    if tip_epoch_rational < cellbase_maturity_rational {
         // No cellbase live cell is mature
         Ok(0)
     } else {
+        let difference = tip_epoch_rational - cellbase_maturity_rational;
+        let rounds_down_difference = difference.clone().into_u256();
+        let difference_delta = difference - rounds_down_difference.clone();
+
+        let epoch_number = u64::from_le_bytes(
+            rounds_down_difference.to_le_bytes()[..8]
+                .try_into()
+                .expect("should be u64"),
+        )
+        .into();
         let max_mature_epoch = rpc_client
-            .get_epoch_by_number((tip_epoch_number - cellbase_maturity.number()).into())
+            .get_epoch_by_number(epoch_number)
             .map_err(|err| err.to_string())?
             .ok_or_else(|| "Can not get epoch less than current epoch number".to_string())?;
-        let start_number = max_mature_epoch.start_number;
-        let length = max_mature_epoch.length;
-        Ok(calc_max_mature_number(
-            tip_epoch,
-            Some((start_number.value(), length.value())),
-            cellbase_maturity,
+
+        let max_mature_block_number = (difference_delta
+            * U256::from(max_mature_epoch.length.value())
+            + U256::from(max_mature_epoch.start_number.value()))
+        .into_u256();
+
+        Ok(u64::from_le_bytes(
+            max_mature_block_number.to_le_bytes()[..8]
+                .try_into()
+                .expect("should be u64"),
         ))
     }
 }
@@ -138,12 +133,15 @@ pub fn serialize_signature(signature: &secp256k1::recovery::RecoverableSignature
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::CELLBASE_MATURITY;
+    use crate::test_util::MockRpcResult;
+    use ckb_chain_spec::consensus::ConsensusBuilder;
     use ckb_dao_utils::pack_dao_data;
+    use ckb_jsonrpc_types::{Consensus, EpochView, HeaderView};
     use ckb_types::{
         bytes::Bytes,
         core::{capacity_bytes, EpochNumberWithFraction, HeaderBuilder},
     };
+    use httpmock::prelude::*;
 
     #[test]
     fn test_minimal_unlock_point() {
@@ -223,38 +221,128 @@ mod tests {
     }
 
     #[test]
-    fn test_calc_max_mature_number() {
-        assert_eq!(
-            calc_max_mature_number(
-                EpochNumberWithFraction::new(3, 86, 1800),
-                Some((0, 3)),
-                CELLBASE_MATURITY,
-            ),
-            0
-        );
-        assert_eq!(
-            calc_max_mature_number(
-                EpochNumberWithFraction::new(4, 86, 1800),
-                Some((0, 1000)),
-                CELLBASE_MATURITY,
-            ),
-            47
-        );
-        assert_eq!(
-            calc_max_mature_number(
-                EpochNumberWithFraction::new(4, 0, 1800),
-                Some((0, 1000)),
-                CELLBASE_MATURITY,
-            ),
-            0
-        );
-        assert_eq!(
-            calc_max_mature_number(
-                EpochNumberWithFraction::new(5, 900, 1800),
-                Some((2000, 1000)),
-                CELLBASE_MATURITY,
-            ),
-            2500
-        );
+    fn test_get_max_mature_number() {
+        {
+            // cellbase maturity is 4, tip epoch is 3(200/400), so the max mature block number is 0
+            let server = MockServer::start();
+            let consensus: Consensus = ConsensusBuilder::default()
+                .cellbase_maturity(EpochNumberWithFraction::new(4, 0, 1))
+                .build()
+                .into();
+            server.mock(|when, then| {
+                when.method(POST).path("/").body_contains("get_consensus");
+                then.status(200)
+                    .body(MockRpcResult::new(consensus).to_json());
+            });
+
+            let tip_header: HeaderView = HeaderBuilder::default()
+                .epoch(
+                    EpochNumberWithFraction::new(3, 200, 400)
+                        .full_value()
+                        .pack(),
+                )
+                .build()
+                .into();
+            server.mock(|when, then| {
+                when.method(POST).path("/").body_contains("get_tip_header");
+                then.status(200)
+                    .body(MockRpcResult::new(tip_header).to_json());
+            });
+
+            let mut rpc_client = CkbRpcClient::new(server.base_url().as_str());
+            assert_eq!(0, get_max_mature_number(&mut rpc_client).unwrap());
+        }
+
+        {
+            // cellbase maturity is 3(1/3), tip epoch is 3(300/600), epoch 3 starts at block 1800
+            // so the max mature block number is 1800 + (600 * 1 / 6) = 1900
+            let server = MockServer::start();
+            let consensus: Consensus = ConsensusBuilder::default()
+                .cellbase_maturity(EpochNumberWithFraction::new(3, 1, 3))
+                .build()
+                .into();
+            server.mock(|when, then| {
+                when.method(POST).path("/").body_contains("get_consensus");
+                then.status(200)
+                    .body(MockRpcResult::new(consensus).to_json());
+            });
+
+            let tip_header: HeaderView = HeaderBuilder::default()
+                .epoch(
+                    EpochNumberWithFraction::new(3, 300, 600)
+                        .full_value()
+                        .pack(),
+                )
+                .build()
+                .into();
+            server.mock(|when, then| {
+                when.method(POST).path("/").body_contains("get_tip_header");
+                then.status(200)
+                    .body(MockRpcResult::new(tip_header).to_json());
+            });
+
+            let epoch3: EpochView = EpochView {
+                number: 3.into(),
+                start_number: 1800.into(),
+                length: 600.into(),
+                compact_target: 0.into(),
+            };
+
+            server.mock(|when, then| {
+                when.method(POST)
+                    .path("/")
+                    .body_contains("get_epoch_by_number");
+                then.status(200).body(MockRpcResult::new(epoch3).to_json());
+            });
+
+            let mut rpc_client = CkbRpcClient::new(server.base_url().as_str());
+            assert_eq!(1900, get_max_mature_number(&mut rpc_client).unwrap());
+        }
+
+        {
+            // cellbase maturity is 3(2/3), tip epoch is 105(300/600), epoch 101 starts at block 150000 and length is 1800
+            // so the max mature block number is 150000 + (1800 * 5 / 6) = 151500
+            let server = MockServer::start();
+            let consensus: Consensus = ConsensusBuilder::default()
+                .cellbase_maturity(EpochNumberWithFraction::new(3, 2, 3))
+                .build()
+                .into();
+            server.mock(|when, then| {
+                when.method(POST).path("/").body_contains("get_consensus");
+                then.status(200)
+                    .body(MockRpcResult::new(consensus).to_json());
+            });
+
+            let tip_header: HeaderView = HeaderBuilder::default()
+                .epoch(
+                    EpochNumberWithFraction::new(105, 300, 600)
+                        .full_value()
+                        .pack(),
+                )
+                .build()
+                .into();
+            server.mock(|when, then| {
+                when.method(POST).path("/").body_contains("get_tip_header");
+                then.status(200)
+                    .body(MockRpcResult::new(tip_header).to_json());
+            });
+
+            let epoch3: EpochView = EpochView {
+                number: 101.into(),
+                start_number: 150000.into(),
+                length: 1800.into(),
+                compact_target: 0.into(),
+            };
+
+            server.mock(|when, then| {
+                when.method(POST)
+                    .path("/")
+                    .body_contains("get_epoch_by_number");
+                then.status(200).body(MockRpcResult::new(epoch3).to_json());
+            });
+
+            let mut rpc_client = CkbRpcClient::new(server.base_url().as_str());
+            assert_eq!(151500, get_max_mature_number(&mut rpc_client).unwrap());
+        }
     }
 }

@@ -261,7 +261,7 @@ impl CellQueryOptions {
     pub fn new_type(primary_script: Script) -> CellQueryOptions {
         CellQueryOptions::new(primary_script, PrimaryScriptType::Type)
     }
-    pub fn match_cell(&self, cell: &LiveCell, max_mature_number: Option<u64>) -> bool {
+    pub fn match_cell(&self, cell: &LiveCell, max_mature_number: u64) -> bool {
         fn extract_raw_data(script: &Script) -> Vec<u8> {
             [
                 script.code_hash().as_slice(),
@@ -334,18 +334,12 @@ impl CellQueryOptions {
                 return false;
             }
         }
-        if let Some(max_mature_number) = max_mature_number {
-            let cell_is_mature = is_mature(cell, max_mature_number);
-            match self.maturity {
-                MaturityOption::Mature if cell_is_mature => {}
-                MaturityOption::Immature if !cell_is_mature => {}
-                MaturityOption::Both => {}
-                // Skip this live cell
-                _ => return false,
-            }
+        let cell_is_mature = is_mature(cell, max_mature_number);
+        match self.maturity {
+            MaturityOption::Mature => cell_is_mature,
+            MaturityOption::Immature => !cell_is_mature,
+            MaturityOption::Both => true,
         }
-
-        true
     }
 }
 pub trait CellCollector {
