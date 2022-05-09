@@ -57,14 +57,14 @@ impl HeaderDepResolver for OffchainHeaderDepResolver {
 pub struct OffchainCellCollector {
     pub locked_cells: HashSet<(H256, u32)>,
     pub live_cells: Vec<LiveCell>,
-    pub max_mature_number: Option<u64>,
+    pub max_mature_number: u64,
 }
 
 impl OffchainCellCollector {
     pub fn new(
         locked_cells: HashSet<(H256, u32)>,
         live_cells: Vec<LiveCell>,
-        max_mature_number: Option<u64>,
+        max_mature_number: u64,
     ) -> OffchainCellCollector {
         OffchainCellCollector {
             locked_cells,
