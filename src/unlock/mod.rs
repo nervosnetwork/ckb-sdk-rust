@@ -6,6 +6,6 @@ pub use signer::{
     ScriptSignError, ScriptSigner, SecpMultisigScriptSigner, SecpSighashScriptSigner,
 };
 pub use unlocker::{
-    AcpUnlocker, ChequeUnlocker, ScriptUnlocker, SecpMultisigUnlocker, SecpSighashUnlocker,
-    UnlockError,
+    fill_witness_lock, reset_witness_lock, AcpUnlocker, ChequeUnlocker, ScriptUnlocker,
+    SecpMultisigUnlocker, SecpSighashUnlocker, UnlockError,
 };
