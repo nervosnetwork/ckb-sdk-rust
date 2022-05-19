@@ -217,10 +217,10 @@ impl AddressPayload {
 
 impl fmt::Debug for AddressPayload {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let hash_type = if self.hash_type() == ScriptHashType::Type {
-            "type"
-        } else {
-            "data"
+        let hash_type = match self.hash_type() {
+            ScriptHashType::Type => "type",
+            ScriptHashType::Data => "data",
+            ScriptHashType::Data1 => "data1",
         };
         f.debug_struct("AddressPayload")
             .field("hash_type", &hash_type)
@@ -312,10 +312,10 @@ impl Address {
 
 impl fmt::Debug for Address {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let hash_type = if self.payload.hash_type() == ScriptHashType::Type {
-            "type"
-        } else {
-            "data"
+        let hash_type = match self.payload.hash_type() {
+            ScriptHashType::Type => "type",
+            ScriptHashType::Data => "data",
+            ScriptHashType::Data1 => "data1",
         };
         f.debug_struct("Address")
             .field("network", &self.network)
@@ -767,5 +767,18 @@ mod test {
                 Err("ckb2021 format full address must use bech32m encoding".to_string())
             );
         }
+    }
+
+    #[test]
+    fn test_address_debug() {
+        let payload = AddressPayload::Full {
+            hash_type: ScriptHashType::Data1,
+            code_hash: h256!("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8")
+                .pack(),
+            args: Bytes::from("abcd"),
+        };
+        let address = Address::new(NetworkType::Mainnet, payload.clone(), true);
+        assert_eq!(format!("{:?}", payload), "AddressPayload { hash_type: \"data1\", code_hash: Byte32(0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8), args: b\"abcd\" }");
+        assert_eq!(format!("{:?}", address), "Address { network: Mainnet, hash_type: \"data1\", code_hash: Byte32(0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8), args: b\"abcd\", is_new: true }");
     }
 }
