@@ -737,10 +737,22 @@ mod test {
     #[test]
     fn test_invalid_new_address() {
         // INVALID bech32 encoding
-        {
+        for (hash_type, expected_addr) in [
+            (
+                ScriptHashType::Type,
+                "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq20k2lzuhgvrgacv4tmr88",
+            ),
+            (
+                ScriptHashType::Data,
+                "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqz0k2lzuhgvrgacvhcym08",
+            ),
+            (
+                ScriptHashType::Data1,
+                "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqj0k2lzuhgvrgacvnhnzl8",
+            ),
+        ] {
             let code_hash =
                 h256!("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8");
-            let hash_type = ScriptHashType::Type;
             let args = hex::decode("4fb2be2e5d0c1a3b86").unwrap();
             let mut data = vec![0u8; 34 + args.len()];
             data[0] = 0x00;
@@ -749,8 +761,6 @@ mod test {
             data[34..].copy_from_slice(args.as_ref());
             let variant = bech32::Variant::Bech32;
             let addr = bech32::encode("ckb", data.to_base32(), variant).unwrap();
-            let expected_addr =
-                "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq20k2lzuhgvrgacv4tmr88";
             assert_eq!(addr, expected_addr);
             assert_eq!(
                 Address::from_str(expected_addr),
