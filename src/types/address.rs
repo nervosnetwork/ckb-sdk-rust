@@ -106,9 +106,9 @@ impl AddressPayload {
             AddressPayload::Short { .. } => AddressType::Short,
             AddressPayload::Full { hash_type, .. } => match (hash_type, is_new) {
                 (ScriptHashType::Data, true) => AddressType::Full,
-                (ScriptHashType::Data, false) => AddressType::FullData,
-                (ScriptHashType::Data1, _) => AddressType::Full,
                 (ScriptHashType::Type, true) => AddressType::Full,
+                (ScriptHashType::Data1, _) => AddressType::Full,
+                (ScriptHashType::Data, false) => AddressType::FullData,
                 (ScriptHashType::Type, false) => AddressType::FullType,
             },
         }
@@ -203,7 +203,7 @@ impl AddressPayload {
                 } => {
                     // payload = 0x02/0x04 | code_hash | args
                     let mut data = vec![0u8; 33 + args.len()];
-                    data[0] = self.ty(is_new) as u8;
+                    data[0] = self.ty(false) as u8;
                     data[1..33].copy_from_slice(code_hash.as_slice());
                     data[33..].copy_from_slice(args.as_ref());
                     (data, bech32::Variant::Bech32)
@@ -217,10 +217,10 @@ impl AddressPayload {
 
 impl fmt::Debug for AddressPayload {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let hash_type = if self.hash_type() == ScriptHashType::Type {
-            "type"
-        } else {
-            "data"
+        let hash_type = match self.hash_type() {
+            ScriptHashType::Type => "type",
+            ScriptHashType::Data => "data",
+            ScriptHashType::Data1 => "data1",
         };
         f.debug_struct("AddressPayload")
             .field("hash_type", &hash_type)
@@ -312,10 +312,10 @@ impl Address {
 
 impl fmt::Debug for Address {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let hash_type = if self.payload.hash_type() == ScriptHashType::Type {
-            "type"
-        } else {
-            "data"
+        let hash_type = match self.payload.hash_type() {
+            ScriptHashType::Type => "type",
+            ScriptHashType::Data => "data",
+            ScriptHashType::Data1 => "data1",
         };
         f.debug_struct("Address")
             .field("network", &self.network)
@@ -639,5 +639,146 @@ mod test {
         let address = Address::new(NetworkType::Mainnet, payload, true);
         assert_eq!(address.to_string(), "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq4nnw7qkdnnclfkg59uzn8umtfd2kwxceqcydzyt");
         assert_eq!(address, Address::from_str("ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq4nnw7qkdnnclfkg59uzn8umtfd2kwxceqcydzyt").unwrap());
+    }
+
+    #[test]
+    fn test_parse_display_address() {
+        let addr_str = "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqgvf0k9sc40s3azmpfvhyuudhahpsj72tsr8cx3d";
+        let addr = Address::from_str(addr_str).unwrap();
+        assert_eq!(addr.to_string(), addr_str);
+        assert_eq!(
+            addr.payload().code_hash(None).as_slice(),
+            h256!("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8").as_bytes()
+        );
+        assert_eq!(addr.payload().hash_type(), ScriptHashType::Type);
+        assert_eq!(
+            addr.payload().args().as_ref(),
+            hex::decode("0c4bec5862af847a2d852cb939c6dfb70c25e52e").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_invalid_short_address() {
+        // INVALID bech32 encoding
+        {
+            let mut data = vec![0u8; 22];
+            data[0] = 0x01;
+            data[1] = CodeHashIndex::Sighash as u8;
+            data[2..]
+                .copy_from_slice(h160!("0x4fb2be2e5d0c1a3b8694f832350a33c1685d477a").as_bytes());
+            let variant = bech32::Variant::Bech32m;
+            let addr = bech32::encode("ckb", data.to_base32(), variant).unwrap();
+            let expected_addr = "ckb1qyqylv479ewscx3ms620sv34pgeuz6zagaaqh0knz7";
+            assert_eq!(addr, expected_addr);
+            assert_eq!(
+                Address::from_str(expected_addr),
+                Err("short address must use bech32 encoding".to_string())
+            );
+        }
+        // INVALID data length
+        {
+            let mut data = vec![0u8; 23];
+            data[0] = 0x01;
+            data[1] = CodeHashIndex::Sighash as u8;
+            data[2..].copy_from_slice(
+                &hex::decode("4fb2be2e5d0c1a3b8694f832350a33c1685d477a33").unwrap(),
+            );
+            let variant = bech32::Variant::Bech32;
+            let addr = bech32::encode("ckb", data.to_base32(), variant).unwrap();
+            let expected_addr = "ckb1qyqylv479ewscx3ms620sv34pgeuz6zagaarxdzvx03";
+            assert_eq!(addr, expected_addr);
+            assert_eq!(
+                Address::from_str(expected_addr),
+                Err("Invalid input data length 23".to_string())
+            );
+        }
+        // INVALID code hash index
+        {
+            let mut data = vec![0u8; 22];
+            data[0] = 0x01;
+            data[1] = 17;
+            data[2..]
+                .copy_from_slice(h160!("0x4fb2be2e5d0c1a3b8694f832350a33c1685d477a").as_bytes());
+            let variant = bech32::Variant::Bech32;
+            let addr = bech32::encode("ckb", data.to_base32(), variant).unwrap();
+            let expected_addr = "ckb1qyg5lv479ewscx3ms620sv34pgeuz6zagaaqajch0c";
+            assert_eq!(addr, expected_addr);
+            assert_eq!(
+                Address::from_str(expected_addr),
+                Err("Invalid code hash index value: 17".to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn test_invalid_old_full_address() {
+        // INVALID bech32 encoding
+        {
+            let args = hex::decode("4fb2be2e5d0c1a3b86").unwrap();
+            let mut data = vec![0u8; 33 + args.len()];
+            data[0] = AddressType::FullData as u8;
+            data[1..33].copy_from_slice(
+                h256!("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8")
+                    .as_bytes(),
+            );
+            data[33..].copy_from_slice(args.as_ref());
+            let variant = bech32::Variant::Bech32m;
+            let addr = bech32::encode("ckb", data.to_base32(), variant).unwrap();
+            let expected_addr =
+                "ckb1q2da0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsnajhch96rq68wrqn2tmhm";
+            assert_eq!(addr, expected_addr);
+            assert_eq!(
+                Address::from_str(expected_addr),
+                Err("non-ckb2021 format full address must use bech32 encoding".to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn test_invalid_new_address() {
+        // INVALID bech32 encoding
+        for (hash_type, expected_addr) in [
+            (
+                ScriptHashType::Type,
+                "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq20k2lzuhgvrgacv4tmr88",
+            ),
+            (
+                ScriptHashType::Data,
+                "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqz0k2lzuhgvrgacvhcym08",
+            ),
+            (
+                ScriptHashType::Data1,
+                "ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqj0k2lzuhgvrgacvnhnzl8",
+            ),
+        ] {
+            let code_hash =
+                h256!("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8");
+            let args = hex::decode("4fb2be2e5d0c1a3b86").unwrap();
+            let mut data = vec![0u8; 34 + args.len()];
+            data[0] = 0x00;
+            data[1..33].copy_from_slice(code_hash.as_bytes());
+            data[33] = hash_type as u8;
+            data[34..].copy_from_slice(args.as_ref());
+            let variant = bech32::Variant::Bech32;
+            let addr = bech32::encode("ckb", data.to_base32(), variant).unwrap();
+            assert_eq!(addr, expected_addr);
+            assert_eq!(
+                Address::from_str(expected_addr),
+                Err("ckb2021 format full address must use bech32m encoding".to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn test_address_debug() {
+        let payload = AddressPayload::Full {
+            hash_type: ScriptHashType::Data1,
+            code_hash: h256!("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8")
+                .pack(),
+            args: Bytes::from("abcd"),
+        };
+        let address = Address::new(NetworkType::Mainnet, payload.clone(), true);
+        assert_eq!(format!("{:?}", payload), "AddressPayload { hash_type: \"data1\", code_hash: Byte32(0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8), args: b\"abcd\" }");
+        assert_eq!(format!("{:?}", address), "Address { network: Mainnet, hash_type: \"data1\", code_hash: Byte32(0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8), args: b\"abcd\", is_new: true }");
     }
 }
