@@ -1,9 +1,9 @@
 use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockTemplate, BlockView,
     CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, ExtraLoggerConfig, HeaderView,
-    JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, PeerSyncState, RawTxPool,
-    RemoteNode, Script, Timestamp, Transaction, TransactionProof, TransactionWithStatus,
-    TxPoolInfo, Uint64, Version,
+    JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode,
+    Script, SyncState, Timestamp, Transaction, TransactionProof, TransactionWithStatus, TxPoolInfo,
+    Uint64, Version,
 };
 use ckb_types::H256;
 
@@ -43,7 +43,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
         absolute: Option<bool>,
         reason: Option<String>
     ) -> ();
-    pub fn sync_state(&mut self) -> PeerSyncState;
+    pub fn sync_state(&mut self) -> SyncState;
     pub fn set_network_active(&mut self, state: bool) -> ();
     pub fn add_node(&mut self, peer_id: String, address: String) -> ();
     pub fn remove_node(&mut self, peer_id: String) -> ();
