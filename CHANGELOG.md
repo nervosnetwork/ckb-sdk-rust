@@ -1,3 +1,6 @@
+# 1.0.1
+* Fix sync_state rpc return data type
+
 # 1.0.0
 * Add several key traits to abstract different functionality
   - CellCollector
