@@ -9,7 +9,7 @@ use crate::{
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
-    packed::{self, BytesOpt, WitnessArgs},
+    packed::{self, WitnessArgs},
     prelude::*,
 };
 
@@ -17,7 +17,9 @@ use ckb_crypto::secp::Pubkey;
 pub use ckb_types::prelude::Pack;
 use serde::{Deserialize, Serialize};
 
-use super::{generate_message, ScriptSignError, ScriptSigner, ScriptUnlocker, UnlockError, fill_witness_lock};
+use super::{
+    fill_witness_lock, generate_message, ScriptSignError, ScriptSigner, ScriptUnlocker, UnlockError,
+};
 pub const IDENTITY_FLAGS_PUBKEY_HASH: u8 = 0;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -133,7 +135,7 @@ impl OmniLockConfig {
         if self.is_pubkey_hash() {
             let zero_lock = self.zero_lock();
             WitnessArgs::new_builder()
-                .lock(BytesOpt::new_unchecked(zero_lock))
+                .lock(Some(zero_lock).pack())
                 .build()
         } else {
             unreachable!("should not reach here");
@@ -172,10 +174,11 @@ impl OmniLockScriptSigner {
 
 impl ScriptSigner for OmniLockScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
+        if !(args.len() == 21 && args[0] == self.config.id.flags) {
+            return false;
+        }
         if self.config.id.flags == IDENTITY_FLAGS_PUBKEY_HASH {
-            args.len() == 21
-                && args[0] == self.config.id.flags
-                && self.signer.match_id(self.config.id.blake160.as_ref())
+            self.signer.match_id(self.config.id.blake160.as_ref())
         } else {
             false
         }
@@ -224,7 +227,6 @@ impl ScriptSigner for OmniLockScriptSigner {
     }
 }
 
-
 pub struct OmniLockUnlocker {
     signer: OmniLockScriptSigner,
 }
@@ -240,7 +242,7 @@ impl From<(Box<dyn Signer>, OmniLockConfig)> for OmniLockUnlocker {
 }
 impl ScriptUnlocker for OmniLockUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
-        (args.len() == 20 || args.len() == 28) && self.signer.match_args(args)
+        args.len() == 21 && self.signer.match_args(args)
     }
 
     fn unlock(

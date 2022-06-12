@@ -8,19 +8,19 @@ use ckb_sdk::{
         DefaultCellDepResolver, DefaultHeaderDepResolver, DefaultTransactionDependencyProvider,
         SecpCkbRawKeySigner,
     },
-    tx_builder::{transfer::CapacityTransferBuilder, CapacityBalancer, TxBuilder},
+    tx_builder::{transfer::CapacityTransferBuilder, CapacityBalancer, TxBuilder, unlock_tx},
     types::NetworkType,
     unlock::{OmniLockConfig, OmniLockScriptSigner},
     unlock::{OmniLockUnlocker, ScriptUnlocker, SecpSighashUnlocker},
-    Address, HumanCapacity, ScriptId, SECP256K1,
+    Address, HumanCapacity, ScriptId, SECP256K1, ScriptGroup,
 };
 use ckb_types::{
     bytes::Bytes,
     core::{BlockView, DepType, ScriptHashType, TransactionView},
     h256,
-    packed::{Byte32, CellDep, CellOutput, OutPoint, Script, WitnessArgs},
+    packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
     prelude::*,
-    H256,
+    H160, H256,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -68,7 +68,19 @@ struct GenTxArgs {
     ckb_indexer: String,
 }
 #[derive(Args)]
-struct SignTxArgs {}
+struct SignTxArgs {
+    /// The sender private key (hex string)
+    #[clap(long, value_name = "KEY")]
+    sender_key: H256,
+
+    /// The output transaction info file (.json)
+    #[clap(long, value_name = "PATH")]
+    tx_file: PathBuf,
+
+    /// CKB rpc url
+    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+    ckb_rpc: String,
+}
 #[derive(Subcommand)]
 enum Commands {
     /// build omni lock address
@@ -110,7 +122,34 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         Commands::Gen(gen_args) => {
             gen_omnilock_tx(&gen_args)?;
         }
-        Commands::Sign(sig_args) => {}
+        Commands::Sign(args) => {
+            let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
+            let tx = Transaction::from(tx_info.tx.inner).into_view();
+            let key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
+                .map_err(|err| format!("invalid sender secret key: {}", err))?;
+            let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
+            let hash160 = Bytes::copy_from_slice(&blake2b_256(&pubkey.serialize()[..])[0..20]);
+            if tx_info.omnilock_config.id.blake160 != hash160 {
+                return Err(format!("key {:#x} is not in multisig config", args.sender_key).into());
+            }
+            let (tx, _) = sign_tx(&args, tx, &tx_info.omnilock_config, key)?;
+            let lock_field =
+                WitnessArgs::from_slice(tx.witnesses().get(0).unwrap().raw_data().as_ref())?
+                    .lock()
+                    .to_opt()
+                    .unwrap()
+                    .raw_data();
+            if lock_field  != tx_info.omnilock_config.zero_lock() {
+                println!("> transaction ready to send!");
+            } else {
+                println!("failed to sign tx");
+            }
+            let tx_info = TxInfo {
+                tx: json_types::TransactionView::from(tx),
+                omnilock_config: tx_info.omnilock_config,
+            };
+            fs::write(&args.tx_file, serde_json::to_string_pretty(&tx_info)?)?;
+        }
         Commands::Send { tx_file, ckb_rpc } => {}
     }
 
@@ -164,6 +203,7 @@ fn build_transfer_tx(
     let sender_addr = Address::new(args.receiver.network(), sender.clone().into(), true);
     println!("> sender address: {}", sender_addr);
     let placeholder_witness = omnilock_config.placeholder_witness();
+
     let balancer = CapacityBalancer::new_simple(sender, placeholder_witness, 1000);
 
     // Build:
@@ -180,7 +220,10 @@ fn build_transfer_tx(
                 "0xc334b5f392c0065848bf09f1ccad5050644260f1fe1002d9adfcb2cbbb64faf6"
             ))?
             .unwrap();
-        res.extend_block(&BlockView::from(omnilock_block), &h256!("0x635f78eba450cb2f73f113022ff62e4bbfb5a39b7368c375c6a731ba4c85c59e"))?;
+        res.extend_block(
+            &BlockView::from(omnilock_block),
+            &h256!("0x635f78eba450cb2f73f113022ff62e4bbfb5a39b7368c375c6a731ba4c85c59e"),
+        )?;
         res
     };
     let header_dep_resolver = DefaultHeaderDepResolver::new(args.ckb_rpc.as_str());
@@ -257,12 +300,12 @@ impl OmniLockDepResolver {
                             .to_opt()
                             .map(|script| script.calc_script_hash());
                         let data_hash = CellOutput::calc_data_hash(&data.raw_data());
-                        println!(
-                            "type hash:{:?} data_hash:{:?} code_hash_pack: {:?}",
-                            type_hash,
-                            data_hash,
-                            target_data_hash.pack()
-                        );
+                        // println!(
+                        //     "type hash:{:?} data_hash:{:?} code_hash_pack: {:?}",
+                        //     type_hash,
+                        //     data_hash,
+                        //     target_data_hash.pack()
+                        // );
                         if data_hash == target_data_hash.pack() {
                             omnilock_type_hash = type_hash;
                             omnilock_data_hash = Some(data_hash);
@@ -322,4 +365,20 @@ impl CellDepResolver for OmniLockDepResolver {
     fn resolve(&self, script: &Script) -> Option<CellDep> {
         self.default_resolver.resolve(script)
     }
+}
+
+fn sign_tx(
+    args: &SignTxArgs,
+    mut tx: TransactionView,
+    omnilock_config: &OmniLockConfig,
+    key:secp256k1::SecretKey,
+) -> Result<(TransactionView, Vec<ScriptGroup>), Box<dyn StdErr>> {
+    // Unlock transaction
+    let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
+    let mut still_locked_groups = None;
+    let unlockers = build_omnilock_unlockers(vec![key], omnilock_config.clone());
+    let (new_tx, new_still_locked_groups) = unlock_tx(tx.clone(), &tx_dep_provider, &unlockers)?;
+    tx = new_tx;
+    still_locked_groups = Some(new_still_locked_groups);
+    Ok((tx, still_locked_groups.unwrap_or_default()))
 }
