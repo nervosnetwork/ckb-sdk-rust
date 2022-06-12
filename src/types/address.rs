@@ -16,6 +16,7 @@ use serde_derive::{Deserialize, Serialize};
 use super::NetworkType;
 use crate::constants::{
     ACP_TYPE_HASH_AGGRON, ACP_TYPE_HASH_LINA, MULTISIG_TYPE_HASH, SIGHASH_TYPE_HASH,
+    OMNILOCK_TYPE_HASH,
 };
 pub use old_addr::{Address as OldAddress, AddressFormat as OldAddressFormat};
 
@@ -53,6 +54,7 @@ pub enum CodeHashIndex {
     Multisig = 0x01,
     /// anyone_can_pay, args: `blake160(PK)`
     Acp = 0x02,
+    OmniLock = 0x03,
 }
 
 impl CodeHashIndex {
@@ -150,6 +152,7 @@ impl AddressPayload {
                     Some(NetworkType::Testnet) => ACP_TYPE_HASH_AGGRON.clone().pack(),
                     _ => panic!("network type must be `mainnet` or `testnet` when handle short format anyone-can-pay address"),
                 }
+                CodeHashIndex::OmniLock => OMNILOCK_TYPE_HASH.clone().pack(),
             },
             AddressPayload::Full { code_hash, .. } => code_hash.clone(),
         }

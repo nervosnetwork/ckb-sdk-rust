@@ -5,6 +5,8 @@ mod network_type;
 mod script_group;
 mod script_id;
 mod since;
+pub mod omni_lock;
+pub mod xudt_rce_mol;
 
 pub use address::{
     Address, AddressPayload, AddressType, CodeHashIndex, OldAddress, OldAddressFormat,
