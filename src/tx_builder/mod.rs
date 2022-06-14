@@ -3,6 +3,7 @@ pub mod cheque;
 pub mod dao;
 pub mod transfer;
 pub mod udt;
+pub mod omni_lock;
 
 use std::collections::HashMap;
 

@@ -1,6 +1,6 @@
 mod signer;
 mod unlocker;
-mod omni_lock;
+pub(crate) mod omni_lock;
 
 pub use signer::{
     generate_message, AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig,

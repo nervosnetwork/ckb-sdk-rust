@@ -8,19 +8,19 @@ use ckb_sdk::{
         DefaultCellDepResolver, DefaultHeaderDepResolver, DefaultTransactionDependencyProvider,
         SecpCkbRawKeySigner,
     },
-    tx_builder::{transfer::CapacityTransferBuilder, CapacityBalancer, TxBuilder, unlock_tx},
+    tx_builder::{omni_lock::OmniLockTransferBuilder, unlock_tx, CapacityBalancer, TxBuilder},
     types::NetworkType,
     unlock::{OmniLockConfig, OmniLockScriptSigner},
-    unlock::{OmniLockUnlocker, ScriptUnlocker, SecpSighashUnlocker},
-    Address, HumanCapacity, ScriptId, SECP256K1, ScriptGroup,
+    unlock::{OmniLockUnlocker, ScriptUnlocker},
+    Address, HumanCapacity, ScriptGroup, ScriptId, SECP256K1,
 };
 use ckb_types::{
     bytes::Bytes,
     core::{BlockView, DepType, ScriptHashType, TransactionView},
     h256,
-    packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
+    packed::{CellDep, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
     prelude::*,
-    H160, H256,
+    H256,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -33,6 +33,10 @@ struct BuildOmniLockAddrArgs {
     /// The sender private key (hex string)
     #[clap(long, value_name = "KEY")]
     sender_key: H256,
+
+    /// The receiver address
+    #[clap(long, value_name = "ADDRESS")]
+    receiver: Address,
 
     /// CKB rpc url
     #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
@@ -139,7 +143,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
                     .to_opt()
                     .unwrap()
                     .raw_data();
-            if lock_field  != tx_info.omnilock_config.zero_lock() {
+            if lock_field != tx_info.omnilock_config.zero_lock() {
                 println!("> transaction ready to send!");
             } else {
                 println!("failed to sign tx");
@@ -150,13 +154,26 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             };
             fs::write(&args.tx_file, serde_json::to_string_pretty(&tx_info)?)?;
         }
-        Commands::Send { tx_file, ckb_rpc } => {}
+        Commands::Send { tx_file, ckb_rpc } => {
+            // Send transaction
+            let tx_info: TxInfo = serde_json::from_slice(&fs::read(&tx_file)?)?;
+            println!(
+                "> tx: {}",
+                serde_json::to_string_pretty(&tx_info.tx).unwrap()
+            );
+            let outputs_validator = Some(json_types::OutputsValidator::Passthrough);
+            let _tx_hash = CkbRpcClient::new(ckb_rpc.as_str())
+                .send_transaction(tx_info.tx.inner, outputs_validator)
+                .expect("send transaction");
+            println!(">>> tx sent! <<<");
+        }
     }
 
     Ok(())
 }
 
 fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdErr>> {
+    println!("receiver lock-arg:{}", hex_string(args.receiver.payload().args().as_ref()));
     let sender_key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))?;
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
@@ -237,7 +254,7 @@ fn build_transfer_tx(
         .lock(Script::from(&args.receiver))
         .capacity(args.capacity.0.pack())
         .build();
-    let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
+    let builder = OmniLockTransferBuilder::new(vec![(output, Bytes::default())], omnilock_config.id.flags);
     let tx = builder.build_balanced(
         &mut cell_collector,
         &cell_dep_resolver,
@@ -323,7 +340,7 @@ impl OmniLockDepResolver {
             .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
         let omnilock_dep = CellDep::new_builder()
             .out_point(outpoint.unwrap())
-            .dep_type(DepType::DepGroup.into())
+            .dep_type(DepType::Code.into())
             .build();
         self.default_resolver.insert(
             ScriptId::new_type(omnilock_type_hash.unpack()),
@@ -371,7 +388,7 @@ fn sign_tx(
     args: &SignTxArgs,
     mut tx: TransactionView,
     omnilock_config: &OmniLockConfig,
-    key:secp256k1::SecretKey,
+    key: secp256k1::SecretKey,
 ) -> Result<(TransactionView, Vec<ScriptGroup>), Box<dyn StdErr>> {
     // Unlock transaction
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);

@@ -81,6 +81,7 @@ impl Display for Identity {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OmniLockConfig {
     pub id: Identity,
+    pub omni_lock_flags: u8,
 }
 
 impl OmniLockConfig {
@@ -98,6 +99,7 @@ impl OmniLockConfig {
 
         OmniLockConfig {
             id: Identity { flags, blake160 },
+            omni_lock_flags: 0,
         }
     }
 
@@ -107,6 +109,7 @@ impl OmniLockConfig {
         // auth
         bytes.put_u8(self.id.flags);
         bytes.put(self.id.blake160.as_ref());
+        bytes.put_u8(self.omni_lock_flags);
 
         bytes.freeze()
     }
@@ -122,10 +125,12 @@ impl OmniLockConfig {
 
     pub fn zero_lock(&self) -> Bytes {
         if self.is_pubkey_hash() {
-            OmniLockWitnessLock::new_builder()
+            let len = OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 65])).pack())
                 .build()
-                .as_bytes()
+                .as_bytes().len();
+
+            Bytes::from(vec![0u8; len])
         } else {
             unreachable!("should not reach here");
         }
@@ -174,7 +179,7 @@ impl OmniLockScriptSigner {
 
 impl ScriptSigner for OmniLockScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        if !(args.len() == 21 && args[0] == self.config.id.flags) {
+        if !(args.len() == 22 && args[0] == self.config.id.flags) {
             return false;
         }
         if self.config.id.flags == IDENTITY_FLAGS_PUBKEY_HASH {
@@ -242,7 +247,7 @@ impl From<(Box<dyn Signer>, OmniLockConfig)> for OmniLockUnlocker {
 }
 impl ScriptUnlocker for OmniLockUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
-        args.len() == 21 && self.signer.match_args(args)
+        args.len() == 22 && self.signer.match_args(args)
     }
 
     fn unlock(
