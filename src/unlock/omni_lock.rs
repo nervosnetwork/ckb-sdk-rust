@@ -9,7 +9,8 @@ use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
     packed::{self, WitnessArgs},
-    prelude::*, H256,
+    prelude::*,
+    H256,
 };
 
 use ckb_crypto::secp::Pubkey;
@@ -47,7 +48,7 @@ impl From<Identity> for [u8; 21] {
 impl From<Identity> for Vec<u8> {
     fn from(id: Identity) -> Self {
         let mut bytes = vec![id.flags];
-        bytes.extend(id.blake160.clone());
+        bytes.extend(id.blake160);
         bytes
     }
 }
@@ -94,7 +95,6 @@ impl OmniLockConfig {
         Self::new(type_hash, IDENTITY_FLAGS_PUBKEY_HASH, pubkey_hash)
     }
 
-
     pub fn new(type_hash: H256, flags: u8, blake160: Bytes) -> Self {
         let blake160 = if flags == IDENTITY_FLAGS_PUBKEY_HASH {
             assert!(blake160.len() == 20);
@@ -135,7 +135,8 @@ impl OmniLockConfig {
             let len = OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 65])).pack())
                 .build()
-                .as_bytes().len();
+                .as_bytes()
+                .len();
 
             Bytes::from(vec![0u8; len])
         } else {

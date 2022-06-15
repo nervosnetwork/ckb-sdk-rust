@@ -15,7 +15,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use super::NetworkType;
 use crate::constants::{
-    ACP_TYPE_HASH_AGGRON, ACP_TYPE_HASH_LINA, MULTISIG_TYPE_HASH, SIGHASH_TYPE_HASH
+    ACP_TYPE_HASH_AGGRON, ACP_TYPE_HASH_LINA, MULTISIG_TYPE_HASH, SIGHASH_TYPE_HASH,
 };
 pub use old_addr::{Address as OldAddress, AddressFormat as OldAddressFormat};
 

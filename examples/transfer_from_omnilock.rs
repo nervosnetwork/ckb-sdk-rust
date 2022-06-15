@@ -3,13 +3,12 @@ use ckb_jsonrpc_types as json_types;
 use ckb_sdk::{
     rpc::CkbRpcClient,
     traits::{
-        default_impls::ParseGenesisInfoError, CellDepResolver, DefaultCellCollector,
+        default_impls::ParseGenesisInfoError, CellCollector, CellDepResolver, DefaultCellCollector,
         DefaultCellDepResolver, DefaultHeaderDepResolver, DefaultTransactionDependencyProvider,
-        SecpCkbRawKeySigner,
+        HeaderDepResolver, SecpCkbRawKeySigner, TransactionDependencyProvider,
     },
     tx_builder::{
-        omni_lock::OmniLockTransferBuilder, transfer::CapacityTransferBuilder, unlock_tx,
-        CapacityBalancer, TxBuilder,
+        transfer::CapacityTransferBuilder, unlock_tx, CapacityBalancer, TxBuilder, TxBuilderError,
     },
     types::NetworkType,
     unlock::{OmniLockConfig, OmniLockScriptSigner},
@@ -19,7 +18,7 @@ use ckb_sdk::{
 use ckb_types::{
     bytes::Bytes,
     core::{BlockView, DepType, ScriptHashType, TransactionView},
-    packed::{CellDep, CellOutput, OutPoint, Script, Transaction, WitnessArgs, Byte32},
+    packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
     prelude::*,
     H256,
 };
@@ -32,7 +31,6 @@ use std::{collections::HashMap, error::Error as StdErr};
 // https://github.com/XuJiandong/rfcs/blob/omnilock/rfcs/0042-omnilock/0042-omnilock.md
 // pub const OMNILOCK_TYPE_HASH: H256 =
 // h256!("0xf329effd1c475a2978453c8600e1eaf0bc2087ee093c3ee64cc96ec6847752cb");
-
 
 /*
 # examples for the developer local node
@@ -228,7 +226,8 @@ fn main() -> Result<(), Box<dyn StdErr>> {
 fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdErr>> {
     let config = {
         let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
-        let cell = build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
+        let cell =
+            build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
         OmniLockConfig::new_pubkey_hash_with_lockarg(cell.type_hash, args.receiver.payload().args())
     };
     let address_payload = config.to_address_payload();
@@ -244,7 +243,7 @@ fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdEr
 }
 
 fn gen_omnilock_tx(args: &GenTxArgs) -> Result<(), Box<dyn StdErr>> {
-    let (tx, omnilock_config) = build_transfer_tx(&args)?;
+    let (tx, omnilock_config) = build_transfer_tx(args)?;
     let tx_info = TxInfo {
         tx: json_types::TransactionView::from(tx),
         omnilock_config,
@@ -254,16 +253,16 @@ fn gen_omnilock_tx(args: &GenTxArgs) -> Result<(), Box<dyn StdErr>> {
 }
 
 fn build_transfer_tx(
-    args: &GenTxArgs
+    args: &GenTxArgs,
 ) -> Result<(TransactionView, OmniLockConfig), Box<dyn StdErr>> {
     let sender_key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))?;
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
     let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
-    let cell = build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
-    let omnilock_config = {
-        OmniLockConfig::new_pubkey_hash(cell.type_hash.clone(), &pubkey.into())
-    };
+    let cell =
+        build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
+    let omnilock_config =
+        { OmniLockConfig::new_pubkey_hash(cell.type_hash.clone(), &pubkey.into()) };
     // Build CapacityBalancer
     let sender = Script::new_builder()
         .code_hash(cell.type_hash.pack())
@@ -318,18 +317,39 @@ fn build_transfer_tx(
     Ok((tx, omnilock_config))
 }
 
-fn build_omnilock_cell_dep(ckb_client:&mut CkbRpcClient, tx_hash: &H256, index: usize) ->Result<OmniLockInfo,  Box<dyn StdErr>> {
-    let tx = ckb_client.get_transaction(tx_hash.clone()).unwrap().unwrap();
-    let cell = tx.transaction.unwrap().inner.outputs.into_iter().nth(index).unwrap();
+fn build_omnilock_cell_dep(
+    ckb_client: &mut CkbRpcClient,
+    tx_hash: &H256,
+    index: usize,
+) -> Result<OmniLockInfo, Box<dyn StdErr>> {
+    let tx = ckb_client
+        .get_transaction(tx_hash.clone())
+        .unwrap()
+        .unwrap();
+    let cell = tx
+        .transaction
+        .unwrap()
+        .inner
+        .outputs
+        .into_iter()
+        .nth(index)
+        .unwrap();
     let script = Script::from(cell.type_.unwrap());
 
     let type_hash = script.calc_script_hash();
     let script_id = ScriptId::new_type(type_hash.unpack());
     let type_hash = H256::from_slice(type_hash.as_slice())?;
-    let out_point = OutPoint::new(Byte32::from_slice(tx_hash.as_bytes()).unwrap(), index as u32);
-    
+    let out_point = OutPoint::new(
+        Byte32::from_slice(tx_hash.as_bytes()).unwrap(),
+        index as u32,
+    );
+
     let celldep = CellDep::new_builder().out_point(out_point).build();
-    Ok(OmniLockInfo{type_hash, script_id, celldep})
+    Ok(OmniLockInfo {
+        type_hash,
+        script_id,
+        celldep,
+    })
 }
 
 fn build_seckp256k1_data_dep(genesis_block: &BlockView) -> Option<CellDep> {
@@ -344,8 +364,8 @@ fn build_seckp256k1_data_dep(genesis_block: &BlockView) -> Option<CellDep> {
                 out_point = Some(OutPoint::new(tx.hash(), 3u32));
             }
         });
-    if out_point.is_some() {
-        let dao_dep = CellDep::new_builder().out_point(out_point.unwrap()).build();
+    if let Some(out) = out_point {
+        let dao_dep = CellDep::new_builder().out_point(out).build();
         return Some(dao_dep);
     }
     None
@@ -358,7 +378,7 @@ fn build_omnilock_unlockers(
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(keys);
     let omnilock_signer = OmniLockScriptSigner::new(Box::new(signer), config.clone());
     let multisig_unlocker = OmniLockUnlocker::new(omnilock_signer);
-    let omnilock_script_id = ScriptId::new_type(config.type_hash.clone());
+    let omnilock_script_id = ScriptId::new_type(config.type_hash);
     let mut unlockers = HashMap::default();
     unlockers.insert(
         omnilock_script_id,
@@ -477,4 +497,54 @@ fn sign_tx(
     tx = new_tx;
     _still_locked_groups = Some(new_still_locked_groups);
     Ok((tx, _still_locked_groups.unwrap_or_default()))
+}
+
+/// A builder to build a transaction simply transfer capcity to an address. It
+/// will resolve the type script's cell_dep if given.
+pub struct OmniLockTransferBuilder {
+    pub tx_builder: Box<dyn TxBuilder>,
+    pub id_flags: u8,
+    pub secp256k1_data_dep: CellDep,
+}
+
+impl OmniLockTransferBuilder {
+    pub fn new(
+        tx_builder: Box<dyn TxBuilder>,
+        id_flags: u8,
+        secp256k1_data_dep: CellDep,
+    ) -> OmniLockTransferBuilder {
+        OmniLockTransferBuilder {
+            tx_builder,
+            id_flags,
+            secp256k1_data_dep,
+        }
+    }
+}
+
+impl TxBuilder for OmniLockTransferBuilder {
+    fn build_base(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, TxBuilderError> {
+        let mut tx = self.tx_builder.build_base(
+            cell_collector,
+            cell_dep_resolver,
+            header_dep_resolver,
+            tx_dep_provider,
+        )?;
+
+        if self.id_flags == 0 {
+            let cell_deps = tx
+                .cell_deps()
+                .as_builder()
+                .push(self.secp256k1_data_dep.clone())
+                .build();
+            tx = tx.as_advanced_builder().cell_deps(cell_deps).build();
+        }
+
+        Ok(tx)
+    }
 }

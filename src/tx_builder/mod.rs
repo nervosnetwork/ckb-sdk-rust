@@ -3,7 +3,6 @@ pub mod cheque;
 pub mod dao;
 pub mod transfer;
 pub mod udt;
-pub mod omni_lock;
 
 use std::collections::HashMap;
 
@@ -223,6 +222,7 @@ pub fn tx_fee(
         input_total += capacity;
     }
     let output_total = tx.outputs_capacity()?.as_u64();
+    #[allow(clippy::unnecessary_lazy_evaluations)]
     input_total
         .checked_sub(output_total)
         .ok_or_else(|| TransactionFeeError::CapacityOverflow(output_total - input_total))

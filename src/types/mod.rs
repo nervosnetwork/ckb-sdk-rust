@@ -2,10 +2,12 @@
 mod address;
 mod human_capacity;
 mod network_type;
+#[allow(clippy::all)]
+pub mod omni_lock;
 mod script_group;
 mod script_id;
 mod since;
-pub mod omni_lock;
+#[allow(clippy::all)]
 pub mod xudt_rce_mol;
 
 pub use address::{
