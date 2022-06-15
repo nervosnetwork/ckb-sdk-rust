@@ -6,9 +6,12 @@ use ckb_types::{
 };
 use thiserror::Error;
 
-use super::signer::{
-    AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig, ScriptSignError,
-    ScriptSigner, SecpMultisigScriptSigner, SecpSighashScriptSigner,
+use super::{
+    signer::{
+        AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig, ScriptSignError,
+        ScriptSigner, SecpMultisigScriptSigner, SecpSighashScriptSigner,
+    },
+    OmniLockConfig, OmniLockScriptSigner,
 };
 use crate::traits::{Signer, TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptGroup;
@@ -586,5 +589,44 @@ impl ScriptUnlocker for ChequeUnlocker {
         } else {
             fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
         }
+    }
+}
+
+pub struct OmniLockUnlocker {
+    signer: OmniLockScriptSigner,
+}
+impl OmniLockUnlocker {
+    pub fn new(signer: OmniLockScriptSigner) -> OmniLockUnlocker {
+        OmniLockUnlocker { signer }
+    }
+}
+impl From<(Box<dyn Signer>, OmniLockConfig)> for OmniLockUnlocker {
+    fn from((signer, config): (Box<dyn Signer>, OmniLockConfig)) -> OmniLockUnlocker {
+        OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config))
+    }
+}
+impl ScriptUnlocker for OmniLockUnlocker {
+    fn match_args(&self, args: &[u8]) -> bool {
+        args.len() == 22 && self.signer.match_args(args)
+    }
+
+    fn unlock(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        Ok(self.signer.sign_tx(tx, script_group)?)
+    }
+
+    fn fill_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        let config = self.signer.config();
+        let zero_lock = config.zero_lock();
+        fill_witness_lock(tx, script_group, zero_lock)
     }
 }

@@ -130,6 +130,11 @@ pub fn serialize_signature(signature: &secp256k1::recovery::RecoverableSignature
     signature_bytes
 }
 
+pub fn blake160(message: &[u8]) -> bytes::Bytes {
+    let r = ckb_hash::blake2b_256(message);
+    bytes::Bytes::copy_from_slice(&r[..20])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
