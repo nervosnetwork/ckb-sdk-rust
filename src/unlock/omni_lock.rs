@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
 use crate::{
-    constants::OMNILOCK_TYPE_HASH,
     traits::{Signer, TransactionDependencyProvider},
     types::{omni_lock::OmniLockWitnessLock, AddressPayload},
     ScriptGroup,
@@ -10,7 +9,7 @@ use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
     packed::{self, WitnessArgs},
-    prelude::*,
+    prelude::*, H256,
 };
 
 use ckb_crypto::secp::Pubkey;
@@ -80,24 +79,32 @@ impl Display for Identity {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OmniLockConfig {
+    pub type_hash: H256,
     pub id: Identity,
     pub omni_lock_flags: u8,
 }
 
 impl OmniLockConfig {
-    pub fn new_pubkey_hash(pubkey: &Pubkey) -> Self {
-        Self::new(IDENTITY_FLAGS_PUBKEY_HASH, pubkey)
+    pub fn new_pubkey_hash_with_lockarg(type_hash: H256, lock_arg: Bytes) -> Self {
+        Self::new(type_hash, IDENTITY_FLAGS_PUBKEY_HASH, lock_arg)
     }
 
-    pub fn new(flags: u8, pubkey: &Pubkey) -> Self {
+    pub fn new_pubkey_hash(type_hash: H256, pubkey: &Pubkey) -> Self {
         let pubkey_hash = blake160(&pubkey.serialize());
+        Self::new(type_hash, IDENTITY_FLAGS_PUBKEY_HASH, pubkey_hash)
+    }
+
+
+    pub fn new(type_hash: H256, flags: u8, blake160: Bytes) -> Self {
         let blake160 = if flags == IDENTITY_FLAGS_PUBKEY_HASH {
-            pubkey_hash
+            assert!(blake160.len() == 20);
+            blake160
         } else {
             Bytes::from(&[0; 20][..])
         };
 
         OmniLockConfig {
+            type_hash,
             id: Identity { flags, blake160 },
             omni_lock_flags: 0,
         }
@@ -120,7 +127,7 @@ impl OmniLockConfig {
 
     pub fn to_address_payload(&self) -> AddressPayload {
         let args = self.build_args();
-        AddressPayload::new_full(ScriptHashType::Type, OMNILOCK_TYPE_HASH.pack(), args)
+        AddressPayload::new_full(ScriptHashType::Type, self.type_hash.pack(), args)
     }
 
     pub fn zero_lock(&self) -> Bytes {

@@ -47,11 +47,6 @@ pub const ACP_TYPE_HASH_LINA: H256 =
 pub const ACP_TYPE_HASH_AGGRON: H256 =
     h256!("0x3419a1c09eb2567f6552ee7a8ecffd64155cffe0f1796e6e61ec088d740c1356");
 
-/// https://github.com/XuJiandong/rfcs/blob/omnilock/rfcs/0042-omnilock/0042-omnilock.md
-pub const OMNILOCK_TYPE_HASH : H256 =
-    h256!("0x2dfb08f4654cb895d0a35aabb5873409594c398e66c9098d6833830dfb430768");
-    // h256!("0xf329effd1c475a2978453c8600e1eaf0bc2087ee093c3ee64cc96ec6847752cb");
-
 /// cheque withdraw since value
 pub const CHEQUE_CELL_SINCE: u64 = 0xA000000000000006;
 
