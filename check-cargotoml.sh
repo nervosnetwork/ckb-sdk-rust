@@ -180,7 +180,8 @@ function check_dependencies_for() {
 function check_dependencies() {
     check_dependencies_for "dependencies"
     check_dependencies_for "build-dependencies"
-    check_dependencies_for "dev-dependencies"
+    # TODO: uncomment this line when `async-global-executor` updated to >= v2.2.0
+    # check_dependencies_for "dev-dependencies"
 }
 
 function main() {
