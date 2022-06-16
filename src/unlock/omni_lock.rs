@@ -5,6 +5,7 @@ use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     packed::WitnessArgs,
     prelude::*,
+    H160,
 };
 
 use ckb_crypto::secp::Pubkey;
@@ -25,7 +26,7 @@ impl From<IdentityFlags> for u8 {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Identity {
     pub flags: IdentityFlags,
-    pub blake160: Bytes,
+    pub blake160: H160,
 }
 impl Identity {
     pub fn to_smt_key(&self) -> [u8; 32] {
@@ -40,7 +41,7 @@ impl From<Identity> for [u8; 21] {
     fn from(id: Identity) -> Self {
         let mut res = [0u8; 21];
         res[0] = id.flags.into();
-        res[1..].copy_from_slice(&id.blake160);
+        res[1..].copy_from_slice(id.blake160.as_bytes());
         res
     }
 }
@@ -48,7 +49,7 @@ impl From<Identity> for [u8; 21] {
 impl From<Identity> for Vec<u8> {
     fn from(id: Identity) -> Self {
         let mut bytes: Vec<u8> = vec![id.flags.into()];
-        bytes.extend(id.blake160);
+        bytes.extend(id.blake160.as_bytes());
         bytes
     }
 }
@@ -86,7 +87,8 @@ pub struct OmniLockConfig {
 
 impl OmniLockConfig {
     pub fn new_pubkey_hash_with_lockarg(lock_arg: Bytes) -> Self {
-        Self::new(IdentityFlags::PubkeyHash, lock_arg)
+        assert!(lock_arg.len() == 20);
+        Self::new(IdentityFlags::PubkeyHash, blake160(&lock_arg))
     }
 
     pub fn new_pubkey_hash(pubkey: &Pubkey) -> Self {
@@ -94,12 +96,11 @@ impl OmniLockConfig {
         Self::new(IdentityFlags::PubkeyHash, pubkey_hash)
     }
 
-    pub fn new(flags: IdentityFlags, blake160: Bytes) -> Self {
+    pub fn new(flags: IdentityFlags, blake160: H160) -> Self {
         let blake160 = if flags == IdentityFlags::PubkeyHash {
-            assert!(blake160.len() == 20);
             blake160
         } else {
-            Bytes::from(&[0; 20][..])
+            H160::from_slice(&[0; 20]).unwrap()
         };
 
         OmniLockConfig {

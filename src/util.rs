@@ -5,7 +5,7 @@ use ckb_types::{
     core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
     packed::CellOutput,
     prelude::*,
-    U256,
+    H160, U256,
 };
 
 use crate::rpc::CkbRpcClient;
@@ -130,9 +130,9 @@ pub fn serialize_signature(signature: &secp256k1::recovery::RecoverableSignature
     signature_bytes
 }
 
-pub fn blake160(message: &[u8]) -> bytes::Bytes {
+pub fn blake160(message: &[u8]) -> H160 {
     let r = ckb_hash::blake2b_256(message);
-    bytes::Bytes::copy_from_slice(&r[..20])
+    H160::from_slice(&r[..20]).unwrap()
 }
 
 #[cfg(test)]

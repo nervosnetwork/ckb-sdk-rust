@@ -188,8 +188,8 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             let key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
                 .map_err(|err| format!("invalid sender secret key: {}", err))?;
             let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
-            let hash160 = Bytes::copy_from_slice(&blake2b_256(&pubkey.serialize()[..])[0..20]);
-            if tx_info.omnilock_config.id.blake160 != hash160 {
+            let hash160 = &blake2b_256(&pubkey.serialize()[..])[0..20];
+            if tx_info.omnilock_config.id.blake160.as_bytes() != hash160 {
                 return Err(format!("key {:#x} is not in multisig config", args.sender_key).into());
             }
             let (tx, _) = sign_tx(&args, tx, &tx_info.omnilock_config, key)?;
