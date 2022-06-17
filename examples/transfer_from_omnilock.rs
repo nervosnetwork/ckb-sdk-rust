@@ -6,7 +6,10 @@ use ckb_sdk::{
         DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
         DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
     },
-    tx_builder::{transfer::CapacityTransferBuilder, unlock_tx, CapacityBalancer, TxBuilder},
+    tx_builder::{
+        balance_tx_capacity, fill_placeholder_witnesses, transfer::CapacityTransferBuilder,
+        unlock_tx, CapacityBalancer, TxBuilder,
+    },
     types::NetworkType,
     unlock::{OmniLockConfig, OmniLockScriptSigner},
     unlock::{OmniLockUnlocker, ScriptUnlocker},
@@ -69,11 +72,11 @@ struct BuildOmniLockAddrArgs {
     receiver: Address,
 
     /// omnilock script deploy transaction hash
-    #[clap(long, value_name = "omnilock_tx_hash")]
+    #[clap(long, value_name = "H256")]
     omnilock_tx_hash: H256,
 
     /// cell index of omnilock script deploy transaction's outputs
-    #[clap(long, value_name = "index")]
+    #[clap(long, value_name = "NUMBER")]
     omnilock_index: usize,
 
     /// CKB rpc url
@@ -90,11 +93,11 @@ struct GenTxArgs {
     receiver: Address,
 
     /// omnilock script deploy transaction hash
-    #[clap(long, value_name = "omnilock_tx_hash")]
+    #[clap(long, value_name = "H256")]
     omnilock_tx_hash: H256,
 
     /// cell index of omnilock script deploy transaction's outputs
-    #[clap(long, value_name = "index")]
+    #[clap(long, value_name = "NUMBER")]
     omnilock_index: usize,
 
     /// The capacity to transfer (unit: CKB, example: 102.43)
@@ -124,11 +127,11 @@ struct SignTxArgs {
     tx_file: PathBuf,
 
     /// omnilock script deploy transaction hash
-    #[clap(long, value_name = "omnilock_tx_hash")]
+    #[clap(long, value_name = "H256")]
     omnilock_tx_hash: H256,
 
     /// cell index of omnilock script deploy transaction's outputs
-    #[clap(long, value_name = "index")]
+    #[clap(long, value_name = "NUMBER")]
     omnilock_index: usize,
 
     /// CKB rpc url
@@ -171,7 +174,7 @@ struct TxInfo {
 struct OmniLockInfo {
     type_hash: H256,
     script_id: ScriptId,
-    celldep: CellDep,
+    cell_dep: CellDep,
 }
 
 fn main() -> Result<(), Box<dyn StdErr>> {
@@ -270,7 +273,7 @@ fn build_transfer_tx(
         .build();
     let placeholder_witness = omnilock_config.placeholder_witness();
     // set fee_rate to 2000 to reserve for secp256k1_data_dep
-    let balancer = CapacityBalancer::new_simple(sender, placeholder_witness, 2000);
+    let balancer = CapacityBalancer::new_simple(sender, placeholder_witness, 1000);
 
     // Build:
     //   * CellDepResolver
@@ -281,7 +284,7 @@ fn build_transfer_tx(
     let genesis_block = ckb_client.get_block_by_number(0.into())?.unwrap();
     let genesis_block = BlockView::from(genesis_block);
     let mut cell_dep_resolver = DefaultCellDepResolver::from_genesis(&genesis_block)?;
-    cell_dep_resolver.insert(cell.script_id, cell.celldep, "Omni Lock".to_string());
+    cell_dep_resolver.insert(cell.script_id, cell.cell_dep, "Omni Lock".to_string());
     let header_dep_resolver = DefaultHeaderDepResolver::new(args.ckb_rpc.as_str());
     let mut cell_collector =
         DefaultCellCollector::new(args.ckb_indexer.as_str(), args.ckb_rpc.as_str());
@@ -294,24 +297,36 @@ fn build_transfer_tx(
         .capacity(args.capacity.0.pack())
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
-    let tx = builder.build_balanced(
+
+    let base_tx = builder.build_base(
         &mut cell_collector,
         &cell_dep_resolver,
         &header_dep_resolver,
         &tx_dep_provider,
-        &balancer,
-        &unlockers,
     )?;
+
     let secp256k1_data_dep = {
         // pub const SECP256K1_DATA_OUTPUT_LOC: (usize, usize) = (0, 3);
         let tx_hash = genesis_block.transactions()[0].hash();
         let out_point = OutPoint::new(tx_hash, 3u32);
         CellDep::new_builder().out_point(out_point).build()
     };
-    let tx = tx
+
+    let base_tx = base_tx
         .as_advanced_builder()
         .cell_dep(secp256k1_data_dep)
         .build();
+    let (tx_filled_witnesses, _) =
+        fill_placeholder_witnesses(base_tx, &tx_dep_provider, &unlockers)?;
+
+    let tx = balance_tx_capacity(
+        &tx_filled_witnesses,
+        &balancer,
+        &mut cell_collector,
+        &tx_dep_provider,
+        &cell_dep_resolver,
+        &header_dep_resolver,
+    )?;
     Ok((tx, omnilock_config))
 }
 
@@ -320,21 +335,21 @@ fn build_omnilock_cell_dep(
     tx_hash: &H256,
     index: usize,
 ) -> Result<OmniLockInfo, Box<dyn StdErr>> {
-    let outpoint = ckb_jsonrpc_types::OutPoint {
+    let out_point_json = ckb_jsonrpc_types::OutPoint {
         tx_hash: tx_hash.clone(),
         index: ckb_jsonrpc_types::Uint32::from(index as u32),
     };
-    let cell_status = ckb_client.get_live_cell(outpoint, false)?;
+    let cell_status = ckb_client.get_live_cell(out_point_json, false)?;
     let script = Script::from(cell_status.cell.unwrap().output.type_.unwrap());
 
     let type_hash = script.calc_script_hash();
     let out_point = OutPoint::new(Byte32::from_slice(tx_hash.as_bytes())?, index as u32);
 
-    let celldep = CellDep::new_builder().out_point(out_point).build();
+    let cell_dep = CellDep::new_builder().out_point(out_point).build();
     Ok(OmniLockInfo {
         type_hash: H256::from_slice(type_hash.as_slice())?,
         script_id: ScriptId::new_type(type_hash.unpack()),
-        celldep,
+        cell_dep,
     })
 }
 

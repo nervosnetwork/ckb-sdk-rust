@@ -498,13 +498,13 @@ impl OmniLockScriptSigner {
 
 impl ScriptSigner for OmniLockScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        if !(args.len() == 22 && u8::from(self.config.id.flags) == args[0]) {
+        if !(args.len() == 22 && self.config.id.flags as u8 == args[0]) {
             return false;
         }
         if self.config.id.flags == IdentityFlags::PubkeyHash {
             self.signer.match_id(self.config.id.blake160.as_ref())
         } else {
-            false
+            todo!("other auth type not supported yet");
         }
     }
 
