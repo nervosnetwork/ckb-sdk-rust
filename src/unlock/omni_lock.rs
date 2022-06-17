@@ -100,7 +100,7 @@ impl OmniLockConfig {
     /// * `lock_arg` proper 20 bytes auth content
     pub fn new_pubkey_hash_with_lockarg(lock_arg: Bytes) -> Self {
         assert!(lock_arg.len() == 20);
-        Self::new(IdentityFlags::PubkeyHash, blake160(&lock_arg))
+        Self::new(IdentityFlags::PubkeyHash, H160::from_slice(&lock_arg).unwrap())
     }
 
     /// Create a pubkey hash algorithm omnilock with pubkey
