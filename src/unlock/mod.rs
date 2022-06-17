@@ -12,4 +12,4 @@ pub use unlocker::{
     ScriptUnlocker, SecpMultisigUnlocker, SecpSighashUnlocker, UnlockError,
 };
 
-pub use omni_lock::{IdentityFlags, OmniLockConfig};
+pub use omni_lock::{IdentityFlag, OmniLockConfig};

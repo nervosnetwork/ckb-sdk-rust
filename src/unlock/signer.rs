@@ -16,7 +16,7 @@ use crate::constants::MULTISIG_TYPE_HASH;
 use crate::traits::{Signer, SignerError};
 use crate::types::{AddressPayload, CodeHashIndex, ScriptGroup, Since};
 
-use super::{IdentityFlags, OmniLockConfig};
+use super::{IdentityFlag, OmniLockConfig};
 
 #[derive(Error, Debug)]
 pub enum ScriptSignError {
@@ -498,10 +498,10 @@ impl OmniLockScriptSigner {
 
 impl ScriptSigner for OmniLockScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        if !(args.len() == 22 && self.config.id.flags as u8 == args[0]) {
+        if !(args.len() == 22 && self.config.id.flag as u8 == args[0]) {
             return false;
         }
-        if self.config.id.flags == IdentityFlags::PubkeyHash {
+        if self.config.id.flag == IdentityFlag::PubkeyHash {
             self.signer.match_id(self.config.id.blake160.as_ref())
         } else {
             todo!("other auth type not supported yet");

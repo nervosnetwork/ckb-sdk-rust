@@ -272,7 +272,6 @@ fn build_transfer_tx(
         .args(omnilock_config.build_args().pack())
         .build();
     let placeholder_witness = omnilock_config.placeholder_witness();
-    // set fee_rate to 2000 to reserve for secp256k1_data_dep
     let balancer = CapacityBalancer::new_simple(sender, placeholder_witness, 1000);
 
     // Build:

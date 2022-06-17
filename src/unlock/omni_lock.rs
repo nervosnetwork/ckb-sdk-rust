@@ -16,14 +16,14 @@ use bitflags::bitflags;
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 #[repr(u8)]
-pub enum IdentityFlags {
+pub enum IdentityFlag {
     PubkeyHash = 0,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 pub struct Identity {
     /// Indicate what's auth content of blake160 will be.
-    pub flags: IdentityFlags,
+    pub flag: IdentityFlag,
     /// The auth content of the identity.
     pub blake160: H160,
 }
@@ -31,7 +31,7 @@ impl Identity {
     /// convert the identify to smt_key.
     pub fn to_smt_key(&self) -> [u8; 32] {
         let mut ret = [0u8; 32];
-        ret[0] = self.flags as u8;
+        ret[0] = self.flag as u8;
         (&mut ret[1..21]).copy_from_slice(self.blake160.as_ref());
         ret
     }
@@ -40,7 +40,7 @@ impl Identity {
 impl From<Identity> for [u8; 21] {
     fn from(id: Identity) -> Self {
         let mut res = [0u8; 21];
-        res[0] = id.flags as u8;
+        res[0] = id.flag as u8;
         res[1..].copy_from_slice(id.blake160.as_bytes());
         res
     }
@@ -48,7 +48,7 @@ impl From<Identity> for [u8; 21] {
 
 impl From<Identity> for Vec<u8> {
     fn from(id: Identity) -> Self {
-        let mut bytes: Vec<u8> = vec![id.flags as u8];
+        let mut bytes: Vec<u8> = vec![id.flag as u8];
         bytes.extend(id.blake160.as_bytes());
         bytes
     }
@@ -68,7 +68,7 @@ impl Display for Identity {
         if alternate {
             write!(f, "0x")?;
         }
-        write!(f, "{:02x},", self.flags as u8)?;
+        write!(f, "{:02x},", self.flag as u8)?;
         if alternate {
             write!(f, "0x")?;
         }
@@ -82,14 +82,14 @@ impl Display for Identity {
 bitflags! {
     #[derive(Serialize, Deserialize)]
     pub struct OmniLockFlags: u8 {
-        // administrator mode 0b00000001, affected args:  RC cell type ID, affected field:omni_identity/signature in OmniLockWitnessLock
-        const ADMIN = 0b00000001;
-        // anyone-can-pay mode 0b00000010, affected args: minimum ckb/udt in ACP
-        const ACP = 0b00000010;
-        // time-lock mode 0b00000100, affected args: since for timelock
-        const TIME_LOCK = 0b00000100;
-        // supply mode	0b00001000, affected args: type script hash for supply
-        const SUPPLY = 0b00001000;
+        /// administrator mode, flag is 1, affected args:  RC cell type ID, affected field:omni_identity/signature in OmniLockWitnessLock
+        const ADMIN = 1;
+        // anyone-can-pay mode, flag is 1<<1, affected args: minimum ckb/udt in ACP
+        const ACP = 1<<1;
+        /// time-lock mode, flag is 1<<2, affected args: since for timelock
+        const TIME_LOCK = 1<<2;
+        /// supply mode, flag is 1<<3, affected args: type script hash for supply
+        const SUPPLY = 1<<3;
     }
 }
 
@@ -116,7 +116,7 @@ impl OmniLockConfig {
     pub fn new_pubkey_hash_with_lockarg(lock_arg: Bytes) -> Self {
         assert!(lock_arg.len() == 20);
         Self::new(
-            IdentityFlags::PubkeyHash,
+            IdentityFlag::PubkeyHash,
             H160::from_slice(&lock_arg).unwrap(),
         )
     }
@@ -124,19 +124,19 @@ impl OmniLockConfig {
     /// Create a pubkey hash algorithm omnilock with pubkey
     pub fn new_pubkey_hash(pubkey: &Pubkey) -> Self {
         let pubkey_hash = blake160(&pubkey.serialize());
-        Self::new(IdentityFlags::PubkeyHash, pubkey_hash)
+        Self::new(IdentityFlag::PubkeyHash, pubkey_hash)
     }
 
     /// Create a new OmniLockConfig
-    pub fn new(flags: IdentityFlags, blake160: H160) -> Self {
-        let blake160 = if flags == IdentityFlags::PubkeyHash {
+    pub fn new(flag: IdentityFlag, blake160: H160) -> Self {
+        let blake160 = if flag == IdentityFlag::PubkeyHash {
             blake160
         } else {
             H160::from_slice(&[0; 20]).unwrap()
         };
 
         OmniLockConfig {
-            id: Identity { flags, blake160 },
+            id: Identity { flag, blake160 },
             omni_lock_flags: OmniLockFlags::empty(),
         }
     }
@@ -146,7 +146,7 @@ impl OmniLockConfig {
         let mut bytes = BytesMut::with_capacity(128);
 
         // auth
-        bytes.put_u8(self.id.flags as u8);
+        bytes.put_u8(self.id.flag as u8);
         bytes.put(self.id.blake160.as_ref());
         bytes.put_u8(self.omni_lock_flags.bits);
 
@@ -155,7 +155,7 @@ impl OmniLockConfig {
 
     /// Indicate whether is a sighash type.
     pub fn is_pubkey_hash(&self) -> bool {
-        self.id.flags == IdentityFlags::PubkeyHash
+        self.id.flag == IdentityFlag::PubkeyHash
     }
 
     /// Build zero lock content for signature
