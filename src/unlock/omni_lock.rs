@@ -12,6 +12,8 @@ use ckb_crypto::secp::Pubkey;
 pub use ckb_types::prelude::Pack;
 use serde::{Deserialize, Serialize};
 
+use bitflags::bitflags;
+
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 #[repr(u8)]
 pub enum IdentityFlags {
@@ -77,6 +79,19 @@ impl Display for Identity {
         Ok(())
     }
 }
+bitflags! {
+    #[derive(Serialize, Deserialize)]
+    pub struct OmniLockFlags: u8 {
+        // administrator mode 0b00000001, affected args:  RC cell type ID, affected field:omni_identity/signature in OmniLockWitnessLock
+        const ADMIN = 0b00000001;
+        // anyone-can-pay mode 0b00000010, affected args: minimum ckb/udt in ACP
+        const ACP = 0b00000010;
+        // time-lock mode 0b00000100, affected args: since for timelock
+        const TIME_LOCK = 0b00000100;
+        // supply mode	0b00001000, affected args: type script hash for supply
+        const SUPPLY = 0b00001000;
+    }
+}
 
 /// OmniLock configuration
 /// The lock argument has the following data structure:
@@ -91,7 +106,7 @@ pub struct OmniLockConfig {
     /// The auth id of the OmniLock
     pub id: Identity,
     /// The omni lock flags, it indicates whether the other four fields exist.
-    pub omni_lock_flags: u8,
+    pub omni_lock_flags: OmniLockFlags,
 }
 
 impl OmniLockConfig {
@@ -100,7 +115,10 @@ impl OmniLockConfig {
     /// * `lock_arg` proper 20 bytes auth content
     pub fn new_pubkey_hash_with_lockarg(lock_arg: Bytes) -> Self {
         assert!(lock_arg.len() == 20);
-        Self::new(IdentityFlags::PubkeyHash, H160::from_slice(&lock_arg).unwrap())
+        Self::new(
+            IdentityFlags::PubkeyHash,
+            H160::from_slice(&lock_arg).unwrap(),
+        )
     }
 
     /// Create a pubkey hash algorithm omnilock with pubkey
@@ -119,7 +137,7 @@ impl OmniLockConfig {
 
         OmniLockConfig {
             id: Identity { flags, blake160 },
-            omni_lock_flags: 0,
+            omni_lock_flags: OmniLockFlags::empty(),
         }
     }
 
@@ -130,7 +148,7 @@ impl OmniLockConfig {
         // auth
         bytes.put_u8(self.id.flags as u8);
         bytes.put(self.id.blake160.as_ref());
-        bytes.put_u8(self.omni_lock_flags);
+        bytes.put_u8(self.omni_lock_flags.bits);
 
         bytes.freeze()
     }
