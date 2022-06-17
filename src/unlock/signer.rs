@@ -16,6 +16,8 @@ use crate::constants::MULTISIG_TYPE_HASH;
 use crate::traits::{Signer, SignerError};
 use crate::types::{AddressPayload, CodeHashIndex, ScriptGroup, Since};
 
+use super::{IdentityFlag, OmniLockConfig};
+
 #[derive(Error, Debug)]
 pub enum ScriptSignError {
     #[error("signer error: `{0}`")]
@@ -475,4 +477,73 @@ pub fn generate_message(
     let mut message = vec![0u8; 32];
     blake2b.finalize(&mut message);
     Ok(Bytes::from(message))
+}
+
+pub struct OmniLockScriptSigner {
+    signer: Box<dyn Signer>,
+    config: OmniLockConfig,
+}
+
+impl OmniLockScriptSigner {
+    pub fn new(signer: Box<dyn Signer>, config: OmniLockConfig) -> OmniLockScriptSigner {
+        OmniLockScriptSigner { signer, config }
+    }
+    pub fn signer(&self) -> &dyn Signer {
+        self.signer.as_ref()
+    }
+    pub fn config(&self) -> &OmniLockConfig {
+        &self.config
+    }
+}
+
+impl ScriptSigner for OmniLockScriptSigner {
+    fn match_args(&self, args: &[u8]) -> bool {
+        if !(args.len() == 22 && self.config.id.flag as u8 == args[0]) {
+            return false;
+        }
+        if self.config.id.flag == IdentityFlag::PubkeyHash {
+            self.signer.match_id(self.config.id.blake160.as_ref())
+        } else {
+            todo!("other auth type not supported yet");
+        }
+    }
+
+    fn sign_tx(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+    ) -> Result<TransactionView, ScriptSignError> {
+        if self.config.is_pubkey_hash() {
+            let witness_idx = script_group.input_indices[0];
+            let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+            while witnesses.len() <= witness_idx {
+                witnesses.push(Default::default());
+            }
+            let tx_new = tx
+                .as_advanced_builder()
+                .set_witnesses(witnesses.clone())
+                .build();
+
+            let zero_lock = self.config.zero_lock();
+            let message = generate_message(&tx_new, script_group, zero_lock)?;
+
+            let signature =
+                self.signer
+                    .sign(self.config.id.blake160.as_ref(), message.as_ref(), true, tx)?;
+
+            let lock = OmniLockConfig::build_witness_lock(signature);
+            // Put signature into witness
+            let witness_data = witnesses[witness_idx].raw_data();
+            let mut current_witness: WitnessArgs = if witness_data.is_empty() {
+                WitnessArgs::default()
+            } else {
+                WitnessArgs::from_slice(witness_data.as_ref())?
+            };
+            current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
+            witnesses[witness_idx] = current_witness.as_bytes().pack();
+            Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+        } else {
+            todo!("not supported yet");
+        }
+    }
 }
