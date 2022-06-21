@@ -1074,6 +1074,4 @@ fn test_udt_transfer() {
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 
-#[cfg(feature = "test")]
-#[cfg(test)]
 pub mod omni_lock;

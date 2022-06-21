@@ -51,9 +51,9 @@ pub enum IdentityFlag {
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 pub struct Identity {
     /// Indicate what's auth content of blake160 will be.
-    pub flag: IdentityFlag,
+    flag: IdentityFlag,
     /// The auth content of the identity.
-    pub blake160: H160,
+    blake160: H160,
 }
 impl Identity {
     /// convert the identify to smt_key.
@@ -62,6 +62,15 @@ impl Identity {
         ret[0] = self.flag as u8;
         (&mut ret[1..21]).copy_from_slice(self.blake160.as_ref());
         ret
+    }
+
+    /// get the flag
+    pub fn flag(&self) -> IdentityFlag {
+        self.flag
+    }
+    /// get the hash
+    pub fn blake160(&self) -> &H160 {
+        &self.blake160
     }
 }
 
@@ -132,23 +141,19 @@ bitflags! {
 #[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct OmniLockConfig {
     /// The auth id of the OmniLock
-    pub id: Identity,
+    id: Identity,
     /// The multisig config.
-    pub multisig_config: Option<MultisigConfig>,
+    multisig_config: Option<MultisigConfig>,
     /// The omni lock flags, it indicates whether the other four fields exist.
-    pub omni_lock_flags: OmniLockFlags,
+    omni_lock_flags: OmniLockFlags,
 }
 
 impl OmniLockConfig {
     /// Create a pubkey hash algorithm omnilock with proper argument
     /// # Arguments
     /// * `lock_arg` proper 20 bytes auth content
-    pub fn new_pubkey_hash_with_lockarg(lock_arg: Bytes) -> Self {
-        assert!(lock_arg.len() == 20);
-        Self::new(
-            IdentityFlag::PubkeyHash,
-            H160::from_slice(&lock_arg).unwrap(),
-        )
+    pub fn new_pubkey_hash_with_lockarg(lock_arg: H160) -> Self {
+        Self::new(IdentityFlag::PubkeyHash, lock_arg)
     }
 
     /// Create a pubkey hash algorithm omnilock with pubkey
@@ -157,14 +162,14 @@ impl OmniLockConfig {
         Self::new(IdentityFlag::PubkeyHash, pubkey_hash)
     }
 
-    pub fn new_multisig(multisig_config: Option<MultisigConfig>) -> Self {
-        let blake160 = multisig_config.as_ref().unwrap().hash160();
+    pub fn new_multisig(multisig_config: MultisigConfig) -> Self {
+        let blake160 = multisig_config.hash160();
         OmniLockConfig {
             id: Identity {
                 flag: IdentityFlag::Multisig,
                 blake160,
             },
-            multisig_config,
+            multisig_config: Some(multisig_config),
             omni_lock_flags: OmniLockFlags::empty(),
         }
     }
@@ -182,6 +187,20 @@ impl OmniLockConfig {
             multisig_config: None,
             omni_lock_flags: OmniLockFlags::empty(),
         }
+    }
+
+    pub fn id(&self) -> &Identity {
+        &self.id
+    }
+
+    /// Return the reference content of the multisig config.
+    /// If the multisig config is None, it will panic.
+    pub fn multisig_config(&self) -> &MultisigConfig {
+        self.multisig_config.as_ref().unwrap()
+    }
+
+    pub fn omni_lock_flags(&self) -> &OmniLockFlags {
+        &self.omni_lock_flags
     }
 
     /// Build lock script arguments

@@ -516,9 +516,7 @@ impl OmniLockScriptSigner {
 
         let signatures = self
             .config
-            .multisig_config
-            .as_ref()
-            .unwrap()
+            .multisig_config()
             .sighash_addresses
             .iter()
             .filter(|id| self.signer.match_id(id.as_bytes()))
@@ -533,7 +531,7 @@ impl OmniLockScriptSigner {
             WitnessArgs::from_slice(witness_data.as_ref())?
         };
         let lock_field = current_witness.lock().to_opt().map(|data| data.raw_data());
-        let olwl = if let Some(lock_field) = lock_field {
+        let omnilock_witnesslock = if let Some(lock_field) = lock_field {
             if lock_field.len() != zero_lock_len {
                 return Err(ScriptSignError::Other(
                     format!(
@@ -549,9 +547,9 @@ impl OmniLockScriptSigner {
         } else {
             OmniLockWitnessLock::default()
         };
-        let multisig_config = self.config.multisig_config.as_ref().unwrap();
+        let multisig_config = self.config.multisig_config();
         let config_data = multisig_config.to_witness_data();
-        let mut omni_sig = olwl
+        let mut omni_sig = omnilock_witnesslock
             .signature()
             .to_opt()
             .map(|data| data.raw_data().as_ref().to_vec())
@@ -577,7 +575,7 @@ impl OmniLockScriptSigner {
                 return Err(ScriptSignError::TooManySignatures);
             }
         }
-        let lock = olwl
+        let lock = omnilock_witnesslock
             .as_builder()
             .signature(Some(Bytes::from(omni_sig)).pack())
             .build()
@@ -591,23 +589,21 @@ impl OmniLockScriptSigner {
 
 impl ScriptSigner for OmniLockScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        if !(args.len() == 22 && self.config.id.flag as u8 == args[0]) {
+        if !(args.len() == 22 && self.config.id().flag() as u8 == args[0]) {
             return false;
         }
-        if self.config.id.flag == IdentityFlag::PubkeyHash {
-            self.signer.match_id(self.config.id.blake160.as_ref())
-        } else if self.config.id.flag == IdentityFlag::Multisig {
-            self.config.id.blake160.as_ref() == &args[1..21]
-                && self
-                    .config
-                    .multisig_config
-                    .as_ref()
-                    .unwrap()
-                    .sighash_addresses
-                    .iter()
-                    .any(|id| self.signer.match_id(id.as_bytes()))
-        } else {
-            todo!("other auth type not supported yet");
+        match self.config.id().flag() {
+            IdentityFlag::PubkeyHash => self.signer.match_id(self.config.id().blake160().as_ref()),
+            IdentityFlag::Multisig => {
+                self.config.id().blake160().as_ref() == &args[1..21]
+                    && self
+                        .config
+                        .multisig_config()
+                        .sighash_addresses
+                        .iter()
+                        .any(|id| self.signer.match_id(id.as_bytes()))
+            }
+            _ => todo!("other auth type not supported yet"),
         }
     }
 
@@ -630,9 +626,12 @@ impl ScriptSigner for OmniLockScriptSigner {
             let zero_lock = self.config.zero_lock();
             let message = generate_message(&tx_new, script_group, zero_lock)?;
 
-            let signature =
-                self.signer
-                    .sign(self.config.id.blake160.as_ref(), message.as_ref(), true, tx)?;
+            let signature = self.signer.sign(
+                self.config.id().blake160().as_ref(),
+                message.as_ref(),
+                true,
+                tx,
+            )?;
 
             let lock = OmniLockConfig::build_witness_lock(signature);
             // Put signature into witness

@@ -20,7 +20,7 @@ use ckb_types::{
     core::{BlockView, ScriptHashType, TransactionView},
     packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
     prelude::*,
-    H256,
+    H160, H256,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -192,7 +192,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
                 .map_err(|err| format!("invalid sender secret key: {}", err))?;
             let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
             let hash160 = &blake2b_256(&pubkey.serialize()[..])[0..20];
-            if tx_info.omnilock_config.id.blake160.as_bytes() != hash160 {
+            if tx_info.omnilock_config.id().blake160().as_bytes() != hash160 {
                 return Err(format!("key {:#x} is not in multisig config", args.sender_key).into());
             }
             let (tx, _) = sign_tx(&args, tx, &tx_info.omnilock_config, key)?;
@@ -229,7 +229,8 @@ fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdEr
     let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let cell =
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
-    let config = OmniLockConfig::new_pubkey_hash_with_lockarg(args.receiver.payload().args());
+    let arg = H160::from_slice(&args.receiver.payload().args()).unwrap();
+    let config = OmniLockConfig::new_pubkey_hash_with_lockarg(arg);
     let address_payload = {
         let args = config.build_args();
         ckb_sdk::AddressPayload::new_full(ScriptHashType::Type, cell.type_hash.pack(), args)

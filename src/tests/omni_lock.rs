@@ -55,9 +55,7 @@ fn build_omnilock_unlockers(
 
 #[test]
 fn test_omnilock_transfer_from_sighash() {
-    let cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(Bytes::copy_from_slice(
-        ACCOUNT2_ARG.as_bytes(),
-    ));
+    let cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(ACCOUNT2_ARG.clone());
 
     let sender = build_omnilock_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
@@ -120,7 +118,7 @@ fn test_omnilock_transfer_from_multisig() {
         ACCOUNT2_ARG.clone(),
     ];
     let multi_cfg = MultisigConfig::new_with(lock_args, 0, 2).unwrap();
-    let cfg = OmniLockConfig::new_multisig(Some(multi_cfg));
+    let cfg = OmniLockConfig::new_multisig(multi_cfg);
 
     let sender = build_omnilock_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
