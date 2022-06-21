@@ -359,11 +359,11 @@ fn build_omnilock_unlockers(
 ) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(keys);
     let omnilock_signer = OmniLockScriptSigner::new(Box::new(signer), config);
-    let multisig_unlocker = OmniLockUnlocker::new(omnilock_signer);
+    let omnilock_unlocker = OmniLockUnlocker::new(omnilock_signer);
     let omnilock_script_id = ScriptId::new_type(omni_lock_type_hash);
     HashMap::from([(
         omnilock_script_id,
-        Box::new(multisig_unlocker) as Box<dyn ScriptUnlocker>,
+        Box::new(omnilock_unlocker) as Box<dyn ScriptUnlocker>,
     )])
 }
 
