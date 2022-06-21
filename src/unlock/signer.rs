@@ -542,8 +542,7 @@ impl OmniLockScriptSigner {
                     .into(),
                 ));
             }
-            OmniLockWitnessLock::from_slice(lock_field.as_ref())
-                .unwrap_or_else(|_| OmniLockWitnessLock::default())
+            OmniLockWitnessLock::from_slice(lock_field.as_ref())?
         } else {
             OmniLockWitnessLock::default()
         };

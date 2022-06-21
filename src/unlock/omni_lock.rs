@@ -225,39 +225,56 @@ impl OmniLockConfig {
         self.id.flag == IdentityFlag::Multisig
     }
 
+    pub fn placeholder_witness_lock(&self) -> Bytes {
+        match self.id.flag {
+            IdentityFlag::PubkeyHash => OmniLockWitnessLock::new_builder()
+                .signature(Some(Bytes::from(vec![0u8; 65])).pack())
+                .build()
+                .as_bytes(),
+            IdentityFlag::Multisig => {
+                let multisig_config = self.multisig_config.as_ref().unwrap();
+                let config_data = multisig_config.to_witness_data();
+                let multisig_len = config_data.len() + multisig_config.threshold() as usize * 65;
+                let mut omni_sig = vec![0u8; multisig_len];
+                omni_sig[..config_data.len()].copy_from_slice(&config_data);
+                OmniLockWitnessLock::new_builder()
+                    .signature(Some(Bytes::from(omni_sig)).pack())
+                    .build()
+                    .as_bytes()
+            }
+            _ => todo!("to support other placeholder_witness_lock implementions"),
+        }
+    }
+
     /// Build zero lock content for signature
     pub fn zero_lock(&self) -> Bytes {
-        if self.is_pubkey_hash() {
-            let len = OmniLockWitnessLock::new_builder()
+        let len = match self.id.flag {
+            IdentityFlag::PubkeyHash => OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 65])).pack())
                 .build()
                 .as_bytes()
-                .len();
-
-            Bytes::from(vec![0u8; len])
-        } else if self.is_multisig() {
-            let multisig_config = self.multisig_config.as_ref().unwrap();
-            let multisig_len = 4
-                + 20 * multisig_config.sighash_addresses().len()
-                + 65 * multisig_config.threshold() as usize;
-            let len = OmniLockWitnessLock::new_builder()
-                .signature(Some(Bytes::from(vec![0u8; multisig_len])).pack())
-                .build()
-                .as_bytes()
-                .len();
-            Bytes::from(vec![0u8; len])
-        } else {
-            todo!("to support other zero lock implementions");
-        }
+                .len(),
+            IdentityFlag::Multisig => {
+                let multisig_config = self.multisig_config.as_ref().unwrap();
+                let multisig_len = 4
+                    + 20 * multisig_config.sighash_addresses().len()
+                    + 65 * multisig_config.threshold() as usize;
+                OmniLockWitnessLock::new_builder()
+                    .signature(Some(Bytes::from(vec![0u8; multisig_len])).pack())
+                    .build()
+                    .as_bytes()
+                    .len()
+            }
+            _ => todo!("to support other zero lock implementions"),
+        };
+        Bytes::from(vec![0u8; len])
     }
 
     /// Create a zero lock witness placeholder
     pub fn placeholder_witness(&self) -> WitnessArgs {
         if self.is_pubkey_hash() || self.is_multisig() {
-            let zero_lock = self.zero_lock();
-            WitnessArgs::new_builder()
-                .lock(Some(zero_lock).pack())
-                .build()
+            let lock = self.placeholder_witness_lock();
+            WitnessArgs::new_builder().lock(Some(lock).pack()).build()
         } else {
             todo!("to support other placeholder_witness implementions");
         }
