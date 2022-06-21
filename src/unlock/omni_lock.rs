@@ -138,7 +138,7 @@ bitflags! {
 /// 4. 2 bytes minimum ckb/udt in ACP, optional
 /// 5. 8 bytes since for time lock, optional
 /// 6. 32 bytes type script hash for supply, optional
-#[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 pub struct OmniLockConfig {
     /// The auth id of the OmniLock
     id: Identity,

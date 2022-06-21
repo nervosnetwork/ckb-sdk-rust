@@ -121,7 +121,7 @@ impl ScriptSigner for SecpSighashScriptSigner {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Hash, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Hash, Serialize, Deserialize, Debug)]
 pub struct MultisigConfig {
     sighash_addresses: Vec<H160>,
     require_first_n: u8,
