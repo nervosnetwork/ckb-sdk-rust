@@ -1073,3 +1073,5 @@ fn test_udt_transfer() {
     );
     ctx.verify(tx, FEE_RATE).unwrap();
 }
+
+pub mod omni_lock;

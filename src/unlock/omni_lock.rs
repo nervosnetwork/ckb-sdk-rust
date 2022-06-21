@@ -14,18 +14,46 @@ use serde::{Deserialize, Serialize};
 
 use bitflags::bitflags;
 
+use super::MultisigConfig;
+
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 #[repr(u8)]
 pub enum IdentityFlag {
+    /// The auth content represents the blake160 hash of a secp256k1 public key.
+    /// The lock script will perform secp256k1 signature verification, the same as the SECP256K1/blake160 lock.
     PubkeyHash = 0,
+    /// It follows the same unlocking methods used by Ethereum.
+    Ethereum = 1,
+    /// It follows the same unlocking methods used by EOS.
+    Eos = 2,
+    /// It follows the same unlocking methods used by Tron.
+    Tron = 3,
+    /// It follows the same unlocking methods used by Bitcoin
+    Bitcoin = 4,
+    ///  It follows the same unlocking methods used by Dogecoin.
+    Dogecoin = 5,
+    /// It follows the same unlocking method used by CKB MultiSig.
+    Multisig = 6,
+
+    /// The auth content that represents the blake160 hash of a lock script.
+    /// The lock script will check if the current transaction contains an input cell with a matching lock script.
+    /// Otherwise, it would return with an error. It's similar to P2SH in BTC.
+    OwnerLock = 0xFC,
+    /// The auth content that represents the blake160 hash of a preimage.
+    /// The preimage contains exec information that is used to delegate signature verification to another script via exec.
+    Exec = 0xFD,
+    /// The auth content that represents the blake160 hash of a preimage.
+    /// The preimage contains dynamic linking information that is used to delegate signature verification to the dynamic linking script.
+    /// The interface described in Swappable Signature Verification Protocol Spec is used here.
+    Dl = 0xFE,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 pub struct Identity {
     /// Indicate what's auth content of blake160 will be.
-    pub flag: IdentityFlag,
+    flag: IdentityFlag,
     /// The auth content of the identity.
-    pub blake160: H160,
+    blake160: H160,
 }
 impl Identity {
     /// convert the identify to smt_key.
@@ -34,6 +62,15 @@ impl Identity {
         ret[0] = self.flag as u8;
         (&mut ret[1..21]).copy_from_slice(self.blake160.as_ref());
         ret
+    }
+
+    /// get the flag
+    pub fn flag(&self) -> IdentityFlag {
+        self.flag
+    }
+    /// get the hash
+    pub fn blake160(&self) -> &H160 {
+        &self.blake160
     }
 }
 
@@ -104,27 +141,37 @@ bitflags! {
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 pub struct OmniLockConfig {
     /// The auth id of the OmniLock
-    pub id: Identity,
+    id: Identity,
+    /// The multisig config.
+    multisig_config: Option<MultisigConfig>,
     /// The omni lock flags, it indicates whether the other four fields exist.
-    pub omni_lock_flags: OmniLockFlags,
+    omni_lock_flags: OmniLockFlags,
 }
 
 impl OmniLockConfig {
     /// Create a pubkey hash algorithm omnilock with proper argument
     /// # Arguments
     /// * `lock_arg` proper 20 bytes auth content
-    pub fn new_pubkey_hash_with_lockarg(lock_arg: Bytes) -> Self {
-        assert!(lock_arg.len() == 20);
-        Self::new(
-            IdentityFlag::PubkeyHash,
-            H160::from_slice(&lock_arg).unwrap(),
-        )
+    pub fn new_pubkey_hash_with_lockarg(lock_arg: H160) -> Self {
+        Self::new(IdentityFlag::PubkeyHash, lock_arg)
     }
 
     /// Create a pubkey hash algorithm omnilock with pubkey
     pub fn new_pubkey_hash(pubkey: &Pubkey) -> Self {
         let pubkey_hash = blake160(&pubkey.serialize());
         Self::new(IdentityFlag::PubkeyHash, pubkey_hash)
+    }
+
+    pub fn new_multisig(multisig_config: MultisigConfig) -> Self {
+        let blake160 = multisig_config.hash160();
+        OmniLockConfig {
+            id: Identity {
+                flag: IdentityFlag::Multisig,
+                blake160,
+            },
+            multisig_config: Some(multisig_config),
+            omni_lock_flags: OmniLockFlags::empty(),
+        }
     }
 
     /// Create a new OmniLockConfig
@@ -137,8 +184,23 @@ impl OmniLockConfig {
 
         OmniLockConfig {
             id: Identity { flag, blake160 },
+            multisig_config: None,
             omni_lock_flags: OmniLockFlags::empty(),
         }
+    }
+
+    pub fn id(&self) -> &Identity {
+        &self.id
+    }
+
+    /// Return the reference content of the multisig config.
+    /// If the multisig config is None, it will panic.
+    pub fn multisig_config(&self) -> &MultisigConfig {
+        self.multisig_config.as_ref().unwrap()
+    }
+
+    pub fn omni_lock_flags(&self) -> &OmniLockFlags {
+        &self.omni_lock_flags
     }
 
     /// Build lock script arguments
@@ -158,28 +220,61 @@ impl OmniLockConfig {
         self.id.flag == IdentityFlag::PubkeyHash
     }
 
+    /// Check if it is a mutlisig flag.
+    pub fn is_multisig(&self) -> bool {
+        self.id.flag == IdentityFlag::Multisig
+    }
+
+    pub fn placeholder_witness_lock(&self) -> Bytes {
+        match self.id.flag {
+            IdentityFlag::PubkeyHash => OmniLockWitnessLock::new_builder()
+                .signature(Some(Bytes::from(vec![0u8; 65])).pack())
+                .build()
+                .as_bytes(),
+            IdentityFlag::Multisig => {
+                let multisig_config = self.multisig_config.as_ref().unwrap();
+                let config_data = multisig_config.to_witness_data();
+                let multisig_len = config_data.len() + multisig_config.threshold() as usize * 65;
+                let mut omni_sig = vec![0u8; multisig_len];
+                omni_sig[..config_data.len()].copy_from_slice(&config_data);
+                OmniLockWitnessLock::new_builder()
+                    .signature(Some(Bytes::from(omni_sig)).pack())
+                    .build()
+                    .as_bytes()
+            }
+            _ => todo!("to support other placeholder_witness_lock implementions"),
+        }
+    }
+
     /// Build zero lock content for signature
     pub fn zero_lock(&self) -> Bytes {
-        if self.is_pubkey_hash() {
-            let len = OmniLockWitnessLock::new_builder()
+        let len = match self.id.flag {
+            IdentityFlag::PubkeyHash => OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 65])).pack())
                 .build()
                 .as_bytes()
-                .len();
-
-            Bytes::from(vec![0u8; len])
-        } else {
-            todo!("to support other zero lock implementions");
-        }
+                .len(),
+            IdentityFlag::Multisig => {
+                let multisig_config = self.multisig_config.as_ref().unwrap();
+                let multisig_len = 4
+                    + 20 * multisig_config.sighash_addresses().len()
+                    + 65 * multisig_config.threshold() as usize;
+                OmniLockWitnessLock::new_builder()
+                    .signature(Some(Bytes::from(vec![0u8; multisig_len])).pack())
+                    .build()
+                    .as_bytes()
+                    .len()
+            }
+            _ => todo!("to support other zero lock implementions"),
+        };
+        Bytes::from(vec![0u8; len])
     }
 
     /// Create a zero lock witness placeholder
     pub fn placeholder_witness(&self) -> WitnessArgs {
-        if self.is_pubkey_hash() {
-            let zero_lock = self.zero_lock();
-            WitnessArgs::new_builder()
-                .lock(Some(zero_lock).pack())
-                .build()
+        if self.is_pubkey_hash() || self.is_multisig() {
+            let lock = self.placeholder_witness_lock();
+            WitnessArgs::new_builder().lock(Some(lock).pack()).build()
         } else {
             todo!("to support other placeholder_witness implementions");
         }
