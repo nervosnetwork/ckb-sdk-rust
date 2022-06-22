@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::{types::omni_lock::OmniLockWitnessLock, util::blake160};
+use crate::{
+    types::omni_lock::OmniLockWitnessLock,
+    util::{blake160, keccak160},
+};
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     packed::WitnessArgs,
@@ -173,20 +176,21 @@ impl OmniLockConfig {
             omni_lock_flags: OmniLockFlags::empty(),
         }
     }
+    /// Create a ethereum algorithm omnilock with pubkey
+    pub fn new_ethereum(pubkey: &Pubkey) -> Self {
+        let pubkey_hash = keccak160(pubkey.as_ref());
+        Self::new(IdentityFlag::Ethereum, pubkey_hash)
+    }
 
     /// Create a new OmniLockConfig
-    pub fn new(flag: IdentityFlag, blake160: H160) -> Self {
-        let blake160 = if flag == IdentityFlag::PubkeyHash {
-            blake160
-        } else {
-            H160::from_slice(&[0; 20]).unwrap()
+    pub fn new(flag: IdentityFlag, auth_content: H160) -> Self {
+        let auth_content = match flag {
+            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => auth_content,
+            _ => H160::from_slice(&[0; 20]).unwrap(),
         };
 
         OmniLockConfig {
-            id: Identity {
-                flag,
-                auth_content: blake160,
-            },
+            id: Identity { flag, auth_content },
             multisig_config: None,
             omni_lock_flags: OmniLockFlags::empty(),
         }
@@ -223,6 +227,11 @@ impl OmniLockConfig {
         self.id.flag == IdentityFlag::PubkeyHash
     }
 
+    /// Indicate whether is a ethereum type.
+    pub fn is_ethereum(&self) -> bool {
+        self.id.flag == IdentityFlag::Ethereum
+    }
+
     /// Check if it is a mutlisig flag.
     pub fn is_multisig(&self) -> bool {
         self.id.flag == IdentityFlag::Multisig
@@ -230,7 +239,7 @@ impl OmniLockConfig {
 
     pub fn placeholder_witness_lock(&self) -> Bytes {
         match self.id.flag {
-            IdentityFlag::PubkeyHash => OmniLockWitnessLock::new_builder()
+            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 65])).pack())
                 .build()
                 .as_bytes(),
@@ -252,7 +261,7 @@ impl OmniLockConfig {
     /// Build zero lock content for signature
     pub fn zero_lock(&self) -> Bytes {
         let len = match self.id.flag {
-            IdentityFlag::PubkeyHash => OmniLockWitnessLock::new_builder()
+            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 65])).pack())
                 .build()
                 .as_bytes()
@@ -275,11 +284,12 @@ impl OmniLockConfig {
 
     /// Create a zero lock witness placeholder
     pub fn placeholder_witness(&self) -> WitnessArgs {
-        if self.is_pubkey_hash() || self.is_multisig() {
-            let lock = self.placeholder_witness_lock();
-            WitnessArgs::new_builder().lock(Some(lock).pack()).build()
-        } else {
-            todo!("to support other placeholder_witness implementions");
+        match self.id.flag {
+            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum | IdentityFlag::Multisig => {
+                let lock = self.placeholder_witness_lock();
+                WitnessArgs::new_builder().lock(Some(lock).pack()).build()
+            }
+            _ => todo!("to support other placeholder_witness implementions"),
         }
     }
 
