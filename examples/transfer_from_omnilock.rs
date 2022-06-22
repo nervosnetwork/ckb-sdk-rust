@@ -192,7 +192,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
                 .map_err(|err| format!("invalid sender secret key: {}", err))?;
             let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
             let hash160 = &blake2b_256(&pubkey.serialize()[..])[0..20];
-            if tx_info.omnilock_config.id().blake160().as_bytes() != hash160 {
+            if tx_info.omnilock_config.id().auth_content().as_bytes() != hash160 {
                 return Err(format!("key {:#x} is not in multisig config", args.sender_key).into());
             }
             let (tx, _) = sign_tx(&args, tx, &tx_info.omnilock_config, key)?;

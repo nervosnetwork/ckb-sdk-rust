@@ -50,17 +50,17 @@ pub enum IdentityFlag {
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 pub struct Identity {
-    /// Indicate what's auth content of blake160 will be.
+    /// Indicate what's auth content of auth_content will be.
     flag: IdentityFlag,
     /// The auth content of the identity.
-    blake160: H160,
+    auth_content: H160,
 }
 impl Identity {
     /// convert the identify to smt_key.
     pub fn to_smt_key(&self) -> [u8; 32] {
         let mut ret = [0u8; 32];
         ret[0] = self.flag as u8;
-        (&mut ret[1..21]).copy_from_slice(self.blake160.as_ref());
+        (&mut ret[1..21]).copy_from_slice(self.auth_content.as_ref());
         ret
     }
 
@@ -68,9 +68,9 @@ impl Identity {
     pub fn flag(&self) -> IdentityFlag {
         self.flag
     }
-    /// get the hash
-    pub fn blake160(&self) -> &H160 {
-        &self.blake160
+    /// get the auth content of the identity
+    pub fn auth_content(&self) -> &H160 {
+        &self.auth_content
     }
 }
 
@@ -78,7 +78,7 @@ impl From<Identity> for [u8; 21] {
     fn from(id: Identity) -> Self {
         let mut res = [0u8; 21];
         res[0] = id.flag as u8;
-        res[1..].copy_from_slice(id.blake160.as_bytes());
+        res[1..].copy_from_slice(id.auth_content.as_bytes());
         res
     }
 }
@@ -86,7 +86,7 @@ impl From<Identity> for [u8; 21] {
 impl From<Identity> for Vec<u8> {
     fn from(id: Identity) -> Self {
         let mut bytes: Vec<u8> = vec![id.flag as u8];
-        bytes.extend(id.blake160.as_bytes());
+        bytes.extend(id.auth_content.as_bytes());
         bytes
     }
 }
@@ -109,7 +109,7 @@ impl Display for Identity {
         if alternate {
             write!(f, "0x")?;
         }
-        for x in self.blake160.as_bytes() {
+        for x in self.auth_content.as_bytes() {
             write!(f, "{:02x}", x)?;
         }
         write!(f, ")")?;
@@ -167,7 +167,7 @@ impl OmniLockConfig {
         OmniLockConfig {
             id: Identity {
                 flag: IdentityFlag::Multisig,
-                blake160,
+                auth_content: blake160,
             },
             multisig_config: Some(multisig_config),
             omni_lock_flags: OmniLockFlags::empty(),
@@ -183,7 +183,10 @@ impl OmniLockConfig {
         };
 
         OmniLockConfig {
-            id: Identity { flag, blake160 },
+            id: Identity {
+                flag,
+                auth_content: blake160,
+            },
             multisig_config: None,
             omni_lock_flags: OmniLockFlags::empty(),
         }
@@ -209,7 +212,7 @@ impl OmniLockConfig {
 
         // auth
         bytes.put_u8(self.id.flag as u8);
-        bytes.put(self.id.blake160.as_ref());
+        bytes.put(self.id.auth_content.as_ref());
         bytes.put_u8(self.omni_lock_flags.bits);
 
         bytes.freeze()

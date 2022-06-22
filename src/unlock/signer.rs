@@ -593,9 +593,11 @@ impl ScriptSigner for OmniLockScriptSigner {
             return false;
         }
         match self.config.id().flag() {
-            IdentityFlag::PubkeyHash => self.signer.match_id(self.config.id().blake160().as_ref()),
+            IdentityFlag::PubkeyHash => self
+                .signer
+                .match_id(self.config.id().auth_content().as_ref()),
             IdentityFlag::Multisig => {
-                self.config.id().blake160().as_ref() == &args[1..21]
+                self.config.id().auth_content().as_ref() == &args[1..21]
                     && self
                         .config
                         .multisig_config()
@@ -628,7 +630,7 @@ impl ScriptSigner for OmniLockScriptSigner {
             let message = generate_message(&tx_new, script_group, zero_lock)?;
 
             let signature = self.signer.sign(
-                self.config.id().blake160().as_ref(),
+                self.config.id().auth_content().as_ref(),
                 message.as_ref(),
                 true,
                 tx,
