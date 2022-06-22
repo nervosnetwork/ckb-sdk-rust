@@ -517,6 +517,7 @@ impl OmniLockScriptSigner {
         let signatures = self
             .config
             .multisig_config()
+            .unwrap()
             .sighash_addresses
             .iter()
             .filter(|id| self.signer.match_id(id.as_bytes()))
@@ -546,7 +547,7 @@ impl OmniLockScriptSigner {
         } else {
             OmniLockWitnessLock::default()
         };
-        let multisig_config = self.config.multisig_config();
+        let multisig_config = self.config.multisig_config().unwrap();
         let config_data = multisig_config.to_witness_data();
         let mut omni_sig = omnilock_witnesslock
             .signature()
@@ -598,6 +599,7 @@ impl ScriptSigner for OmniLockScriptSigner {
                     && self
                         .config
                         .multisig_config()
+                        .unwrap()
                         .sighash_addresses
                         .iter()
                         .any(|id| self.signer.match_id(id.as_bytes()))

@@ -195,8 +195,8 @@ impl OmniLockConfig {
 
     /// Return the reference content of the multisig config.
     /// If the multisig config is None, it will panic.
-    pub fn multisig_config(&self) -> &MultisigConfig {
-        self.multisig_config.as_ref().unwrap()
+    pub fn multisig_config(&self) -> Option<&MultisigConfig> {
+        self.multisig_config.as_ref()
     }
 
     pub fn omni_lock_flags(&self) -> &OmniLockFlags {
