@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use ckb_crypto::secp::Pubkey;
 use lru::LruCache;
 use parking_lot::Mutex;
 use thiserror::Error;
@@ -18,10 +19,6 @@ use ckb_types::{
 };
 
 use super::{OffchainCellCollector, OffchainCellDepResolver};
-use crate::constants::{
-    DAO_OUTPUT_LOC, DAO_TYPE_HASH, MULTISIG_GROUP_OUTPUT_LOC, MULTISIG_OUTPUT_LOC,
-    MULTISIG_TYPE_HASH, SIGHASH_GROUP_OUTPUT_LOC, SIGHASH_OUTPUT_LOC, SIGHASH_TYPE_HASH,
-};
 use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
 use crate::rpc::{CkbRpcClient, IndexerRpcClient};
 use crate::traits::{
@@ -32,6 +29,13 @@ use crate::traits::{
 use crate::types::ScriptId;
 use crate::util::{get_max_mature_number, serialize_signature, zeroize_privkey};
 use crate::SECP256K1;
+use crate::{
+    constants::{
+        DAO_OUTPUT_LOC, DAO_TYPE_HASH, MULTISIG_GROUP_OUTPUT_LOC, MULTISIG_OUTPUT_LOC,
+        MULTISIG_TYPE_HASH, SIGHASH_GROUP_OUTPUT_LOC, SIGHASH_OUTPUT_LOC, SIGHASH_TYPE_HASH,
+    },
+    util::keccak160,
+};
 use ckb_resource::{
     CODE_HASH_DAO, CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
     CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL,
@@ -513,6 +517,21 @@ impl SecpCkbRawKeySigner {
             .expect("Generate hash(H160) from pubkey failed");
         self.keys.insert(hash160, key);
     }
+
+    /// Create SecpkRawKeySigner from secret keys for ethereum algorithm.
+    pub fn new_with_ethereum_secret_keys(keys: Vec<secp256k1::SecretKey>) -> SecpCkbRawKeySigner {
+        let mut signer = SecpCkbRawKeySigner::default();
+        for key in keys {
+            signer.add_ethereum_secret_key(key);
+        }
+        signer
+    }
+    /// Add a ethereum secret key
+    pub fn add_ethereum_secret_key(&mut self, key: secp256k1::SecretKey) {
+        let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
+        let hash160 = keccak160(Pubkey::from(pubkey).as_ref());
+        self.keys.insert(hash160, key);
+    }
 }
 
 impl Signer for SecpCkbRawKeySigner {
@@ -547,6 +566,7 @@ impl Signer for SecpCkbRawKeySigner {
         }
     }
 }
+
 impl Drop for SecpCkbRawKeySigner {
     fn drop(&mut self) {
         for (_, mut secret_key) in self.keys.drain() {

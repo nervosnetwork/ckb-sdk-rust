@@ -14,6 +14,7 @@ use crate::{
     ScriptId,
 };
 
+use ckb_crypto::secp::{Pubkey, SECP256K1};
 use ckb_hash::blake2b_256;
 use ckb_types::{
     bytes::Bytes,
@@ -40,7 +41,11 @@ fn build_omnilock_unlockers(
     key: secp256k1::SecretKey,
     config: OmniLockConfig,
 ) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
-    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![key]);
+    let signer = if config.is_ethereum() {
+        SecpCkbRawKeySigner::new_with_ethereum_secret_keys(vec![key])
+    } else {
+        SecpCkbRawKeySigner::new_with_secret_keys(vec![key])
+    };
     let script = build_omnilock_script(&config);
     let omnilock_script_signer = OmniLockScriptSigner::new(Box::new(signer) as Box<_>, config);
     let omnilock_unlocker = OmniLockUnlocker::new(omnilock_script_signer);
@@ -55,8 +60,22 @@ fn build_omnilock_unlockers(
 
 #[test]
 fn test_omnilock_transfer_from_sighash() {
-    let cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(ACCOUNT2_ARG.clone());
+    let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))
+        .unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+    let cfg = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+    test_omnilock_simple_hash(cfg);
+}
 
+#[test]
+fn test_omnilock_transfer_from_ethereum() {
+    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes()).unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account2_key);
+    let cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
+    test_omnilock_simple_hash(cfg);
+}
+fn test_omnilock_simple_hash(cfg: OmniLockConfig) {
     let sender = build_omnilock_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 

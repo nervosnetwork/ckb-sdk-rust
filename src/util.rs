@@ -5,8 +5,9 @@ use ckb_types::{
     core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
     packed::CellOutput,
     prelude::*,
-    H160, U256,
+    H160, H256, U256,
 };
+use sha3::{Digest, Keccak256};
 
 use crate::rpc::CkbRpcClient;
 use crate::traits::LiveCell;
@@ -133,6 +134,24 @@ pub fn serialize_signature(signature: &secp256k1::recovery::RecoverableSignature
 pub fn blake160(message: &[u8]) -> H160 {
     let r = ckb_hash::blake2b_256(message);
     H160::from_slice(&r[..20]).unwrap()
+}
+
+/// Do an ethereum style public key hash.
+pub fn keccak160(message: &[u8]) -> H160 {
+    let mut hasher = Keccak256::new();
+    hasher.update(message);
+    let r = hasher.finalize();
+    H160::from_slice(&r[12..]).unwrap()
+}
+
+/// Do an ethereum style message convert before do a signature.
+pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
+    let eth_prefix: &[u8; 28] = b"\x19Ethereum Signed Message:\n32";
+    let mut hasher = Keccak256::new();
+    hasher.update(eth_prefix);
+    hasher.update(message);
+    let r = hasher.finalize();
+    H256::from_slice(r.as_slice()).expect("convert_keccak256_hash")
 }
 
 #[cfg(test)]

@@ -12,9 +12,12 @@ use ckb_types::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::traits::{Signer, SignerError};
 use crate::types::{AddressPayload, CodeHashIndex, ScriptGroup, Since};
 use crate::{constants::MULTISIG_TYPE_HASH, types::omni_lock::OmniLockWitnessLock};
+use crate::{
+    traits::{Signer, SignerError},
+    util::convert_keccak256_hash,
+};
 
 use super::{IdentityFlag, OmniLockConfig};
 
@@ -585,6 +588,45 @@ impl OmniLockScriptSigner {
         witnesses[witness_idx] = current_witness.as_bytes().pack();
         Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
     }
+
+    fn sign_ethereum_tx(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+    ) -> Result<TransactionView, ScriptSignError> {
+        let witness_idx = script_group.input_indices[0];
+        let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+        while witnesses.len() <= witness_idx {
+            witnesses.push(Default::default());
+        }
+        let tx_new = tx
+            .as_advanced_builder()
+            .set_witnesses(witnesses.clone())
+            .build();
+
+        let zero_lock = self.config.zero_lock();
+        let message = generate_message(&tx_new, script_group, zero_lock)?;
+        let message = convert_keccak256_hash(message.as_ref());
+
+        let signature = self.signer.sign(
+            self.config.id().auth_content().as_ref(),
+            message.as_ref(),
+            true,
+            tx,
+        )?;
+
+        let lock = OmniLockConfig::build_witness_lock(signature);
+        // Put signature into witness
+        let witness_data = witnesses[witness_idx].raw_data();
+        let mut current_witness: WitnessArgs = if witness_data.is_empty() {
+            WitnessArgs::default()
+        } else {
+            WitnessArgs::from_slice(witness_data.as_ref())?
+        };
+        current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
+        witnesses[witness_idx] = current_witness.as_bytes().pack();
+        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+    }
 }
 
 impl ScriptSigner for OmniLockScriptSigner {
@@ -593,9 +635,11 @@ impl ScriptSigner for OmniLockScriptSigner {
             return false;
         }
         match self.config.id().flag() {
-            IdentityFlag::PubkeyHash => self.signer.match_id(self.config.id().blake160().as_ref()),
+            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => self
+                .signer
+                .match_id(self.config.id().auth_content().as_ref()),
             IdentityFlag::Multisig => {
-                self.config.id().blake160().as_ref() == &args[1..21]
+                self.config.id().auth_content().as_ref() == &args[1..21]
                     && self
                         .config
                         .multisig_config()
@@ -628,7 +672,7 @@ impl ScriptSigner for OmniLockScriptSigner {
             let message = generate_message(&tx_new, script_group, zero_lock)?;
 
             let signature = self.signer.sign(
-                self.config.id().blake160().as_ref(),
+                self.config.id().auth_content().as_ref(),
                 message.as_ref(),
                 true,
                 tx,
@@ -645,6 +689,8 @@ impl ScriptSigner for OmniLockScriptSigner {
             current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
             witnesses[witness_idx] = current_witness.as_bytes().pack();
             Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+        } else if self.config.is_ethereum() {
+            self.sign_ethereum_tx(tx, script_group)
         } else if self.config.is_multisig() {
             self.sign_multisig_tx(tx, script_group)
         } else {

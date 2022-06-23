@@ -1,4 +1,4 @@
-use ckb_hash::blake2b_256;
+use ckb_crypto::secp::Pubkey;
 use ckb_jsonrpc_types as json_types;
 use ckb_sdk::{
     rpc::CkbRpcClient,
@@ -13,6 +13,7 @@ use ckb_sdk::{
     types::NetworkType,
     unlock::{OmniLockConfig, OmniLockScriptSigner},
     unlock::{OmniLockUnlocker, ScriptUnlocker},
+    util::keccak160,
     Address, HumanCapacity, ScriptGroup, ScriptId, SECP256K1,
 };
 use ckb_types::{
@@ -20,7 +21,7 @@ use ckb_types::{
     core::{BlockView, ScriptHashType, TransactionView},
     packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
     prelude::*,
-    H160, H256,
+    H256,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -34,42 +35,43 @@ use std::{collections::HashMap, error::Error as StdErr};
 
 /*
 # examples for the developer local node
-########################### sighash omnilock example #################################
+########################### ethereum omnilock example #################################
 # 1. build a omnilock address
- ./target/debug/examples/transfer_from_omnilock build \
+./target/debug/examples/transfer_from_omnilock_ethereum build \
   --omnilock-tx-hash 34e39e16a285d951b587e88f74286cbdb09c27a5c7e86aa1b1c92058a3cbcc52 --omnilock-index 0  \
-  --receiver ckt1qyqt8xpk328d89zgl928nsgh3lelch33vvvq5u3024
-    # receiver lock-arg:b398368a8ed39448f95479c1178ff3fc5e316318
-    # {
-    #   "lock-arg": "0x00b398368a8ed39448f95479c1178ff3fc5e31631800",
-    #   "lock-hash": "0x6b845964aad7f568edf61a69d1c2278c68065dc91bad3c32234869aed86f7642",
-    #   "mainnet": "ckb1qqklkz85v4xt39ws5dd2hdv8xsy4jnpe3envjzvddqecxr0mgvrksqgqkwvrdz5w6w2y372508q30rlnl30rzcccqq2pnflw",
-    #   "testnet": "ckt1qqklkz85v4xt39ws5dd2hdv8xsy4jnpe3envjzvddqecxr0mgvrksqgqkwvrdz5w6w2y372508q30rlnl30rzcccqq3k897x"
-    # }
+  --receiver 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d
+# pubkey:"038d3cfceea4f9c2e76c5c4f5e99aec74c26d6ac894648b5700a0b71f91f9b5c2a"
+# pubkey:"048d3cfceea4f9c2e76c5c4f5e99aec74c26d6ac894648b5700a0b71f91f9b5c2a26b16aac1d5753e56849ea83bf795eb8b06f0b6f4e5ed7b8caca720595458039"
+# {
+#   "lock-arg": "0x01cf2485c76aff1f2b4464edf04a1c8045068cf7e000",
+#   "lock-hash": "0x04b791304bbd6287218acc9e4b0971789ea1ef52b758317481245913511c6159",
+#   "mainnet": "ckb1qqklkz85v4xt39ws5dd2hdv8xsy4jnpe3envjzvddqecxr0mgvrksqgpeujgt3m2lu0jk3ryahcy58yqg5rgealqqq5yzrqv",
+#   "testnet": "ckt1qqklkz85v4xt39ws5dd2hdv8xsy4jnpe3envjzvddqecxr0mgvrksqgpeujgt3m2lu0jk3ryahcy58yqg5rgealqqq0nk0py"
+# }
 # 2. transfer capacity to the address
 ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d7 \
-  --to-address ckt1qqklkz85v4xt39ws5dd2hdv8xsy4jnpe3envjzvddqecxr0mgvrksqgqkwvrdz5w6w2y372508q30rlnl30rzcccqq3k897x \
-  --capacity 99 --tx-fee 0.001 --skip-check-to-address
-    # 0x999479f890a65cb4c37660565daeb77adec30cf65862e8e1aece09993b6340fc
+  --to-address ckt1qqklkz85v4xt39ws5dd2hdv8xsy4jnpe3envjzvddqecxr0mgvrksqgpeujgt3m2lu0jk3ryahcy58yqg5rgealqqq0nk0py \
+  --capacity 200 --tx-fee 0.001 --skip-check-to-address
+# 0x27c1fc437cac0e45236e566a71c8b87d2f9cbf58d3bfce0be4dab12c57d9e217
 # 3. generate the transaction
-./target/debug/examples/transfer_from_omnilock gen --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
-            --omnilock-tx-hash 34e39e16a285d951b587e88f74286cbdb09c27a5c7e86aa1b1c92058a3cbcc52 --omnilock-index 0  \
-            --receiver ckt1qyqy68e02pll7qd9m603pqkdr29vw396h6dq50reug \
-            --capacity 100.0 \
-            --tx-file tx.json
+./target/debug/examples/transfer_from_omnilock_ethereum gen --sender-key 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d \
+    --omnilock-tx-hash 34e39e16a285d951b587e88f74286cbdb09c27a5c7e86aa1b1c92058a3cbcc52 --omnilock-index 0  \
+    --receiver ckt1qyqy68e02pll7qd9m603pqkdr29vw396h6dq50reug \
+    --capacity 100.0 \
+    --tx-file tx.json
 # 4. sign the transaction
-./target/debug/examples/transfer_from_omnilock sign --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
+./target/debug/examples/transfer_from_omnilock_ethereum sign --sender-key 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d \
             --omnilock-tx-hash 34e39e16a285d951b587e88f74286cbdb09c27a5c7e86aa1b1c92058a3cbcc52 --omnilock-index 0  \
             --tx-file tx.json
 # 5. send transaction
-./target/debug/examples/transfer_from_omnilock send --tx-file tx.json
+./target/debug/examples/transfer_from_omnilock_ethereum send --tx-file tx.json
 */
 
 #[derive(Args)]
 struct BuildOmniLockAddrArgs {
-    /// The receiver address
-    #[clap(long, value_name = "ADDRESS")]
-    receiver: Address,
+    /// The receiver's private key (hex string)
+    #[clap(long, value_name = "KEY")]
+    receiver: H256,
 
     /// omnilock script deploy transaction hash
     #[clap(long, value_name = "H256")]
@@ -191,8 +193,9 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             let key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
                 .map_err(|err| format!("invalid sender secret key: {}", err))?;
             let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
-            let hash160 = &blake2b_256(&pubkey.serialize()[..])[0..20];
-            if tx_info.omnilock_config.id().auth_content().as_bytes() != hash160 {
+            let pubkey = Pubkey::from(pubkey);
+            let hash160 = keccak160(pubkey.as_ref());
+            if tx_info.omnilock_config.id().auth_content().as_bytes() != hash160.as_bytes() {
                 return Err(format!("key {:#x} is not in omnilock config", args.sender_key).into());
             }
             let (tx, _) = sign_tx(&args, tx, &tx_info.omnilock_config, key)?;
@@ -229,8 +232,11 @@ fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdEr
     let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let cell =
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
-    let arg = H160::from_slice(&args.receiver.payload().args()).unwrap();
-    let config = OmniLockConfig::new_pubkey_hash_with_lockarg(arg);
+    let privkey = secp256k1::SecretKey::from_slice(args.receiver.as_bytes()).unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &privkey);
+    println!("pubkey:{:?}", hex_string(&pubkey.serialize()));
+    println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
+    let config = OmniLockConfig::new_ethereum(&pubkey.into());
     let address_payload = {
         let args = config.build_args();
         ckb_sdk::AddressPayload::new_full(ScriptHashType::Type, cell.type_hash.pack(), args)
@@ -262,10 +268,12 @@ fn build_transfer_tx(
     let sender_key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))?;
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+    println!("pubkey:{:?}", hex_string(&pubkey.serialize()));
+    println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
     let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let cell =
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
-    let omnilock_config = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+    let omnilock_config = OmniLockConfig::new_ethereum(&pubkey.into());
     // Build CapacityBalancer
     let sender = Script::new_builder()
         .code_hash(cell.type_hash.pack())
@@ -358,7 +366,8 @@ fn build_omnilock_unlockers(
     config: OmniLockConfig,
     omni_lock_type_hash: H256,
 ) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
-    let signer = SecpCkbRawKeySigner::new_with_secret_keys(keys);
+    // NOTE: this is the difference with sighash
+    let signer = SecpCkbRawKeySigner::new_with_ethereum_secret_keys(keys);
     let omnilock_signer = OmniLockScriptSigner::new(Box::new(signer), config);
     let omnilock_unlocker = OmniLockUnlocker::new(omnilock_signer);
     let omnilock_script_id = ScriptId::new_type(omni_lock_type_hash);
@@ -381,10 +390,9 @@ fn sign_tx(
     let cell =
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
 
-    let mut _still_locked_groups = None;
     let unlockers = build_omnilock_unlockers(vec![key], omnilock_config.clone(), cell.type_hash);
     let (new_tx, new_still_locked_groups) = unlock_tx(tx.clone(), &tx_dep_provider, &unlockers)?;
     tx = new_tx;
-    _still_locked_groups = Some(new_still_locked_groups);
-    Ok((tx, _still_locked_groups.unwrap_or_default()))
+    assert!(new_still_locked_groups.is_empty());
+    Ok((tx, new_still_locked_groups))
 }
