@@ -13,7 +13,8 @@ use ckb_sdk::{
     types::NetworkType,
     unlock::{OmniLockConfig, OmniLockScriptSigner},
     unlock::{OmniLockUnlocker, ScriptUnlocker},
-    Address, HumanCapacity, ScriptGroup, ScriptId, SECP256K1, util::keccak160,
+    util::keccak160,
+    Address, HumanCapacity, ScriptGroup, ScriptId, SECP256K1,
 };
 use ckb_types::{
     bytes::Bytes,
