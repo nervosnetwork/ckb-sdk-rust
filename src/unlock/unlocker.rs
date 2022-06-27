@@ -624,7 +624,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
         if args.len() < 22 {
             return Err(UnlockError::Other(
                 format!(
-                    "invalid script args length, expected more than 22, got: {}",
+                    "invalid script args length, expected not less than 22, got: {}",
                     args.len()
                 )
                 .into(),
