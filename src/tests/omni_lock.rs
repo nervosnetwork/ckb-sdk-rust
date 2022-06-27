@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
 use crate::{
-    constants::ONE_CKB,
+    constants::{ONE_CKB, SIGHASH_TYPE_HASH},
     tests::{
-        build_sighash_script, init_context, ACCOUNT0_ARG, ACCOUNT0_KEY, ACCOUNT1_ARG, ACCOUNT2_ARG,
-        ACCOUNT2_KEY, FEE_RATE,
+        build_sighash_script, init_context, ACCOUNT0_ARG, ACCOUNT0_KEY, ACCOUNT1_ARG, ACCOUNT1_KEY,
+        ACCOUNT2_ARG, ACCOUNT2_KEY, FEE_RATE,
     },
     traits::SecpCkbRawKeySigner,
-    tx_builder::transfer::CapacityTransferBuilder,
+    tx_builder::{transfer::CapacityTransferBuilder, CapacityProvider},
     unlock::{
         MultisigConfig, OmniLockConfig, OmniLockScriptSigner, OmniLockUnlocker, ScriptUnlocker,
+        SecpSighashUnlocker,
     },
     ScriptId,
 };
@@ -18,10 +19,10 @@ use ckb_crypto::secp::{Pubkey, SECP256K1};
 use ckb_hash::blake2b_256;
 use ckb_types::{
     bytes::Bytes,
-    core::ScriptHashType,
-    packed::{CellOutput, Script},
+    core::{FeeRate, ScriptHashType},
+    packed::{CellOutput, Script, WitnessArgs},
     prelude::*,
-    H256,
+    H160, H256,
 };
 
 use crate::tx_builder::{unlock_tx, CapacityBalancer, TxBuilder};
@@ -60,7 +61,7 @@ fn build_omnilock_unlockers(
 
 #[test]
 fn test_omnilock_transfer_from_sighash() {
-    let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes())
+    let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
@@ -70,8 +71,8 @@ fn test_omnilock_transfer_from_sighash() {
 
 #[test]
 fn test_omnilock_transfer_from_ethereum() {
-    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes()).unwrap();
-    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account2_key);
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
     let cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
     test_omnilock_simple_hash(cfg);
 }
@@ -98,7 +99,7 @@ fn test_omnilock_simple_hash(cfg: OmniLockConfig) {
         CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
 
     let mut cell_collector = ctx.to_live_cells_context();
-    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes()).unwrap();
+    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
     let unlockers = build_omnilock_unlockers(account2_key, cfg.clone());
     let mut tx = builder
         .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
@@ -195,5 +196,86 @@ fn test_omnilock_transfer_from_multisig() {
     assert_eq!(witnesses.len(), 2);
     assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
     assert_eq!(witnesses[1].len(), 0);
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
+fn test_omnilock_transfer_from_ownerlock() {
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+    let sender1 = build_sighash_script(ACCOUNT1_ARG);
+    let hash = H160::from_slice(&sender1.calc_script_hash().as_slice()[0..20]).unwrap();
+    let cfg = OmniLockConfig::new_ownerlock(hash);
+    let sender0 = build_omnilock_script(&cfg);
+
+    let ctx = init_context(
+        vec![(OMNILOCK_BIN, true)],
+        vec![
+            (sender0.clone(), Some(50 * ONE_CKB)),
+            (sender1.clone(), Some(61 * ONE_CKB)),
+        ],
+    );
+
+    let output = CellOutput::new_builder()
+        .capacity((110 * ONE_CKB).pack())
+        .lock(receiver.clone())
+        .build();
+    let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
+    let placeholder_witness0 = cfg.placeholder_witness();
+    let placeholder_witness1 = WitnessArgs::new_builder()
+        .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+        .build();
+
+    let balancer = CapacityBalancer {
+        fee_rate: FeeRate::from_u64(FEE_RATE),
+        capacity_provider: CapacityProvider::new(vec![
+            (sender0.clone(), placeholder_witness0.clone()),
+            (sender1.clone(), placeholder_witness1.clone()),
+        ]),
+        change_lock_script: None,
+        force_small_change_as_fee: Some(ONE_CKB),
+    };
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let mut unlockers = build_omnilock_unlockers(account0_key, cfg);
+
+    let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
+    let script_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+
+    unlockers.insert(
+        ScriptId::new_type(SIGHASH_TYPE_HASH.clone()),
+        Box::new(script_unlocker),
+    );
+    let mut tx = builder
+        .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+        .unwrap();
+
+    let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
+    assert!(new_locked_groups.is_empty());
+    tx = new_tx;
+
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 2);
+    assert_eq!(tx.inputs().len(), 2);
+    let mut senders = vec![sender0, sender1];
+    for out_point in tx.input_pts_iter() {
+        let sender = ctx.get_input(&out_point).unwrap().0.lock();
+        println!("code hash:{:?}", sender.code_hash());
+        assert!(senders.contains(&sender));
+        senders.retain(|x| x != &sender);
+    }
+    assert!(senders.is_empty());
+    assert_eq!(tx.outputs().len(), 1);
+    assert_eq!(tx.output(0).unwrap(), output);
+    assert_eq!(tx.output(0).unwrap().lock(), receiver);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 2);
+    assert_eq!(witnesses[0].len(), placeholder_witness0.as_slice().len());
+    assert_eq!(witnesses[1].len(), placeholder_witness1.as_slice().len());
     ctx.verify(tx, FEE_RATE).unwrap();
 }

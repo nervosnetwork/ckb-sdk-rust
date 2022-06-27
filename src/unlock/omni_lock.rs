@@ -176,16 +176,25 @@ impl OmniLockConfig {
             omni_lock_flags: OmniLockFlags::empty(),
         }
     }
-    /// Create a ethereum algorithm omnilock with pubkey
+    /// Create an ethereum algorithm omnilock with pubkey
     pub fn new_ethereum(pubkey: &Pubkey) -> Self {
         let pubkey_hash = keccak160(pubkey.as_ref());
         Self::new(IdentityFlag::Ethereum, pubkey_hash)
     }
 
+    /// Create an ownerlock omnilock with according script hash.
+    /// # Arguments
+    /// * `script_hash` the proper blake160 hash of according ownerlock script.
+    pub fn new_ownerlock(script_hash: H160) -> Self {
+        Self::new(IdentityFlag::OwnerLock, script_hash)
+    }
+
     /// Create a new OmniLockConfig
     pub fn new(flag: IdentityFlag, auth_content: H160) -> Self {
         let auth_content = match flag {
-            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => auth_content,
+            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum | IdentityFlag::OwnerLock => {
+                auth_content
+            }
             _ => H160::from_slice(&[0; 20]).unwrap(),
         };
 
@@ -237,6 +246,11 @@ impl OmniLockConfig {
         self.id.flag == IdentityFlag::Multisig
     }
 
+    /// Check if it is a ownerlock flag.
+    pub fn is_ownerlock(&self) -> bool {
+        self.id.flag == IdentityFlag::OwnerLock
+    }
+
     pub fn placeholder_witness_lock(&self) -> Bytes {
         match self.id.flag {
             IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => OmniLockWitnessLock::new_builder()
@@ -254,6 +268,7 @@ impl OmniLockConfig {
                     .build()
                     .as_bytes()
             }
+            IdentityFlag::OwnerLock => Bytes::new(),
             _ => todo!("to support other placeholder_witness_lock implementions"),
         }
     }
@@ -277,6 +292,7 @@ impl OmniLockConfig {
                     .as_bytes()
                     .len()
             }
+            IdentityFlag::OwnerLock => Bytes::new().len(),
             _ => todo!("to support other zero lock implementions"),
         };
         Bytes::from(vec![0u8; len])
@@ -289,6 +305,7 @@ impl OmniLockConfig {
                 let lock = self.placeholder_witness_lock();
                 WitnessArgs::new_builder().lock(Some(lock).pack()).build()
             }
+            IdentityFlag::OwnerLock => WitnessArgs::default(),
             _ => todo!("to support other placeholder_witness implementions"),
         }
     }
