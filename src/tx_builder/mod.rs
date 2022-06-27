@@ -4,7 +4,7 @@ pub mod dao;
 pub mod transfer;
 pub mod udt;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use thiserror::Error;
 
@@ -340,6 +340,7 @@ pub fn balance_tx_capacity(
     }
     let mut lock_script_idx = 0;
     let mut cell_deps = Vec::new();
+    let mut resolved_scripts = HashSet::new();
     let mut inputs = Vec::new();
     let mut change_output: Option<CellOutput> = None;
     let mut changed_witnesses: HashMap<usize, WitnessArgs> = HashMap::default();
@@ -486,7 +487,7 @@ pub fn balance_tx_capacity(
                     continue;
                 }
             }
-            if cell_deps.is_empty() {
+            if !resolved_scripts.contains(lock_script) {
                 let provider_cell_dep =
                     cell_dep_resolver.resolve(lock_script).ok_or_else(|| {
                         BalanceTxCapacityError::ResolveCellDepFailed(lock_script.clone())
@@ -497,6 +498,7 @@ pub fn balance_tx_capacity(
                     .all(|cell_dep| cell_dep != provider_cell_dep)
                 {
                     cell_deps.push(provider_cell_dep);
+                    resolved_scripts.insert(lock_script);
                 }
             }
             if !has_provider {

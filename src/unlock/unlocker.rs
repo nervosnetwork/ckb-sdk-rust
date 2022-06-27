@@ -610,6 +610,54 @@ impl ScriptUnlocker for OmniLockUnlocker {
         args.len() == 22 && self.signer.match_args(args)
     }
 
+    /// Check if the script group is already unlocked
+    fn is_unlocked(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<bool, UnlockError> {
+        if !self.signer.config().is_ownerlock() {
+            return Ok(false);
+        }
+        let args = script_group.script.args().raw_data();
+        if args.len() < 22 {
+            return Err(UnlockError::Other(
+                format!(
+                    "invalid script args length, expected not less than 22, got: {}",
+                    args.len()
+                )
+                .into(),
+            ));
+        }
+        let inputs = tx.inputs();
+        if tx.inputs().len() < 2 {
+            return Err(UnlockError::Other(
+                format!("expect more than 1 input, got: {}", inputs.len()).into(),
+            ));
+        }
+        let matched = tx
+            .inputs()
+            .into_iter()
+            .enumerate()
+            .filter(|(idx, _input)| !script_group.input_indices.contains(idx))
+            .any(|(_idx, input)| {
+                if let Ok(output) = tx_dep_provider.get_cell(&input.previous_output()) {
+                    let lock_hash = output.calc_lock_hash();
+                    let h = &lock_hash.as_slice()[0..20];
+                    h == &args[1..21]
+                } else {
+                    false
+                }
+            });
+        if !matched {
+            return Err(UnlockError::Other(
+                "can not find according owner lock input".into(),
+            ));
+        }
+        Ok(matched)
+    }
+
     fn unlock(
         &self,
         tx: &TransactionView,

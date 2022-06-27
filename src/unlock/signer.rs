@@ -648,6 +648,10 @@ impl ScriptSigner for OmniLockScriptSigner {
                         .iter()
                         .any(|id| self.signer.match_id(id.as_bytes()))
             }
+            IdentityFlag::OwnerLock => {
+                // should not reach here, return true for compatible reason
+                true
+            }
             _ => todo!("other auth type not supported yet"),
         }
     }
@@ -693,6 +697,9 @@ impl ScriptSigner for OmniLockScriptSigner {
             self.sign_ethereum_tx(tx, script_group)
         } else if self.config.is_multisig() {
             self.sign_multisig_tx(tx, script_group)
+        } else if self.config.is_ownerlock() {
+            // should not reach here, just return a clone for compatible reason.
+            Ok(tx.clone())
         } else {
             todo!("not supported yet");
         }
