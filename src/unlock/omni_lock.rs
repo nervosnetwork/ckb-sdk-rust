@@ -275,26 +275,7 @@ impl OmniLockConfig {
 
     /// Build zero lock content for signature
     pub fn zero_lock(&self) -> Bytes {
-        let len = match self.id.flag {
-            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => OmniLockWitnessLock::new_builder()
-                .signature(Some(Bytes::from(vec![0u8; 65])).pack())
-                .build()
-                .as_bytes()
-                .len(),
-            IdentityFlag::Multisig => {
-                let multisig_config = self.multisig_config.as_ref().unwrap();
-                let multisig_len = 4
-                    + 20 * multisig_config.sighash_addresses().len()
-                    + 65 * multisig_config.threshold() as usize;
-                OmniLockWitnessLock::new_builder()
-                    .signature(Some(Bytes::from(vec![0u8; multisig_len])).pack())
-                    .build()
-                    .as_bytes()
-                    .len()
-            }
-            IdentityFlag::OwnerLock => Bytes::new().len(),
-            _ => todo!("to support other zero lock implementions"),
-        };
+        let len = self.placeholder_witness_lock().len();
         Bytes::from(vec![0u8; len])
     }
 
