@@ -311,6 +311,99 @@ fn test_omnilock_transfer_from_multisig() {
 }
 
 #[test]
+fn test_omnilock_transfer_from_multisig_wl() {
+    let lock_args = vec![
+        ACCOUNT0_ARG.clone(),
+        ACCOUNT1_ARG.clone(),
+        ACCOUNT2_ARG.clone(),
+    ];
+    let multi_cfg = MultisigConfig::new_with(lock_args, 0, 2).unwrap();
+    let mut cfg = OmniLockConfig::new_multisig(multi_cfg);
+
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+
+    let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
+    let (proof_vec, rc_root, rce_cells) = generate_rc(
+        &mut ctx,
+        cfg.id().to_smt_key(),
+        TestScheme::OnlyInputOnWhiteList,
+    );
+    cfg.set_admin_config(AdminConfig::new(
+        H256::from_slice(rc_root.as_ref()).unwrap(),
+        proof_vec.as_bytes(),
+    ));
+    let sender = build_omnilock_script(&cfg);
+    for (lock, capacity_opt) in vec![
+        (sender.clone(), Some(100 * ONE_CKB)),
+        (sender.clone(), Some(200 * ONE_CKB)),
+        (sender.clone(), Some(300 * ONE_CKB)),
+    ] {
+        ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
+    }
+
+    let output = CellOutput::new_builder()
+        .capacity((120 * ONE_CKB).pack())
+        .lock(receiver)
+        .build();
+    let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
+    let placeholder_witness = cfg.placeholder_witness();
+    let balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes()).unwrap();
+    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone());
+    // let mut tx = builder
+    //     .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+    //     .unwrap();
+    let base_tx = builder
+        .build_base(&mut cell_collector, &ctx, &ctx, &ctx)
+        .unwrap();
+    let base_tx = add_rce_cells(base_tx, &rce_cells);
+
+    let (tx_filled_witnesses, _) = fill_placeholder_witnesses(base_tx, &ctx, &unlockers).unwrap();
+    let mut tx = balance_tx_capacity(
+        &tx_filled_witnesses,
+        &balancer,
+        &mut cell_collector,
+        &ctx,
+        &ctx,
+        &ctx,
+    )
+    .unwrap();
+
+    let mut locked_groups = None;
+    for key in [account0_key, account2_key] {
+        let unlockers = build_omnilock_unlockers(key, cfg.clone());
+        let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
+        assert!(new_locked_groups.is_empty());
+        tx = new_tx;
+        locked_groups = Some(new_locked_groups);
+    }
+
+    assert_eq!(locked_groups, Some(Vec::new()));
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 4);
+    assert_eq!(tx.inputs().len(), 2);
+    for out_point in tx.input_pts_iter() {
+        assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    assert_eq!(tx.output(0).unwrap(), output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 2);
+    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+    assert_eq!(witnesses[1].len(), 0);
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
 fn test_omnilock_transfer_from_ownerlock() {
     let receiver = build_sighash_script(ACCOUNT2_ARG);
     let sender1 = build_sighash_script(ACCOUNT1_ARG);
