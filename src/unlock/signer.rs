@@ -5,7 +5,7 @@ use ckb_types::{
     bytes::{Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
     error::VerificationError,
-    packed::{self, WitnessArgs},
+    packed::{self, BytesOpt, WitnessArgs},
     prelude::*,
     H160,
 };
@@ -615,7 +615,6 @@ impl OmniLockScriptSigner {
             tx,
         )?;
 
-        let lock = OmniLockConfig::build_witness_lock(signature);
         // Put signature into witness
         let witness_data = witnesses[witness_idx].raw_data();
         let mut current_witness: WitnessArgs = if witness_data.is_empty() {
@@ -623,15 +622,36 @@ impl OmniLockScriptSigner {
         } else {
             WitnessArgs::from_slice(witness_data.as_ref())?
         };
+
+        let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
         current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
         witnesses[witness_idx] = current_witness.as_bytes().pack();
         Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+    }
+
+    /// Build proper witness lock
+    pub fn build_witness_lock(
+        orig_lock: BytesOpt,
+        signature: Bytes,
+    ) -> Result<Bytes, ScriptSignError> {
+        let lock_field = orig_lock.to_opt().map(|data| data.raw_data());
+        let omnilock_witnesslock = if let Some(lock_field) = lock_field {
+            OmniLockWitnessLock::from_slice(lock_field.as_ref())?
+        } else {
+            OmniLockWitnessLock::default()
+        };
+
+        Ok(omnilock_witnesslock
+            .as_builder()
+            .signature(Some(signature).pack())
+            .build()
+            .as_bytes())
     }
 }
 
 impl ScriptSigner for OmniLockScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        if !(args.len() == 22 && self.config.id().flag() as u8 == args[0]) {
+        if !(args.len() >= 22 && self.config.id().flag() as u8 == args[0]) {
             return false;
         }
         match self.config.id().flag() {
@@ -682,7 +702,6 @@ impl ScriptSigner for OmniLockScriptSigner {
                 tx,
             )?;
 
-            let lock = OmniLockConfig::build_witness_lock(signature);
             // Put signature into witness
             let witness_data = witnesses[witness_idx].raw_data();
             let mut current_witness: WitnessArgs = if witness_data.is_empty() {
@@ -690,6 +709,9 @@ impl ScriptSigner for OmniLockScriptSigner {
             } else {
                 WitnessArgs::from_slice(witness_data.as_ref())?
             };
+
+            let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
+
             current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
             witnesses[witness_idx] = current_witness.as_bytes().pack();
             Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())

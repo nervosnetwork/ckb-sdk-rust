@@ -2,16 +2,23 @@ use std::collections::HashMap;
 
 use crate::{
     constants::{ONE_CKB, SIGHASH_TYPE_HASH},
+    test_util::random_out_point,
     tests::{
-        build_sighash_script, init_context, ACCOUNT0_ARG, ACCOUNT0_KEY, ACCOUNT1_ARG, ACCOUNT1_KEY,
-        ACCOUNT2_ARG, ACCOUNT2_KEY, FEE_RATE,
+        build_sighash_script, init_context,
+        omni_lock_util::{add_rce_cells, generate_rc},
+        ACCOUNT0_ARG, ACCOUNT0_KEY, ACCOUNT1_ARG, ACCOUNT1_KEY, ACCOUNT2_ARG, ACCOUNT2_KEY,
+        FEE_RATE,
     },
     traits::SecpCkbRawKeySigner,
-    tx_builder::{transfer::CapacityTransferBuilder, CapacityProvider},
-    unlock::{
-        MultisigConfig, OmniLockConfig, OmniLockScriptSigner, OmniLockUnlocker, ScriptUnlocker,
-        SecpSighashUnlocker,
+    tx_builder::{
+        balance_tx_capacity, fill_placeholder_witnesses, transfer::CapacityTransferBuilder,
+        CapacityProvider,
     },
+    unlock::{
+        omni_lock::AdminConfig, MultisigConfig, OmniLockConfig, OmniLockScriptSigner,
+        OmniLockUnlocker, ScriptUnlocker, SecpSighashUnlocker,
+    },
+    util::blake160,
     ScriptId,
 };
 
@@ -127,6 +134,99 @@ fn test_omnilock_simple_hash(cfg: OmniLockConfig) {
     assert_eq!(witnesses.len(), 2);
     assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
     assert_eq!(witnesses[1].len(), 0);
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
+fn test_omnilock_transfer_from_sighash_wl() {
+    let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))
+        .unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+    let pubkey_hash = blake160(&pubkey.serialize());
+    let cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(pubkey_hash);
+    test_omnilock_simple_hash_rc(cfg);
+}
+
+fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+
+    let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
+    let (proof_vec, rc_root, rce_cells) = generate_rc(
+        &mut ctx,
+        cfg.id().to_smt_key(),
+        crate::tests::omni_lock_util::TestScheme::OnlyInputOnWhiteList,
+    );
+    cfg.set_admin_config(AdminConfig::new(
+        H256::from_slice(rc_root.as_ref()).unwrap(),
+        proof_vec.as_bytes(),
+    ));
+
+    let sender = build_omnilock_script(&cfg);
+    for (lock, capacity_opt) in vec![(sender.clone(), Some(300 * ONE_CKB))] {
+        ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
+    }
+
+    let output = CellOutput::new_builder()
+        .capacity((110 * ONE_CKB).pack())
+        .lock(receiver)
+        .build();
+    let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
+    let placeholder_witness = cfg.placeholder_witness();
+    let balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone());
+
+    let base_tx = builder
+        .build_base(&mut cell_collector, &ctx, &ctx, &ctx)
+        .unwrap();
+    let base_tx = add_rce_cells(base_tx, &rce_cells);
+
+    let (tx_filled_witnesses, _) = fill_placeholder_witnesses(base_tx, &ctx, &unlockers).unwrap();
+    let mut tx = balance_tx_capacity(
+        &tx_filled_witnesses,
+        &balancer,
+        &mut cell_collector,
+        &ctx,
+        &ctx,
+        &ctx,
+    )
+    .unwrap();
+
+    let unlockers = build_omnilock_unlockers(account0_key, cfg);
+    let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
+    assert!(new_locked_groups.is_empty());
+    tx = new_tx;
+
+    // println!(
+    //     "> tx: {}",
+    //     serde_json::to_string_pretty(&json_types::TransactionView::from(tx.clone())).unwrap()
+    // );
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 4);
+    assert_eq!(tx.inputs().len(), 1);
+    for out_point in tx.input_pts_iter() {
+        assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    assert_eq!(tx.output(0).unwrap(), output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 1);
+    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+
+    // let mock_tx = ctx.to_mock_tx(tx.data());
+    // let rpr_mock_tx = ReprMockTransaction::from(mock_tx);
+    // let js_mock_tx = serde_json::to_string_pretty(&rpr_mock_tx).unwrap();
+
+    // fs::write("sighash_rce_admin.json", js_mock_tx).unwrap();
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 

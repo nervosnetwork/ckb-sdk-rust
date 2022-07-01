@@ -1,14 +1,17 @@
 use std::fmt::Display;
 
 use crate::{
-    types::omni_lock::OmniLockWitnessLock,
+    types::{
+        omni_lock::{Auth, Identity as IdentityType, IdentityOpt, OmniLockWitnessLock},
+        xudt_rce_mol::SmtProofEntryVec,
+    },
     util::{blake160, keccak160},
 };
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     packed::WitnessArgs,
     prelude::*,
-    H160,
+    H160, H256,
 };
 
 use ckb_crypto::secp::Pubkey;
@@ -133,6 +136,46 @@ bitflags! {
     }
 }
 
+/// The administrator mode configuration.
+#[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
+pub struct AdminConfig {
+    /// The rc type id hash
+    rc_type_id: H256,
+    /// The smt proofs
+    proofs: Bytes,
+}
+
+impl Default for AdminConfig {
+    fn default() -> Self {
+        Self {
+            rc_type_id: Default::default(),
+            proofs: SmtProofEntryVec::default().as_bytes(),
+        }
+    }
+}
+
+impl AdminConfig {
+    pub fn set_rc_type_id(&mut self, rc_type_id: H256) {
+        self.rc_type_id = rc_type_id;
+    }
+    pub fn set_proofs(&mut self, proofs: Bytes) {
+        self.proofs = proofs;
+    }
+    pub fn rc_type_id(&self) -> &H256 {
+        &self.rc_type_id
+    }
+    pub fn proofs(&self) -> &Bytes {
+        &self.proofs
+    }
+
+    pub fn new(root: H256, proofs: Bytes) -> AdminConfig {
+        AdminConfig {
+            rc_type_id: root,
+            proofs,
+        }
+    }
+}
+
 /// OmniLock configuration
 /// The lock argument has the following data structure:
 /// 1. 21 byte auth
@@ -149,6 +192,8 @@ pub struct OmniLockConfig {
     multisig_config: Option<MultisigConfig>,
     /// The omni lock flags, it indicates whether the other four fields exist.
     omni_lock_flags: OmniLockFlags,
+    ///　The administrator configuration.
+    admin_config: Option<AdminConfig>,
 }
 
 impl OmniLockConfig {
@@ -174,6 +219,7 @@ impl OmniLockConfig {
             },
             multisig_config: Some(multisig_config),
             omni_lock_flags: OmniLockFlags::empty(),
+            admin_config: None,
         }
     }
     /// Create an ethereum algorithm omnilock with pubkey
@@ -202,7 +248,13 @@ impl OmniLockConfig {
             id: Identity { flag, auth_content },
             multisig_config: None,
             omni_lock_flags: OmniLockFlags::empty(),
+            admin_config: None,
         }
+    }
+
+    pub fn set_admin_config(&mut self, admin_config: AdminConfig) {
+        self.omni_lock_flags.set(OmniLockFlags::ADMIN, true);
+        self.admin_config = Some(admin_config);
     }
 
     pub fn id(&self) -> &Identity {
@@ -228,6 +280,10 @@ impl OmniLockConfig {
         bytes.put(self.id.auth_content.as_ref());
         bytes.put_u8(self.omni_lock_flags.bits);
 
+        if self.admin_config.is_some() {
+            bytes.put(self.admin_config.as_ref().unwrap().rc_type_id.as_bytes());
+        }
+
         bytes.freeze()
     }
 
@@ -252,25 +308,36 @@ impl OmniLockConfig {
     }
 
     pub fn placeholder_witness_lock(&self) -> Bytes {
-        match self.id.flag {
+        let mut builder = match self.id.flag {
             IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => OmniLockWitnessLock::new_builder()
-                .signature(Some(Bytes::from(vec![0u8; 65])).pack())
-                .build()
-                .as_bytes(),
+                .signature(Some(Bytes::from(vec![0u8; 65])).pack()),
             IdentityFlag::Multisig => {
                 let multisig_config = self.multisig_config.as_ref().unwrap();
                 let config_data = multisig_config.to_witness_data();
                 let multisig_len = config_data.len() + multisig_config.threshold() as usize * 65;
                 let mut omni_sig = vec![0u8; multisig_len];
                 omni_sig[..config_data.len()].copy_from_slice(&config_data);
-                OmniLockWitnessLock::new_builder()
-                    .signature(Some(Bytes::from(omni_sig)).pack())
-                    .build()
-                    .as_bytes()
+                OmniLockWitnessLock::new_builder().signature(Some(Bytes::from(omni_sig)).pack())
             }
-            IdentityFlag::OwnerLock => Bytes::new(),
+            IdentityFlag::OwnerLock => OmniLockWitnessLock::new_builder(),
             _ => todo!("to support other placeholder_witness_lock implementions"),
+        };
+
+        if let Some(config) = self.admin_config.as_ref() {
+            let mut temp = [0u8; 21];
+            temp[0] = self.id.flag as u8;
+            temp[1..21].copy_from_slice(self.id.auth_content.as_bytes());
+            let auth = Auth::from_slice(&temp).unwrap();
+            let proofs = SmtProofEntryVec::from_slice(config.proofs.as_ref()).unwrap();
+            let ident = IdentityType::new_builder()
+                .identity(auth)
+                .proofs(proofs)
+                .build();
+
+            let ident_opt = IdentityOpt::new_builder().set(Some(ident)).build();
+            builder = builder.omni_identity(ident_opt);
         }
+        builder.build().as_bytes()
     }
 
     /// Build zero lock content for signature
@@ -289,13 +356,5 @@ impl OmniLockConfig {
             IdentityFlag::OwnerLock => WitnessArgs::default(),
             _ => todo!("to support other placeholder_witness implementions"),
         }
-    }
-
-    /// Build proper witness lock
-    pub fn build_witness_lock(signature: Bytes) -> Bytes {
-        OmniLockWitnessLock::new_builder()
-            .signature(Some(signature).pack())
-            .build()
-            .as_bytes()
     }
 }
