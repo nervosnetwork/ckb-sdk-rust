@@ -465,7 +465,112 @@ fn test_omnilock_transfer_from_ownerlock() {
     let mut senders = vec![sender0, sender1];
     for out_point in tx.input_pts_iter() {
         let sender = ctx.get_input(&out_point).unwrap().0.lock();
-        println!("code hash:{:?}", sender.code_hash());
+        // println!("code hash:{:?}", sender.code_hash());
+        assert!(senders.contains(&sender));
+        senders.retain(|x| x != &sender);
+    }
+    assert!(senders.is_empty());
+    assert_eq!(tx.outputs().len(), 1);
+    assert_eq!(tx.output(0).unwrap(), output);
+    assert_eq!(tx.output(0).unwrap().lock(), receiver);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 2);
+    assert_eq!(witnesses[0].len(), placeholder_witness0.as_slice().len());
+    assert_eq!(witnesses[1].len(), placeholder_witness1.as_slice().len());
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
+fn test_omnilock_transfer_from_ownerlock_() {
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+    let sender1 = build_sighash_script(ACCOUNT1_ARG);
+    let hash = H160::from_slice(&sender1.calc_script_hash().as_slice()[0..20]).unwrap();
+    let mut cfg = OmniLockConfig::new_ownerlock(hash);
+
+    let mut ctx = init_context(
+        vec![(OMNILOCK_BIN, true)],
+        vec![(sender1.clone(), Some(61 * ONE_CKB))],
+    );
+    let (proof_vec, rc_root, rce_cells) = generate_rc(
+        &mut ctx,
+        cfg.id().to_smt_key(),
+        TestScheme::OnlyInputOnWhiteList,
+    );
+    cfg.set_admin_config(AdminConfig::new(
+        H256::from_slice(rc_root.as_ref()).unwrap(),
+        proof_vec.as_bytes(),
+    ));
+    let sender0 = build_omnilock_script(&cfg);
+    for (lock, capacity_opt) in vec![(sender0.clone(), Some(50 * ONE_CKB))] {
+        ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
+    }
+
+    let output = CellOutput::new_builder()
+        .capacity((110 * ONE_CKB).pack())
+        .lock(receiver.clone())
+        .build();
+    let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
+    let placeholder_witness0 = cfg.placeholder_witness();
+    let placeholder_witness1 = WitnessArgs::new_builder()
+        .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+        .build();
+
+    let balancer = CapacityBalancer {
+        fee_rate: FeeRate::from_u64(FEE_RATE),
+        capacity_provider: CapacityProvider::new(vec![
+            (sender0.clone(), placeholder_witness0.clone()),
+            (sender1.clone(), placeholder_witness1.clone()),
+        ]),
+        change_lock_script: None,
+        force_small_change_as_fee: Some(ONE_CKB),
+    };
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let mut unlockers = build_omnilock_unlockers(account0_key, cfg);
+
+    let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
+    let script_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+
+    unlockers.insert(
+        ScriptId::new_type(SIGHASH_TYPE_HASH.clone()),
+        Box::new(script_unlocker),
+    );
+    // let mut tx = builder
+    //     .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+    //     .unwrap();
+    let base_tx = builder
+        .build_base(&mut cell_collector, &ctx, &ctx, &ctx)
+        .unwrap();
+    let base_tx = add_rce_cells(base_tx, &rce_cells);
+
+    let (tx_filled_witnesses, _) = fill_placeholder_witnesses(base_tx, &ctx, &unlockers).unwrap();
+    let mut tx = balance_tx_capacity(
+        &tx_filled_witnesses,
+        &balancer,
+        &mut cell_collector,
+        &ctx,
+        &ctx,
+        &ctx,
+    )
+    .unwrap();
+
+    let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
+    assert!(new_locked_groups.is_empty());
+    tx = new_tx;
+
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 5);
+    assert_eq!(tx.inputs().len(), 2);
+    let mut senders = vec![sender0, sender1];
+    for out_point in tx.input_pts_iter() {
+        let sender = ctx.get_input(&out_point).unwrap().0.lock();
+        // println!("code hash:{:?}", sender.code_hash());
         assert!(senders.contains(&sender));
         senders.retain(|x| x != &sender);
     }
