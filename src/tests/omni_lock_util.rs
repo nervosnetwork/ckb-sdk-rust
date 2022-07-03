@@ -20,7 +20,6 @@ use crate::types::xudt_rce_mol::SmtProofEntryBuilder;
 use crate::types::xudt_rce_mol::SmtProofEntryVec;
 use crate::types::xudt_rce_mol::SmtProofEntryVecBuilder;
 use crate::types::xudt_rce_mol::{RCDataUnion, RCRuleBuilder};
-use crate::ScriptId;
 use ckb_types::packed::*;
 use ckb_types::prelude::*;
 
@@ -398,7 +397,7 @@ fn build_script(
         .out_point(out_point.clone())
         .dep_type(DepType::Code.into())
         .build();
-    ctx.add_cell_dep(cell_dep.clone(), output, bin.clone(), None);
+    ctx.add_cell_dep(cell_dep, output, bin.clone(), None);
     rce_cells.push(out_point);
 
     let code_hash = if is_type {
@@ -412,15 +411,11 @@ fn build_script(
         ScriptHashType::Data
     };
 
-    let script = Script::new_builder()
+    Script::new_builder()
         .args(args.pack())
         .code_hash(code_hash.pack())
         .hash_type(hash_type.into())
-        .build();
-
-    let script_id = ScriptId::from(&script);
-    ctx.add_cell_dep_map(script_id, cell_dep);
-    script
+        .build()
 }
 
 // first generate N RCE cells with each contained one RCRule
