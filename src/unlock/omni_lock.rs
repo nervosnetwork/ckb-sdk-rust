@@ -139,7 +139,7 @@ bitflags! {
 /// The administrator mode configuration.
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 pub struct AdminConfig {
-    /// The rc type id hash
+    /// The rc cell's type script hash, the type script should be a type id script.
     rc_type_id: H256,
     /// The smt proofs
     proofs: Bytes,
@@ -280,11 +280,29 @@ impl OmniLockConfig {
         bytes.put(self.id.auth_content.as_ref());
         bytes.put_u8(self.omni_lock_flags.bits);
 
-        if self.admin_config.is_some() {
-            bytes.put(self.admin_config.as_ref().unwrap().rc_type_id.as_bytes());
+        if let Some(config) = self.admin_config.as_ref() {
+            bytes.put(config.rc_type_id.as_bytes());
         }
 
         bytes.freeze()
+    }
+
+    /// Generate args length
+    pub fn get_args_len(&self) -> usize {
+        let mut len = 22;
+        if self.omni_lock_flags.contains(OmniLockFlags::ADMIN) {
+            len += 32;
+        }
+        if self.omni_lock_flags.contains(OmniLockFlags::ACP) {
+            len += 2;
+        }
+        if self.omni_lock_flags.contains(OmniLockFlags::TIME_LOCK) {
+            len += 8;
+        }
+        if self.omni_lock_flags.contains(OmniLockFlags::SUPPLY) {
+            len += 32;
+        }
+        len
     }
 
     /// Indicate whether is a sighash type.

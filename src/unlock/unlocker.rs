@@ -607,7 +607,7 @@ impl From<(Box<dyn Signer>, OmniLockConfig)> for OmniLockUnlocker {
 }
 impl ScriptUnlocker for OmniLockUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
-        args.len() >= 22 && self.signer.match_args(args)
+        self.signer.match_args(args)
     }
 
     /// Check if the script group is already unlocked

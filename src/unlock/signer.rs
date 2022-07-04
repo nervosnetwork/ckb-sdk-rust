@@ -651,7 +651,7 @@ impl OmniLockScriptSigner {
 
 impl ScriptSigner for OmniLockScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        if !(args.len() >= 22 && self.config.id().flag() as u8 == args[0]) {
+        if !(args.len() == self.config.get_args_len() && self.config.id().flag() as u8 == args[0]) {
             return false;
         }
         match self.config.id().flag() {
