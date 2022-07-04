@@ -170,7 +170,7 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
     );
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_root.as_ref()).unwrap(),
-        proof_vec.as_bytes(),
+        proof_vec,
     ));
 
     let sender = build_omnilock_script(&cfg);
@@ -330,7 +330,7 @@ fn test_omnilock_transfer_from_multisig_wl() {
     );
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_root.as_ref()).unwrap(),
-        proof_vec.as_bytes(),
+        proof_vec,
     ));
     let sender = build_omnilock_script(&cfg);
     for (lock, capacity_opt) in vec![
@@ -502,7 +502,7 @@ fn test_omnilock_transfer_from_ownerlock_() {
     );
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_root.as_ref()).unwrap(),
-        proof_vec.as_bytes(),
+        proof_vec,
     ));
     let sender0 = build_omnilock_script(&cfg);
     for (lock, capacity_opt) in vec![(sender0.clone(), Some(50 * ONE_CKB))] {

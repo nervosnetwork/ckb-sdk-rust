@@ -1,3 +1,4 @@
+use core::hash;
 use std::fmt::Display;
 
 use crate::{
@@ -16,7 +17,7 @@ use ckb_types::{
 
 use ckb_crypto::secp::Pubkey;
 pub use ckb_types::prelude::Pack;
-use serde::{Deserialize, Serialize};
+use serde::{de::Unexpected, Deserialize, Serialize};
 
 use bitflags::bitflags;
 
@@ -136,20 +137,66 @@ bitflags! {
     }
 }
 
+impl Serialize for SmtProofEntryVec {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_newtype_struct("SmtProofEntryVec", &self.as_bytes())
+    }
+}
+
+impl<'de> Deserialize<'de> for SmtProofEntryVec {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bytes = Bytes::deserialize(deserializer)?;
+        SmtProofEntryVec::from_slice(bytes.as_ref()).map_err(|e| {
+            serde::de::Error::invalid_value(
+                Unexpected::Bytes(bytes.as_ref()),
+                &format!(
+                    "can not convert the value to SmtProofEntryVec:　{}",
+                    e.to_string()
+                )
+                .as_str(),
+            )
+        })
+    }
+}
+
+impl hash::Hash for SmtProofEntryVec {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: hash::Hasher,
+    {
+        self.as_slice().hash(state);
+    }
+}
+
+// impl Eq
+
+impl PartialEq for SmtProofEntryVec {
+    fn eq(&self, other: &SmtProofEntryVec) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+impl Eq for SmtProofEntryVec {}
+
 /// The administrator mode configuration.
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 pub struct AdminConfig {
     /// The rc cell's type script hash, the type script should be a type id script.
     rc_type_id: H256,
     /// The smt proofs
-    proofs: Bytes,
+    proofs: SmtProofEntryVec,
 }
 
 impl Default for AdminConfig {
     fn default() -> Self {
         Self {
             rc_type_id: Default::default(),
-            proofs: SmtProofEntryVec::default().as_bytes(),
+            proofs: SmtProofEntryVec::default(),
         }
     }
 }
@@ -158,22 +205,52 @@ impl AdminConfig {
     pub fn set_rc_type_id(&mut self, rc_type_id: H256) {
         self.rc_type_id = rc_type_id;
     }
-    pub fn set_proofs(&mut self, proofs: Bytes) {
+    pub fn set_proofs(&mut self, proofs: SmtProofEntryVec) {
         self.proofs = proofs;
     }
     pub fn rc_type_id(&self) -> &H256 {
         &self.rc_type_id
     }
-    pub fn proofs(&self) -> &Bytes {
+    pub fn proofs(&self) -> &SmtProofEntryVec {
         &self.proofs
     }
 
-    pub fn new(root: H256, proofs: Bytes) -> AdminConfig {
+    pub fn new(root: H256, proofs: SmtProofEntryVec) -> AdminConfig {
         AdminConfig {
             rc_type_id: root,
             proofs,
         }
     }
+}
+
+#[test]
+fn test_adminconfig_serde() {
+    use ckb_types::packed::Byte;
+
+    use crate::types::xudt_rce_mol::{SmtProof, SmtProofEntry};
+
+    let mut i = (0u8..=255u8).cycle();
+    let type_id: Vec<_> = i.by_ref().take(32).collect();
+    let type_id = H256::from_slice(&type_id).unwrap();
+    let mut proofs_builder = SmtProofEntryVec::new_builder();
+    for _ in 0..2 {
+        let proof = SmtProof::new_builder()
+            .extend(i.by_ref().take(8).map(Byte::new))
+            .build();
+        let entry = SmtProofEntry::new_builder()
+            .mask(Byte::new(0))
+            .proof(proof)
+            .build();
+        proofs_builder = proofs_builder.push(entry);
+    }
+    let cfg = AdminConfig {
+        rc_type_id: type_id,
+        proofs: proofs_builder.build(),
+    };
+    let x = serde_json::to_string_pretty(&cfg).unwrap();
+    // println!("{}", x);
+    let cfg2: AdminConfig = serde_json::from_str(&x).unwrap();
+    assert_eq!(cfg, cfg2);
 }
 
 /// OmniLock configuration
@@ -346,7 +423,7 @@ impl OmniLockConfig {
             temp[0] = self.id.flag as u8;
             temp[1..21].copy_from_slice(self.id.auth_content.as_bytes());
             let auth = Auth::from_slice(&temp).unwrap();
-            let proofs = SmtProofEntryVec::from_slice(config.proofs.as_ref()).unwrap();
+            let proofs = SmtProofEntryVec::from_slice(config.proofs.as_bytes().as_ref()).unwrap();
             let ident = IdentityType::new_builder()
                 .identity(auth)
                 .proofs(proofs)
