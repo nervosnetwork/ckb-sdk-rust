@@ -1,3 +1,4 @@
+pub mod admin_list;
 pub(crate) mod omni_lock;
 mod signer;
 mod unlocker;

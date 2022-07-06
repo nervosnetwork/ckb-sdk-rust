@@ -5,7 +5,7 @@ use crate::{
     test_util::random_out_point,
     tests::{
         build_sighash_script, init_context,
-        omni_lock_util::{add_rce_cells, generate_rc, TestScheme},
+        omni_lock_util::{add_rce_cells, generate_rc},
         ACCOUNT0_ARG, ACCOUNT0_KEY, ACCOUNT1_ARG, ACCOUNT1_KEY, ACCOUNT2_ARG, ACCOUNT2_KEY,
         FEE_RATE,
     },
@@ -163,11 +163,7 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
     let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
-    let (proof_vec, rc_root, rce_cells) = generate_rc(
-        &mut ctx,
-        cfg.id().to_smt_key(),
-        TestScheme::OnlyInputOnWhiteList,
-    );
+    let (proof_vec, rc_root, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key());
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_root.as_ref()).unwrap(),
         proof_vec,
@@ -323,11 +319,7 @@ fn test_omnilock_transfer_from_multisig_wl() {
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
     let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
-    let (proof_vec, rc_root, rce_cells) = generate_rc(
-        &mut ctx,
-        cfg.id().to_smt_key(),
-        TestScheme::OnlyInputOnWhiteList,
-    );
+    let (proof_vec, rc_root, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key());
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_root.as_ref()).unwrap(),
         proof_vec,
@@ -495,11 +487,7 @@ fn test_omnilock_transfer_from_ownerlock_() {
         vec![(OMNILOCK_BIN, true)],
         vec![(sender1.clone(), Some(61 * ONE_CKB))],
     );
-    let (proof_vec, rc_root, rce_cells) = generate_rc(
-        &mut ctx,
-        cfg.id().to_smt_key(),
-        TestScheme::OnlyInputOnWhiteList,
-    );
+    let (proof_vec, rc_root, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key());
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_root.as_ref()).unwrap(),
         proof_vec,
