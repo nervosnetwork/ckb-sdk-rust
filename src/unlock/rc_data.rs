@@ -1,31 +1,28 @@
 use lazy_static::lazy_static;
-use sparse_merkle_tree::default_store::DefaultStore;
 
-use sparse_merkle_tree::{SparseMerkleTree, H256};
+use sparse_merkle_tree::{default_store::DefaultStore, SparseMerkleTree, H256 as SmtH256};
 
-use crate::types::xudt_rce_mol::RCDataBuilder;
 use crate::types::xudt_rce_mol::{
-    RCDataUnion, RCRuleBuilder, SmtProofBuilder, SmtProofEntryBuilder, SmtProofEntryVec,
-    SmtProofEntryVecBuilder,
+    RCDataBuilder, RCDataUnion, RCRuleBuilder, SmtProofBuilder, SmtProofEntryBuilder,
+    SmtProofEntryVec, SmtProofEntryVecBuilder,
 };
 use bytes::Bytes;
-use ckb_hash::{Blake2b, Blake2bBuilder};
-use ckb_types::molecule;
-use ckb_types::prelude::*;
+use ckb_hash::{new_blake2b, Blake2b};
+use ckb_types::{molecule, prelude::*};
 use sparse_merkle_tree::traits::Hasher;
 
 lazy_static! {
-    static ref SMT_EXISTING: H256 = H256::from([
+    static ref SMT_EXISTING: SmtH256 = SmtH256::from([
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
     ]);
-    static ref SMT_NOT_EXISTING: H256 = H256::from([
+    static ref SMT_NOT_EXISTING: SmtH256 = SmtH256::from([
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
     ]);
 }
 
-type SMT = SparseMerkleTree<CKBBlake2bHasher, H256, DefaultStore<H256>>;
+type SMT = SparseMerkleTree<CKBBlake2bHasher, SmtH256, DefaultStore<SmtH256>>;
 
 // on(1): white list
 // off(0): black list
@@ -34,26 +31,20 @@ const WHITE_BLACK_LIST_MASK: u8 = 0x2;
 // on(1): emergency halt mode
 // off(0): not int emergency halt mode
 const EMERGENCY_HALT_MODE_MASK: u8 = 0x1;
-const BLAKE2B_KEY: &[u8] = &[];
-const BLAKE2B_LEN: usize = 32;
-const PERSONALIZATION: &[u8] = b"ckb-default-hash";
 struct CKBBlake2bHasher(Blake2b);
 
 impl Default for CKBBlake2bHasher {
     fn default() -> Self {
-        let blake2b = Blake2bBuilder::new(BLAKE2B_LEN)
-            .personal(PERSONALIZATION)
-            .key(BLAKE2B_KEY)
-            .build();
+        let blake2b = new_blake2b();
         CKBBlake2bHasher(blake2b)
     }
 }
 
 impl Hasher for CKBBlake2bHasher {
-    fn write_h256(&mut self, h: &H256) {
+    fn write_h256(&mut self, h: &SmtH256) {
         self.0.update(h.as_slice());
     }
-    fn finish(self) -> H256 {
+    fn finish(self) -> SmtH256 {
         let mut hash = [0u8; 32];
         self.0.finalize(&mut hash);
         hash.into()
@@ -63,7 +54,7 @@ impl Hasher for CKBBlake2bHasher {
     }
 }
 
-fn new_smt(pairs: Vec<(H256, H256)>) -> SMT {
+fn new_smt(pairs: Vec<(SmtH256, SmtH256)>) -> SMT {
     let mut smt = SMT::default();
     for (key, value) in pairs {
         smt.update(key, value).unwrap();
@@ -71,8 +62,16 @@ fn new_smt(pairs: Vec<(H256, H256)>) -> SMT {
     smt
 }
 
+fn map_exist(hash: &SmtH256) -> (SmtH256, SmtH256) {
+    (*hash, *SMT_EXISTING)
+}
+
+fn map_noexist(hash: &SmtH256) -> (SmtH256, SmtH256) {
+    (*hash, *SMT_NOT_EXISTING)
+}
+
 // return smt root and proof
-pub fn build_smt_on_wl(hashes: &[[u8; 32]], on: bool) -> (H256, Vec<u8>) {
+pub fn build_smt_on_wl(hashes: &[SmtH256], on: bool) -> (SmtH256, Vec<u8>) {
     let (_, root, compiled_proof) = if on {
         build_smt_wl(hashes, hashes, &[])
     } else {
@@ -81,21 +80,15 @@ pub fn build_smt_on_wl(hashes: &[[u8; 32]], on: bool) -> (H256, Vec<u8>) {
     (root, compiled_proof)
 }
 
-fn map_exist(hash: &[u8; 32]) -> (H256, H256) {
-    ((*hash).into(), *SMT_EXISTING)
-}
-fn map_noexist(hash: &[u8; 32]) -> (H256, H256) {
-    ((*hash).into(), *SMT_NOT_EXISTING)
-}
 /// Build a white list smt tree with old hashes, hashes on the tree and hashes not on the tree.
 /// # Panics
 ///
 /// Panics if on hashes and off hashes have same element.
 pub fn build_smt_wl(
-    orig_hashes: &[[u8; 32]],
-    on_hashes: &[[u8; 32]],
-    off_hashes: &[[u8; 32]],
-) -> (Vec<[u8; 32]>, H256, Vec<u8>) {
+    orig_hashes: &[SmtH256],
+    on_hashes: &[SmtH256],
+    off_hashes: &[SmtH256],
+) -> (Vec<SmtH256>, SmtH256, Vec<u8>) {
     assert!(
         !on_hashes.iter().any(|x| off_hashes.contains(x)),
         "hash can't be on and off at the same time, on:{:#?} off:{:#?}",
@@ -106,12 +99,12 @@ pub fn build_smt_wl(
     hashes.extend(on_hashes);
     hashes.sort_unstable();
     hashes.dedup();
-    let hashes: Vec<[u8; 32]> = hashes
+    let hashes: Vec<SmtH256> = hashes
         .into_iter()
         .filter(|x| !off_hashes.contains(x))
         .collect();
-    let pairs: Vec<(H256, H256)> = hashes.iter().map(map_exist).collect();
-    let proof_pairs: Vec<(H256, H256)> = on_hashes
+    let pairs: Vec<(SmtH256, SmtH256)> = hashes.iter().map(map_exist).collect();
+    let proof_pairs: Vec<(SmtH256, SmtH256)> = on_hashes
         .iter()
         .map(map_exist)
         .chain(off_hashes.iter().map(map_exist))
@@ -133,7 +126,7 @@ pub fn build_smt_wl(
 }
 
 // return smt root and proof
-pub fn build_smt_on_bl(hashes: &[[u8; 32]], on: bool) -> (H256, Vec<u8>) {
+pub fn build_smt_on_bl(hashes: &[SmtH256], on: bool) -> (SmtH256, Vec<u8>) {
     let (_, root, compiled_proof) = if on {
         build_smt_bl(hashes, hashes, &[])
     } else {
@@ -147,10 +140,10 @@ pub fn build_smt_on_bl(hashes: &[[u8; 32]], on: bool) -> (H256, Vec<u8>) {
 ///
 /// Panics if on hashes and off hashes have same element.
 pub fn build_smt_bl(
-    orig_hashes: &[[u8; 32]],
-    on_hashes: &[[u8; 32]],
-    off_hashes: &[[u8; 32]],
-) -> (Vec<[u8; 32]>, H256, Vec<u8>) {
+    orig_hashes: &[SmtH256],
+    on_hashes: &[SmtH256],
+    off_hashes: &[SmtH256],
+) -> (Vec<SmtH256>, SmtH256, Vec<u8>) {
     assert!(
         !on_hashes.iter().any(|x| off_hashes.contains(x)),
         "hash can't not on and off at the same time, on:{:#?} off:{:#?}",
@@ -161,12 +154,12 @@ pub fn build_smt_bl(
     hashes.extend(on_hashes);
     hashes.sort_unstable();
     hashes.dedup();
-    let hashes: Vec<[u8; 32]> = hashes
+    let hashes: Vec<SmtH256> = hashes
         .into_iter()
         .filter(|x| !off_hashes.contains(x))
         .collect();
-    let pairs: Vec<(H256, H256)> = hashes.iter().map(map_exist).collect();
-    let proof_pairs: Vec<(H256, H256)> = on_hashes
+    let pairs: Vec<(SmtH256, SmtH256)> = hashes.iter().map(map_exist).collect();
+    let proof_pairs: Vec<(SmtH256, SmtH256)> = on_hashes
         .iter()
         .map(map_noexist)
         .chain(off_hashes.iter().map(map_noexist))
@@ -223,25 +216,32 @@ pub fn build_proofs(proofs: Vec<Vec<u8>>, proof_masks: Vec<u8>) -> SmtProofEntry
     builder.build()
 }
 
-pub fn generate_single_proof(on: bool, smt_key: &[[u8; 32]]) -> (Vec<u8>, Bytes) {
+pub fn generate_single_proof(on: bool, smt_key: &[SmtH256], whitelist: bool) -> (Vec<u8>, Bytes) {
     let hash = smt_key;
-    let (smt_root, proof) = build_smt_on_wl(hash, on);
+    let (smt_root, proof) = if whitelist {
+        build_smt_on_wl(hash, on)
+    } else {
+        build_smt_on_bl(hash, on)
+    };
 
     let rc_rule = build_rc_rule(&smt_root.into(), false, false);
     (proof, rc_rule)
 }
 
-pub fn generate_proofs(smt_key: &[[u8; 32]]) -> (Vec<Vec<u8>>, Vec<Bytes>, Vec<u8>) {
+pub fn generate_proofs(
+    smt_key: &[SmtH256],
+    whitelist: bool,
+) -> (Vec<Vec<u8>>, Vec<Bytes>, Vec<u8>) {
     let mut proofs = Vec::<Vec<u8>>::default();
     let mut rc_rules = Vec::<Bytes>::default();
     let mut proof_masks = Vec::<u8>::default();
 
-    let (proof1, rc_rule1) = generate_single_proof(true, smt_key);
+    let (proof1, rc_rule1) = generate_single_proof(true, smt_key, whitelist);
     proofs.push(proof1);
     rc_rules.push(rc_rule1);
     proof_masks.push(1); // input
 
-    let (proof2, rc_rule2) = generate_single_proof(false, smt_key);
+    let (proof2, rc_rule2) = generate_single_proof(false, smt_key, whitelist);
     proofs.push(proof2);
     rc_rules.push(rc_rule2);
     proof_masks.push(2); // output

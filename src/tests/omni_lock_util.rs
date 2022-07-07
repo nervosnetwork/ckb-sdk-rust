@@ -1,27 +1,21 @@
 use bytes::Bytes;
-use ckb_types::core::DepType;
-use ckb_types::core::ScriptHashType;
-use rand::thread_rng;
-use rand::Rng;
+use ckb_types::core::{DepType, ScriptHashType};
+use rand::{thread_rng, Rng};
 
-use crate::test_util::random_out_point;
-use crate::test_util::Context;
-use crate::types::xudt_rce_mol::RCCellVecBuilder;
-use crate::types::xudt_rce_mol::RCDataBuilder;
-use crate::types::xudt_rce_mol::RCDataUnion;
-use crate::types::xudt_rce_mol::SmtProofEntryVec;
-use crate::unlock::rc_data::build_proofs;
-use crate::unlock::rc_data::generate_proofs;
-use ckb_types::packed::*;
-use ckb_types::prelude::*;
+use crate::test_util::{random_out_point, Context};
+use crate::types::xudt_rce_mol::{RCCellVecBuilder, RCDataBuilder, RCDataUnion, SmtProofEntryVec};
+use crate::unlock::rc_data::{build_proofs, generate_proofs};
+
+use ckb_types::{packed::*, prelude::*};
+use sparse_merkle_tree::H256 as SmtH256;
 
 use super::ALWAYS_SUCCESS;
 
 pub fn generate_rc(
     ctx: &mut Context,
-    smt_key: [u8; 32],
+    smt_key: SmtH256,
 ) -> (SmtProofEntryVec, Bytes, Vec<OutPoint>) {
-    let (proofs, rc_rules, proof_masks) = generate_proofs(&[smt_key]);
+    let (proofs, rc_rules, proof_masks) = generate_proofs(&[smt_key], true);
     let mut rce_cells = vec![];
     let rc_root = generate_rce_cell(ctx, rc_rules, &mut rce_cells);
 
