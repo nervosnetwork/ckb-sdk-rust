@@ -229,11 +229,6 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
     assert_eq!(witnesses.len(), 1);
     assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
 
-    // let mock_tx = ctx.to_mock_tx(tx.data());
-    // let rpr_mock_tx = ReprMockTransaction::from(mock_tx);
-    // let js_mock_tx = serde_json::to_string_pretty(&rpr_mock_tx).unwrap();
-
-    // fs::write("sighash_rce_admin.json", js_mock_tx).unwrap();
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 

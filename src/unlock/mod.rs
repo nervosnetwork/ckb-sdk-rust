@@ -1,5 +1,5 @@
-pub mod admin_list;
 pub(crate) mod omni_lock;
+pub mod rc_data;
 mod signer;
 mod unlocker;
 

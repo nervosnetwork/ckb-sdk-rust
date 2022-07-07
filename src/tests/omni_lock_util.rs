@@ -10,8 +10,8 @@ use crate::types::xudt_rce_mol::RCCellVecBuilder;
 use crate::types::xudt_rce_mol::RCDataBuilder;
 use crate::types::xudt_rce_mol::RCDataUnion;
 use crate::types::xudt_rce_mol::SmtProofEntryVec;
-use crate::unlock::admin_list::build_proofs;
-use crate::unlock::admin_list::generate_proofs;
+use crate::unlock::rc_data::build_proofs;
+use crate::unlock::rc_data::generate_proofs;
 use ckb_types::packed::*;
 use ckb_types::prelude::*;
 
@@ -165,17 +165,14 @@ pub fn add_rce_cells(
     tx: ckb_types::core::TransactionView,
     rce_cells: &[OutPoint],
 ) -> ckb_types::core::TransactionView {
-    if !rce_cells.is_empty() {
-        let mut builder = tx.as_advanced_builder();
-        for cell in rce_cells {
-            builder = builder.cell_dep(
-                CellDep::new_builder()
-                    .out_point(cell.clone())
-                    .dep_type(DepType::Code.into())
-                    .build(),
-            );
-        }
-        return builder.build();
+    let mut builder = tx.as_advanced_builder();
+    for cell in rce_cells {
+        builder = builder.cell_dep(
+            CellDep::new_builder()
+                .out_point(cell.clone())
+                .dep_type(DepType::Code.into())
+                .build(),
+        );
     }
-    tx
+    builder.build()
 }

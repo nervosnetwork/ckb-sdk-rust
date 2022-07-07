@@ -223,36 +223,6 @@ impl AdminConfig {
     }
 }
 
-#[test]
-fn test_adminconfig_serde() {
-    use ckb_types::packed::Byte;
-
-    use crate::types::xudt_rce_mol::{SmtProof, SmtProofEntry};
-
-    let mut i = (0u8..=255u8).cycle();
-    let type_id: Vec<_> = i.by_ref().take(32).collect();
-    let type_id = H256::from_slice(&type_id).unwrap();
-    let mut proofs_builder = SmtProofEntryVec::new_builder();
-    for _ in 0..2 {
-        let proof = SmtProof::new_builder()
-            .extend(i.by_ref().take(8).map(Byte::new))
-            .build();
-        let entry = SmtProofEntry::new_builder()
-            .mask(Byte::new(0))
-            .proof(proof)
-            .build();
-        proofs_builder = proofs_builder.push(entry);
-    }
-    let cfg = AdminConfig {
-        rc_type_id: type_id,
-        proofs: proofs_builder.build(),
-    };
-    let x = serde_json::to_string_pretty(&cfg).unwrap();
-    // println!("{}", x);
-    let cfg2: AdminConfig = serde_json::from_str(&x).unwrap();
-    assert_eq!(cfg, cfg2);
-}
-
 /// OmniLock configuration
 /// The lock argument has the following data structure:
 /// 1. 21 byte auth
@@ -364,7 +334,7 @@ impl OmniLockConfig {
         bytes.freeze()
     }
 
-    /// Generate args length
+    /// Calculate script args length
     pub fn get_args_len(&self) -> usize {
         let mut len = 22;
         if self.omni_lock_flags.contains(OmniLockFlags::ADMIN) {
@@ -423,10 +393,9 @@ impl OmniLockConfig {
             temp[0] = self.id.flag as u8;
             temp[1..21].copy_from_slice(self.id.auth_content.as_bytes());
             let auth = Auth::from_slice(&temp).unwrap();
-            let proofs = SmtProofEntryVec::from_slice(config.proofs.as_bytes().as_ref()).unwrap();
             let ident = IdentityType::new_builder()
                 .identity(auth)
-                .proofs(proofs)
+                .proofs(config.proofs.clone())
                 .build();
 
             let ident_opt = IdentityOpt::new_builder().set(Some(ident)).build();
@@ -451,5 +420,38 @@ impl OmniLockConfig {
             IdentityFlag::OwnerLock => WitnessArgs::default(),
             _ => todo!("to support other placeholder_witness implementions"),
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use ckb_types::packed::Byte;
+
+    use crate::{
+        types::xudt_rce_mol::{SmtProof, SmtProofEntry, SmtProofEntryVec},
+        unlock::omni_lock::AdminConfig,
+    };
+    use ckb_types::{h256, prelude::*};
+    #[test]
+    fn test_adminconfig_serde() {
+        let mut i = (0u8..=255u8).cycle();
+        let type_id = h256!("0x1234567890abcdeffedcba0987654321");
+        let mut proofs_builder = SmtProofEntryVec::new_builder();
+        for _ in 0..2 {
+            let proof = SmtProof::new_builder()
+                .extend(i.by_ref().take(8).map(Byte::new))
+                .build();
+            let entry = SmtProofEntry::new_builder()
+                .mask(Byte::new(0))
+                .proof(proof)
+                .build();
+            proofs_builder = proofs_builder.push(entry);
+        }
+        let cfg = AdminConfig {
+            rc_type_id: type_id,
+            proofs: proofs_builder.build(),
+        };
+        let x = serde_json::to_string_pretty(&cfg).unwrap();
+        let cfg2: AdminConfig = serde_json::from_str(&x).unwrap();
+        assert_eq!(cfg, cfg2);
     }
 }
