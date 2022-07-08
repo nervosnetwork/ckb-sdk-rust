@@ -23,6 +23,13 @@ lazy_static! {
 }
 
 type SMT = SparseMerkleTree<CKBBlake2bHasher, SmtH256, DefaultStore<SmtH256>>;
+pub type Result<T> = ::core::result::Result<T, RcDataError>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RcDataError {
+    BuildTree(String),
+    CompileProof(String),
+}
 
 // on(1): white list
 // off(0): black list
@@ -70,114 +77,66 @@ fn map_noexist(hash: &SmtH256) -> (SmtH256, SmtH256) {
     (*hash, *SMT_NOT_EXISTING)
 }
 
-// return smt root and proof
-pub fn build_smt_on_wl(hashes: &[SmtH256], on: bool) -> (SmtH256, Vec<u8>) {
-    let (_, root, compiled_proof) = if on {
-        build_smt_wl(hashes, hashes, &[])
-    } else {
-        build_smt_wl(hashes, &[], hashes)
-    };
-    (root, compiled_proof)
+/// Build the white list smt tree with the given hashes
+/// # Arguments
+/// * `hashes` The given the hashes.
+/// * `on` indicate if the give `hashes` on the list.
+pub fn build_smt_on_wl(hashes: &[SmtH256], on: bool) -> Result<(SmtH256, Vec<u8>)> {
+    let smt_keys = if on { hashes.to_vec() } else { vec![] };
+
+    build_smt_wl(&smt_keys, hashes)
 }
 
-/// Build a white list smt tree with old hashes, hashes on the tree and hashes not on the tree.
-/// # Panics
-///
-/// Panics if on hashes and off hashes have same element.
-pub fn build_smt_wl(
-    orig_hashes: &[SmtH256],
-    on_hashes: &[SmtH256],
-    off_hashes: &[SmtH256],
-) -> (Vec<SmtH256>, SmtH256, Vec<u8>) {
-    assert!(
-        !on_hashes.iter().any(|x| off_hashes.contains(x)),
-        "hash can't be on and off at the same time, on:{:#?} off:{:#?}",
-        on_hashes,
-        off_hashes
-    );
-    let mut hashes = orig_hashes.to_vec();
-    hashes.extend(on_hashes);
-    hashes.sort_unstable();
-    hashes.dedup();
-    let hashes: Vec<SmtH256> = hashes
-        .into_iter()
-        .filter(|x| !off_hashes.contains(x))
-        .collect();
-    let pairs: Vec<(SmtH256, SmtH256)> = hashes.iter().map(map_exist).collect();
-    let proof_pairs: Vec<(SmtH256, SmtH256)> = on_hashes
-        .iter()
-        .map(map_exist)
-        .chain(off_hashes.iter().map(map_exist))
-        .collect();
+/// Build a white list smt tree with it's keys and gnerate proofs with the according keys.
+/// # Arguments
+/// * `smt_keys` - A list of hashes which to build the smt tree.
+/// * `proof_keys` - The keys to generate the proofs.
+/// # Return
+/// The smt_tree root and the proofs of the proof_keys.
+pub fn build_smt_wl(smt_keys: &[SmtH256], proof_keys: &[SmtH256]) -> Result<(SmtH256, Vec<u8>)> {
+    let pairs: Vec<(SmtH256, SmtH256)> = smt_keys.iter().map(map_exist).collect();
+    let proof_pairs: Vec<(SmtH256, SmtH256)> = proof_keys.iter().map(map_exist).collect();
 
     let smt = new_smt(pairs);
     let root = smt.root();
 
     let proof = smt
         .merkle_proof(proof_pairs.clone().into_iter().map(|(k, _)| k).collect())
-        .expect("gen proof");
-    let compiled_proof = proof.compile(proof_pairs.clone()).expect("compile proof");
-    let test_on = compiled_proof
-        .verify::<CKBBlake2bHasher>(root, proof_pairs)
-        .expect("verify compiled proof");
+        .map_err(|err| RcDataError::BuildTree(err.to_string()))?;
+    let compiled_proof = proof
+        .compile(proof_pairs)
+        .map_err(|e| RcDataError::CompileProof(e.to_string()))?;
 
-    assert!(test_on == off_hashes.is_empty());
-    (hashes, *root, compiled_proof.into())
+    Ok((*root, compiled_proof.into()))
 }
 
 // return smt root and proof
-pub fn build_smt_on_bl(hashes: &[SmtH256], on: bool) -> (SmtH256, Vec<u8>) {
-    let (_, root, compiled_proof) = if on {
-        build_smt_bl(hashes, hashes, &[])
-    } else {
-        build_smt_bl(hashes, &[], hashes)
-    };
-    (root, compiled_proof)
+pub fn build_smt_on_bl(hashes: &[SmtH256], on: bool) -> Result<(SmtH256, Vec<u8>)> {
+    let smt_keys = if on { hashes.to_vec() } else { vec![] };
+    build_smt_bl(&smt_keys, hashes)
 }
 
-/// Build smt tree with old hashes, hashes on the tree and hashes not on the tree.
-/// # Panics
-///
-/// Panics if on hashes and off hashes have same element.
-pub fn build_smt_bl(
-    orig_hashes: &[SmtH256],
-    on_hashes: &[SmtH256],
-    off_hashes: &[SmtH256],
-) -> (Vec<SmtH256>, SmtH256, Vec<u8>) {
-    assert!(
-        !on_hashes.iter().any(|x| off_hashes.contains(x)),
-        "hash can't not on and off at the same time, on:{:#?} off:{:#?}",
-        on_hashes,
-        off_hashes
-    );
-    let mut hashes = orig_hashes.to_vec();
-    hashes.extend(on_hashes);
-    hashes.sort_unstable();
-    hashes.dedup();
-    let hashes: Vec<SmtH256> = hashes
-        .into_iter()
-        .filter(|x| !off_hashes.contains(x))
-        .collect();
-    let pairs: Vec<(SmtH256, SmtH256)> = hashes.iter().map(map_exist).collect();
-    let proof_pairs: Vec<(SmtH256, SmtH256)> = on_hashes
-        .iter()
-        .map(map_noexist)
-        .chain(off_hashes.iter().map(map_noexist))
-        .collect();
+/// Build a black list smt tree with it's keys and gnerate proofs with the according keys.
+/// # Arguments
+/// * `smt_keys` - A list of hashes which to build the smt tree.
+/// * `proof_keys` - The keys to generate the proofs.
+/// # Return
+/// The smt_tree root and the proofs of the proof_keys.
+pub fn build_smt_bl(smt_keys: &[SmtH256], proof_keys: &[SmtH256]) -> Result<(SmtH256, Vec<u8>)> {
+    let pairs: Vec<(SmtH256, SmtH256)> = smt_keys.iter().map(map_exist).collect();
+    let proof_pairs: Vec<(SmtH256, SmtH256)> = proof_keys.iter().map(map_noexist).collect();
 
     let smt = new_smt(pairs);
     let root = smt.root();
 
     let proof = smt
         .merkle_proof(proof_pairs.clone().into_iter().map(|(k, _)| k).collect())
-        .expect("gen proof.");
-    let compiled_proof = proof.compile(proof_pairs.clone()).expect("compile proof");
-    let test_on = compiled_proof
-        .verify::<CKBBlake2bHasher>(root, proof_pairs)
-        .expect("verify compiled proof.");
+        .map_err(|err| RcDataError::BuildTree(err.to_string()))?;
+    let compiled_proof = proof
+        .compile(proof_pairs)
+        .map_err(|e| RcDataError::CompileProof(e.to_string()))?;
 
-    assert!(test_on == on_hashes.is_empty());
-    (hashes, *root, compiled_proof.into())
+    Ok((*root, compiled_proof.into()))
 }
 
 fn build_rc_rule(smt_root: &[u8; 32], is_black: bool, is_emergency: bool) -> Bytes {
@@ -199,52 +158,48 @@ fn build_rc_rule(smt_root: &[u8; 32], is_black: bool, is_emergency: bool) -> Byt
     res.as_bytes()
 }
 
-pub fn build_proofs(proofs: Vec<Vec<u8>>, proof_masks: Vec<u8>) -> SmtProofEntryVec {
-    assert_eq!(proofs.len(), proof_masks.len());
-
+pub fn build_proofs(proofs: Vec<(Vec<u8>, u8)>) -> SmtProofEntryVec {
     let mut builder = SmtProofEntryVecBuilder::default();
-    let iter = proofs.iter().zip(proof_masks.iter());
-    for (p, m) in iter {
+    for (p, m) in proofs {
         let proof_builder = SmtProofBuilder::default()
             .set(p.iter().map(|v| molecule::prelude::Byte::new(*v)).collect());
 
         let temp = SmtProofEntryBuilder::default()
             .proof(proof_builder.build())
-            .mask((*m).into());
+            .mask((m).into());
         builder = builder.push(temp.build());
     }
     builder.build()
 }
 
-pub fn generate_single_proof(on: bool, smt_key: &[SmtH256], whitelist: bool) -> (Vec<u8>, Bytes) {
+pub fn generate_single_proof(
+    on: bool,
+    smt_key: &[SmtH256],
+    whitelist: bool,
+) -> Result<(Vec<u8>, Bytes)> {
     let hash = smt_key;
     let (smt_root, proof) = if whitelist {
-        build_smt_on_wl(hash, on)
+        build_smt_on_wl(hash, on)?
     } else {
-        build_smt_on_bl(hash, on)
+        build_smt_on_bl(hash, on)?
     };
 
     let rc_rule = build_rc_rule(&smt_root.into(), false, false);
-    (proof, rc_rule)
+    Ok((proof, rc_rule))
 }
 
-pub fn generate_proofs(
-    smt_key: &[SmtH256],
-    whitelist: bool,
-) -> (Vec<Vec<u8>>, Vec<Bytes>, Vec<u8>) {
-    let mut proofs = Vec::<Vec<u8>>::default();
+pub type RcProofWithRule = (Vec<(Vec<u8>, u8)>, Vec<Bytes>);
+pub fn generate_proofs(smt_key: &[SmtH256], whitelist: bool) -> Result<RcProofWithRule> {
+    let mut proofs = Vec::<(Vec<u8>, u8)>::default();
     let mut rc_rules = Vec::<Bytes>::default();
-    let mut proof_masks = Vec::<u8>::default();
 
-    let (proof1, rc_rule1) = generate_single_proof(true, smt_key, whitelist);
-    proofs.push(proof1);
+    let (proof1, rc_rule1) = generate_single_proof(true, smt_key, whitelist)?;
+    proofs.push((proof1, 1));
     rc_rules.push(rc_rule1);
-    proof_masks.push(1); // input
 
-    let (proof2, rc_rule2) = generate_single_proof(false, smt_key, whitelist);
-    proofs.push(proof2);
+    let (proof2, rc_rule2) = generate_single_proof(false, smt_key, whitelist)?;
+    proofs.push((proof2, 2));
     rc_rules.push(rc_rule2);
-    proof_masks.push(2); // output
 
-    (proofs, rc_rules, proof_masks)
+    Ok((proofs, rc_rules))
 }

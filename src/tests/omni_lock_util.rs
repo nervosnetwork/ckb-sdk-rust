@@ -15,11 +15,11 @@ pub fn generate_rc(
     ctx: &mut Context,
     smt_key: SmtH256,
 ) -> (SmtProofEntryVec, Bytes, Vec<OutPoint>) {
-    let (proofs, rc_rules, proof_masks) = generate_proofs(&[smt_key], true);
+    let (proofs_with_mask, rc_rules) = generate_proofs(&[smt_key], true).unwrap();
     let mut rce_cells = vec![];
     let rc_root = generate_rce_cell(ctx, rc_rules, &mut rce_cells);
 
-    let proof_vec = build_proofs(proofs, proof_masks);
+    let proof_vec = build_proofs(proofs_with_mask);
     (proof_vec, rc_root.as_bytes(), rce_cells)
 }
 
