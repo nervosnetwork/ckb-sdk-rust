@@ -12,11 +12,11 @@ use ckb_types::{molecule, prelude::*};
 use sparse_merkle_tree::traits::Hasher;
 
 lazy_static! {
-    static ref SMT_EXISTING: SmtH256 = SmtH256::from([
+    pub static ref SMT_EXISTING: SmtH256 = SmtH256::from([
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
     ]);
-    static ref SMT_NOT_EXISTING: SmtH256 = SmtH256::from([
+    pub static ref SMT_NOT_EXISTING: SmtH256 = SmtH256::from([
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
     ]);
@@ -31,7 +31,7 @@ const WHITE_BLACK_LIST_MASK: u8 = 0x2;
 // on(1): emergency halt mode
 // off(0): not int emergency halt mode
 const EMERGENCY_HALT_MODE_MASK: u8 = 0x1;
-struct CKBBlake2bHasher(Blake2b);
+pub struct CKBBlake2bHasher(Blake2b);
 
 impl Default for CKBBlake2bHasher {
     fn default() -> Self {
