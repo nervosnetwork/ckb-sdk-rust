@@ -223,7 +223,7 @@ pub fn generate_proofs(smt_key: &[SmtH256], whitelist: bool) -> Result<RcProofWi
     rc_rules.push(rc_rule1);
 
     let (proof2, rc_rule2) = generate_single_proof(false, smt_key, whitelist)?;
-    proofs.push(ProofWithMask::new(proof2, Mask::Input));
+    proofs.push(ProofWithMask::new(proof2, Mask::Output));
     rc_rules.push(rc_rule2);
 
     Ok((proofs, rc_rules))
