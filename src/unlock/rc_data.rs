@@ -10,6 +10,7 @@ use bytes::Bytes;
 use ckb_hash::{new_blake2b, Blake2b};
 use ckb_types::{molecule, prelude::*};
 use sparse_merkle_tree::traits::Hasher;
+use thiserror::Error;
 
 lazy_static! {
     pub static ref SMT_EXISTING: SmtH256 = SmtH256::from([
@@ -25,9 +26,11 @@ lazy_static! {
 type SMT = SparseMerkleTree<CKBBlake2bHasher, SmtH256, DefaultStore<SmtH256>>;
 pub type Result<T> = ::core::result::Result<T, RcDataError>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum RcDataError {
+    #[error("fail to build the smt tree:`{0}`")]
     BuildTree(String),
+    #[error("fail to compile proof, reason:`{0}`")]
     CompileProof(String),
 }
 
