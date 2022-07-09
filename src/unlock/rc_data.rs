@@ -113,7 +113,13 @@ pub fn build_smt_wl(smt_keys: &[SmtH256], proof_keys: &[SmtH256]) -> Result<(Smt
     Ok((*root, compiled_proof.into()))
 }
 
-// return smt root and proof
+/// Build a black list smt tree with it's keys and gnerate proofs with the according keys.
+/// # Arguments
+/// * `hashes` - A list of hashes which to build the smt tree.
+/// * `on` - indicate if the give `hashes` on the list.
+///
+/// # Return
+/// The smt_tree root and the proofs of the proof_keys.
 pub fn build_smt_on_bl(hashes: &[SmtH256], on: bool) -> Result<(SmtH256, Vec<u8>)> {
     let smt_keys = if on { hashes.to_vec() } else { vec![] };
     build_smt_bl(&smt_keys, hashes)
@@ -197,6 +203,14 @@ pub fn build_proofs(proofs: Vec<ProofWithMask>) -> SmtProofEntryVec {
     builder.build()
 }
 
+/// Build a proof and a rc_rule
+/// # Arguments
+/// * `on` - If the given smt_keys are on the smt tree.
+/// * `smt_key` - A list of smt keys.
+/// * `whitelist` - Indicate if the generated smt tree is a whitlist or not
+///
+/// # Return
+/// A proof and the according rc rule.
 pub fn generate_single_proof(
     on: bool,
     smt_key: &[SmtH256],
@@ -214,6 +228,16 @@ pub fn generate_single_proof(
 }
 
 pub type RcProofWithRule = (Vec<ProofWithMask>, Vec<Bytes>);
+/// Create proofs and rc rules for input and output.
+///
+/// For complex uesage, you should write your own builder, so you can control each rule.
+///
+/// # Arguments
+/// * `smt_key` - The keys to generate the proofs and rules.
+/// * `whitelist` - Indicate if it is whitelist.
+///
+/// # Return
+/// A list of proofs with masks and the according rc rules.
 pub fn generate_proofs(smt_key: &[SmtH256], whitelist: bool) -> Result<RcProofWithRule> {
     let mut proofs = Vec::<ProofWithMask>::default();
     let mut rc_rules = Vec::<Bytes>::default();
