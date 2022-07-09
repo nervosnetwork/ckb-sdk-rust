@@ -167,11 +167,16 @@ fn build_rc_rule(smt_root: &[u8; 32], is_black: bool, is_emergency: bool) -> Byt
     res.as_bytes()
 }
 
+/// Indicate which the rule is applied to.
 #[repr(u8)]
 pub enum Mask {
+    /// apply none to input or output.
     Neither = 0,
+    /// apply to input
     Input = 1,
+    /// apply to output.
     Output = 2,
+    /// apply to both input and output.
     Both = 3,
 }
 pub struct ProofWithMask {
@@ -251,4 +256,137 @@ pub fn generate_proofs(smt_key: &[SmtH256], whitelist: bool) -> Result<RcProofWi
     rc_rules.push(rc_rule2);
 
     Ok((proofs, rc_rules))
+}
+
+#[cfg(test)]
+mod tests {
+    use ckb_types::prelude::*;
+    use sparse_merkle_tree::{CompiledMerkleProof, H256 as SmtH256};
+
+    use crate::types::xudt_rce_mol::{RCData, RCDataUnion};
+
+    use super::{
+        build_smt_on_bl, build_smt_on_wl, generate_single_proof, CKBBlake2bHasher, SMT_EXISTING,
+        SMT_NOT_EXISTING, WHITE_BLACK_LIST_MASK,
+    };
+    #[test]
+    fn test_build_smt_on_bl() {
+        let smt_key = SmtH256::zero();
+        let (root, proof) = build_smt_on_bl(&[smt_key], true).unwrap();
+        let compiled_proof = CompiledMerkleProof(proof);
+        assert!(!compiled_proof
+            .verify::<CKBBlake2bHasher>(&root, vec![(smt_key, *SMT_NOT_EXISTING)])
+            .unwrap());
+
+        let (root, proof) = build_smt_on_bl(&[smt_key], false).unwrap();
+        let compiled_proof = CompiledMerkleProof(proof);
+        assert!(compiled_proof
+            .verify::<CKBBlake2bHasher>(&root, vec![(smt_key, *SMT_NOT_EXISTING)])
+            .unwrap());
+    }
+
+    #[test]
+    fn test_build_smt_on_wl() {
+        let smt_key = SmtH256::zero();
+        let (root, proof) = build_smt_on_wl(&[smt_key], true).unwrap();
+        let compiled_proof = CompiledMerkleProof(proof);
+        assert!(compiled_proof
+            .verify::<CKBBlake2bHasher>(&root, vec![(smt_key, *SMT_EXISTING)])
+            .unwrap());
+
+        let (root, proof) = build_smt_on_wl(&[smt_key], false).unwrap();
+        let compiled_proof = CompiledMerkleProof(proof);
+        assert!(!compiled_proof
+            .verify::<CKBBlake2bHasher>(&root, vec![(smt_key, *SMT_EXISTING)])
+            .unwrap());
+    }
+
+    #[test]
+    fn test_generate_single_proof_on_wl() {
+        let smt_key = SmtH256::zero();
+        let (proof, rc_rule) = generate_single_proof(true, &[smt_key], true).unwrap();
+        let compiled_proof = CompiledMerkleProof(proof);
+        let rc_data = RCData::from_slice(&rc_rule).unwrap();
+        let rcdata_union = rc_data.to_enum();
+        if let RCDataUnion::RCRule(rc_rule) = rcdata_union {
+            let root = rc_rule.smt_root();
+            let mut root_hash = [0u8; 32];
+            root_hash.copy_from_slice(root.as_slice());
+            let root = SmtH256::from(root_hash);
+            assert!(compiled_proof
+                .verify::<CKBBlake2bHasher>(&root, vec![(smt_key, *SMT_EXISTING)])
+                .unwrap());
+
+            let flags: u8 = rc_rule.flags().into();
+            assert_eq!(flags, WHITE_BLACK_LIST_MASK);
+        } else {
+            panic!("expected rc_rule");
+        }
+    }
+    #[test]
+    fn test_generate_single_proof_off_wl() {
+        let smt_key = SmtH256::zero();
+        let (proof, rc_rule) = generate_single_proof(false, &[smt_key], true).unwrap();
+        let compiled_proof = CompiledMerkleProof(proof);
+        let rc_data = RCData::from_slice(&rc_rule).unwrap();
+        let rcdata_union = rc_data.to_enum();
+        if let RCDataUnion::RCRule(rc_rule) = rcdata_union {
+            let root = rc_rule.smt_root();
+            let mut root_hash = [0u8; 32];
+            root_hash.copy_from_slice(root.as_slice());
+            let root = SmtH256::from(root_hash);
+            assert!(!compiled_proof
+                .verify::<CKBBlake2bHasher>(&root, vec![(smt_key, *SMT_EXISTING)])
+                .unwrap());
+
+            let flags: u8 = rc_rule.flags().into();
+            assert_eq!(flags, WHITE_BLACK_LIST_MASK);
+        } else {
+            panic!("expected rc_rule");
+        }
+    }
+    #[test]
+    fn test_generate_single_proof_on_bl() {
+        let smt_key = SmtH256::zero();
+        let (proof, rc_rule) = generate_single_proof(true, &[smt_key], false).unwrap();
+        let compiled_proof = CompiledMerkleProof(proof);
+        let rc_data = RCData::from_slice(&rc_rule).unwrap();
+        let rcdata_union = rc_data.to_enum();
+        if let RCDataUnion::RCRule(rc_rule) = rcdata_union {
+            let root = rc_rule.smt_root();
+            let mut root_hash = [0u8; 32];
+            root_hash.copy_from_slice(root.as_slice());
+            let root = SmtH256::from(root_hash);
+            assert!(compiled_proof
+                .verify::<CKBBlake2bHasher>(&root, vec![(smt_key, *SMT_EXISTING)])
+                .unwrap());
+
+            let flags: u8 = rc_rule.flags().into();
+            assert_eq!(flags, 0);
+        } else {
+            panic!("expected rc_rule");
+        }
+    }
+    #[test]
+    fn test_generate_single_proof_off_bl() {
+        let smt_key = SmtH256::zero();
+        let (proof, rc_rule) = generate_single_proof(false, &[smt_key], false).unwrap();
+        let compiled_proof = CompiledMerkleProof(proof);
+        let rc_data = RCData::from_slice(&rc_rule).unwrap();
+        let rcdata_union = rc_data.to_enum();
+        if let RCDataUnion::RCRule(rc_rule) = rcdata_union {
+            let root = rc_rule.smt_root();
+            let mut root_hash = [0u8; 32];
+            root_hash.copy_from_slice(root.as_slice());
+            let root = SmtH256::from(root_hash);
+            assert!(!compiled_proof
+                .verify::<CKBBlake2bHasher>(&root, vec![(smt_key, *SMT_EXISTING)])
+                .unwrap());
+
+            let flags: u8 = rc_rule.flags().into();
+            assert_eq!(flags, 0);
+        } else {
+            panic!("expected rc_rule");
+        }
+    }
 }
