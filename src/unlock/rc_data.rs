@@ -158,15 +158,37 @@ fn build_rc_rule(smt_root: &[u8; 32], is_black: bool, is_emergency: bool) -> Byt
     res.as_bytes()
 }
 
-pub fn build_proofs(proofs: Vec<(Vec<u8>, u8)>) -> SmtProofEntryVec {
+#[repr(u8)]
+pub enum Mask {
+    Neither = 0,
+    Input = 1,
+    Output = 2,
+    Both = 3,
+}
+pub struct ProofWithMask {
+    pub proof: Vec<u8>,
+    pub mask: Mask,
+}
+
+impl ProofWithMask {
+    pub fn new(proof: Vec<u8>, mask: Mask) -> Self {
+        ProofWithMask { proof, mask }
+    }
+}
+
+pub fn build_proofs(proofs: Vec<ProofWithMask>) -> SmtProofEntryVec {
     let mut builder = SmtProofEntryVecBuilder::default();
-    for (p, m) in proofs {
-        let proof_builder = SmtProofBuilder::default()
-            .set(p.iter().map(|v| molecule::prelude::Byte::new(*v)).collect());
+    for ProofWithMask { proof, mask } in proofs {
+        let proof_builder = SmtProofBuilder::default().set(
+            proof
+                .iter()
+                .map(|v| molecule::prelude::Byte::new(*v))
+                .collect(),
+        );
 
         let temp = SmtProofEntryBuilder::default()
             .proof(proof_builder.build())
-            .mask((m).into());
+            .mask((mask as u8).into());
         builder = builder.push(temp.build());
     }
     builder.build()
@@ -184,21 +206,21 @@ pub fn generate_single_proof(
         build_smt_on_bl(hash, on)?
     };
 
-    let rc_rule = build_rc_rule(&smt_root.into(), false, false);
+    let rc_rule = build_rc_rule(&smt_root.into(), !whitelist, false);
     Ok((proof, rc_rule))
 }
 
-pub type RcProofWithRule = (Vec<(Vec<u8>, u8)>, Vec<Bytes>);
+pub type RcProofWithRule = (Vec<ProofWithMask>, Vec<Bytes>);
 pub fn generate_proofs(smt_key: &[SmtH256], whitelist: bool) -> Result<RcProofWithRule> {
-    let mut proofs = Vec::<(Vec<u8>, u8)>::default();
+    let mut proofs = Vec::<ProofWithMask>::default();
     let mut rc_rules = Vec::<Bytes>::default();
 
     let (proof1, rc_rule1) = generate_single_proof(true, smt_key, whitelist)?;
-    proofs.push((proof1, 1));
+    proofs.push(ProofWithMask::new(proof1, Mask::Input));
     rc_rules.push(rc_rule1);
 
     let (proof2, rc_rule2) = generate_single_proof(false, smt_key, whitelist)?;
-    proofs.push((proof2, 2));
+    proofs.push(ProofWithMask::new(proof2, Mask::Input));
     rc_rules.push(rc_rule2);
 
     Ok((proofs, rc_rules))
