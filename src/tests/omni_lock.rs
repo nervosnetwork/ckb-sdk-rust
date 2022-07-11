@@ -472,7 +472,7 @@ fn test_omnilock_transfer_from_ownerlock() {
 }
 
 #[test]
-fn test_omnilock_transfer_from_ownerlock_() {
+fn test_omnilock_transfer_from_ownerlock_wl() {
     let receiver = build_sighash_script(ACCOUNT2_ARG);
     let sender1 = build_sighash_script(ACCOUNT1_ARG);
     let hash = H160::from_slice(&sender1.calc_script_hash().as_slice()[0..20]).unwrap();

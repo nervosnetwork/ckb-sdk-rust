@@ -1,8 +1,9 @@
 use ckb_types::{
     bytes::Bytes,
     core::TransactionView,
-    packed::{self, Byte32, BytesOpt, WitnessArgs},
+    packed::{self, Byte32, BytesOpt, BytesVec, WitnessArgs},
     prelude::*,
+    H160,
 };
 use thiserror::Error;
 
@@ -13,8 +14,11 @@ use super::{
     },
     OmniLockConfig, OmniLockScriptSigner,
 };
-use crate::traits::{Signer, TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptGroup;
+use crate::{
+    traits::{Signer, TransactionDependencyError, TransactionDependencyProvider},
+    types::omni_lock::OmniLockWitnessLock,
+};
 
 const CHEQUE_CLAIM_SINCE: u64 = 0;
 const CHEQUE_WITHDRAW_SINCE: u64 = 0xA000000000000006;
@@ -617,10 +621,33 @@ impl ScriptUnlocker for OmniLockUnlocker {
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<bool, UnlockError> {
+        fn extract_auth(witnesses: &BytesVec, idx: usize) -> Result<Bytes, UnlockError> {
+            let witness = witnesses
+                .get(idx)
+                .ok_or(UnlockError::InvalidWitnessArgs(idx))?;
+            let current_witness = WitnessArgs::from_slice(witness.raw_data().as_ref())
+                .map_err(|_e| UnlockError::InvalidWitnessArgs(idx))?;
+            let lock_field = current_witness
+                .lock()
+                .to_opt()
+                .map(|data| data.raw_data())
+                .ok_or(UnlockError::InvalidWitnessArgs(idx))?;
+            let omnilock_witnesslock = OmniLockWitnessLock::from_slice(lock_field.as_ref())
+                .map_err(|_| UnlockError::InvalidWitnessArgs(idx))?;
+            let vec = omnilock_witnesslock
+                .omni_identity()
+                .to_opt()
+                .map(|data| data.identity().raw_data())
+                .ok_or(UnlockError::InvalidWitnessArgs(idx))?;
+            if vec.len() < 21 {
+                return Err(UnlockError::InvalidWitnessArgs(idx));
+            }
+            Ok(vec)
+        }
         if !self.signer.config().is_ownerlock() {
             return Ok(false);
         }
-        let args = script_group.script.args().raw_data();
+        let mut args = script_group.script.args().raw_data();
         if args.len() < 22 {
             return Err(UnlockError::Other(
                 format!(
@@ -630,6 +657,11 @@ impl ScriptUnlocker for OmniLockUnlocker {
                 .into(),
             ));
         }
+        if &args.as_ref()[1..21] == H160::default().as_bytes() {
+            let idx = script_group.input_indices[0];
+            args = extract_auth(&tx.witnesses(), idx)?;
+        }
+
         let inputs = tx.inputs();
         if tx.inputs().len() < 2 {
             return Err(UnlockError::Other(

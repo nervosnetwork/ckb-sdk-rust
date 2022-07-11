@@ -659,7 +659,7 @@ impl ScriptSigner for OmniLockScriptSigner {
                 .signer
                 .match_id(self.config.id().auth_content().as_ref()),
             IdentityFlag::Multisig => {
-                self.config.id().auth_content().as_ref() == &args[1..21]
+                (self.config.use_rc() || self.config.id().auth_content().as_ref() == &args[1..21])
                     && self
                         .config
                         .multisig_config()

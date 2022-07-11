@@ -318,13 +318,21 @@ impl OmniLockConfig {
         &self.omni_lock_flags
     }
 
+    pub fn use_rc(&self) -> bool {
+        self.admin_config.is_some()
+    }
+
     /// Build lock script arguments
     pub fn build_args(&self) -> Bytes {
         let mut bytes = BytesMut::with_capacity(128);
 
         // auth
         bytes.put_u8(self.id.flag as u8);
-        bytes.put(self.id.auth_content.as_ref());
+        if self.admin_config.is_none() {
+            bytes.put(self.id.auth_content.as_ref());
+        } else {
+            bytes.put(H160::default().as_ref());
+        }
         bytes.put_u8(self.omni_lock_flags.bits);
 
         if let Some(config) = self.admin_config.as_ref() {
@@ -417,7 +425,14 @@ impl OmniLockConfig {
                 let lock = self.placeholder_witness_lock();
                 WitnessArgs::new_builder().lock(Some(lock).pack()).build()
             }
-            IdentityFlag::OwnerLock => WitnessArgs::default(),
+            IdentityFlag::OwnerLock => {
+                if self.admin_config.as_ref().is_some() {
+                    let lock = self.placeholder_witness_lock();
+                    WitnessArgs::new_builder().lock(Some(lock).pack()).build()
+                } else {
+                    WitnessArgs::default()
+                }
+            }
             _ => todo!("to support other placeholder_witness implementions"),
         }
     }
