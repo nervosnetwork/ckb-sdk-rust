@@ -19,7 +19,7 @@ use crate::{
     util::convert_keccak256_hash,
 };
 
-use super::{IdentityFlag, OmniLockConfig};
+use super::{omni_lock::OmniLockFlags, IdentityFlag, OmniLockConfig};
 
 #[derive(Error, Debug)]
 pub enum ScriptSignError {
@@ -651,7 +651,13 @@ impl OmniLockScriptSigner {
 
 impl ScriptSigner for OmniLockScriptSigner {
     fn match_args(&self, args: &[u8]) -> bool {
-        if !(args.len() == self.config.get_args_len() && self.config.id().flag() as u8 == args[0]) {
+        if args.len() != self.config.get_args_len() {
+            return false;
+        }
+        if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
+            return true;
+        }
+        if self.config.id().flag() as u8 != args[0] {
             return false;
         }
         match self.config.id().flag() {
@@ -659,7 +665,7 @@ impl ScriptSigner for OmniLockScriptSigner {
                 .signer
                 .match_id(self.config.id().auth_content().as_ref()),
             IdentityFlag::Multisig => {
-                (self.config.use_rc() || self.config.id().auth_content().as_ref() == &args[1..21])
+                self.config.id().auth_content().as_ref() == &args[1..21]
                     && self
                         .config
                         .multisig_config()
