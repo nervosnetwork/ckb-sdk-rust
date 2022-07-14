@@ -226,7 +226,7 @@ pub struct AdminConfig {
     /// The smt proofs
     proofs: SmtProofEntryVec,
     /// The alternative auth content to the args part.
-    auth: Option<Identity>,
+    auth: Identity,
 }
 
 impl AdminConfig {
@@ -245,14 +245,14 @@ impl AdminConfig {
 
     /// set the additional auth, it will be used to sign the transaction.
     pub fn set_auth(&mut self, auth: Identity) {
-        self.auth = Some(auth);
+        self.auth = auth;
     }
 
-    pub fn new(root: H256, proofs: SmtProofEntryVec) -> AdminConfig {
+    pub fn new(root: H256, proofs: SmtProofEntryVec, auth: Identity) -> AdminConfig {
         AdminConfig {
             rc_type_id: root,
             proofs,
-            ..Default::default()
+            auth,
         }
     }
 }
@@ -432,13 +432,8 @@ impl OmniLockConfig {
 
         if let Some(config) = self.admin_config.as_ref() {
             let mut temp = [0u8; 21];
-            let auth = if let Some(auth) = config.auth.as_ref() {
-                auth
-            } else {
-                &self.id
-            };
-            temp[0] = auth.flag as u8;
-            temp[1..21].copy_from_slice(auth.auth_content.as_bytes());
+            temp[0] = config.auth.flag as u8;
+            temp[1..21].copy_from_slice(config.auth.auth_content.as_bytes());
             let auth = Auth::from_slice(&temp).unwrap();
             let ident = IdentityType::new_builder()
                 .identity(auth)

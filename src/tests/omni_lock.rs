@@ -168,6 +168,7 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_root.as_ref()).unwrap(),
         proof_vec,
+        cfg.id().clone(),
     ));
 
     let sender = build_omnilock_script(&cfg);
@@ -259,8 +260,11 @@ fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
         build_alternative_auth(ACCOUNT1_KEY.as_bytes(), IdentityFlag::PubkeyHash);
     let (proof_vec, rc_root, rce_cells) =
         generate_rc(&mut ctx, alternative_auth.to_smt_key().into());
-    let mut admin_config = AdminConfig::new(H256::from_slice(rc_root.as_ref()).unwrap(), proof_vec);
-    admin_config.set_auth(alternative_auth);
+    let admin_config = AdminConfig::new(
+        H256::from_slice(rc_root.as_ref()).unwrap(),
+        proof_vec,
+        alternative_auth,
+    );
     cfg.set_admin_config(admin_config);
 
     let sender = build_omnilock_script(&cfg);
@@ -408,6 +412,7 @@ fn test_omnilock_transfer_from_multisig_wl() {
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_root.as_ref()).unwrap(),
         proof_vec,
+        cfg.id().clone(),
     ));
     let sender = build_omnilock_script(&cfg);
     for (lock, capacity_opt) in vec![
@@ -576,6 +581,7 @@ fn test_omnilock_transfer_from_ownerlock_wl() {
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_root.as_ref()).unwrap(),
         proof_vec,
+        cfg.id().clone(),
     ));
     let sender0 = build_omnilock_script(&cfg);
     for (lock, capacity_opt) in vec![(sender0.clone(), Some(50 * ONE_CKB))] {
