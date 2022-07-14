@@ -362,11 +362,7 @@ impl OmniLockConfig {
 
         // auth
         bytes.put_u8(self.id.flag as u8);
-        if self.admin_config.is_none() {
-            bytes.put(self.id.auth_content.as_ref());
-        } else {
-            bytes.put(H160::default().as_ref());
-        }
+        bytes.put(self.id.auth_content.as_ref());
         bytes.put_u8(self.omni_lock_flags.bits);
 
         if let Some(config) = self.admin_config.as_ref() {
