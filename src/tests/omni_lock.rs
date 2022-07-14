@@ -15,8 +15,9 @@ use crate::{
         CapacityProvider,
     },
     unlock::{
-        omni_lock::AdminConfig, MultisigConfig, OmniLockConfig, OmniLockScriptSigner,
-        OmniLockUnlocker, ScriptUnlocker, SecpSighashUnlocker,
+        omni_lock::{AdminConfig, Identity},
+        IdentityFlag, MultisigConfig, OmniLockConfig, OmniLockScriptSigner, OmniLockUnlocker,
+        ScriptUnlocker, SecpSighashUnlocker,
     },
     util::blake160,
     ScriptId,
@@ -232,6 +233,95 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 
+#[test]
+fn test_omnilock_transfer_from_sighash2_wl() {
+    let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))
+        .unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+    let pubkey_hash = blake160(&pubkey.serialize());
+    let cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(pubkey_hash);
+    test_omnilock_simple_hash_rc2(cfg);
+}
+
+fn build_alternative_auth(secretkey: &[u8], flag: IdentityFlag) -> Identity {
+    let sender_key = secp256k1::SecretKey::from_slice(secretkey).unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+    let pubkey_hash = blake160(&pubkey.serialize());
+    Identity::new(flag, pubkey_hash)
+}
+
+fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+
+    let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
+    let alternative_auth =
+        build_alternative_auth(ACCOUNT1_KEY.as_bytes(), IdentityFlag::PubkeyHash);
+    let (proof_vec, rc_root, rce_cells) =
+        generate_rc(&mut ctx, alternative_auth.to_smt_key().into());
+    let mut admin_config = AdminConfig::new(H256::from_slice(rc_root.as_ref()).unwrap(), proof_vec);
+    admin_config.set_auth(alternative_auth);
+    cfg.set_admin_config(admin_config);
+
+    let sender = build_omnilock_script(&cfg);
+    for (lock, capacity_opt) in vec![(sender.clone(), Some(300 * ONE_CKB))] {
+        ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
+    }
+
+    let output = CellOutput::new_builder()
+        .capacity((110 * ONE_CKB).pack())
+        .lock(receiver)
+        .build();
+    let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
+    let placeholder_witness = cfg.placeholder_witness();
+    let balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
+    let unlockers = build_omnilock_unlockers(account1_key, cfg.clone());
+
+    let base_tx = builder
+        .build_base(&mut cell_collector, &ctx, &ctx, &ctx)
+        .unwrap();
+    let base_tx = add_rce_cells(base_tx, &rce_cells);
+
+    let (tx_filled_witnesses, _) = fill_placeholder_witnesses(base_tx, &ctx, &unlockers).unwrap();
+    let mut tx = balance_tx_capacity(
+        &tx_filled_witnesses,
+        &balancer,
+        &mut cell_collector,
+        &ctx,
+        &ctx,
+        &ctx,
+    )
+    .unwrap();
+
+    let unlockers = build_omnilock_unlockers(account1_key, cfg);
+
+    let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
+    assert!(new_locked_groups.is_empty());
+    tx = new_tx;
+
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 4);
+    assert_eq!(tx.inputs().len(), 1);
+    for out_point in tx.input_pts_iter() {
+        assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    assert_eq!(tx.output(0).unwrap(), output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 1);
+    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
 #[test]
 fn test_omnilock_transfer_from_multisig() {
     let lock_args = vec![

@@ -17,13 +17,26 @@ use ckb_types::{
 
 use ckb_crypto::secp::Pubkey;
 pub use ckb_types::prelude::Pack;
+use enum_repr_derive::{FromEnumToRepr, TryFromReprToEnum};
 use serde::{de::Unexpected, Deserialize, Serialize};
+use std::convert::TryFrom;
 
 use bitflags::bitflags;
 
 use super::MultisigConfig;
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
+#[derive(
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    Debug,
+    Hash,
+    Eq,
+    PartialEq,
+    TryFromReprToEnum,
+    FromEnumToRepr,
+)]
 #[repr(u8)]
 pub enum IdentityFlag {
     /// The auth content represents the blake160 hash of a secp256k1 public key.
@@ -55,14 +68,25 @@ pub enum IdentityFlag {
     Dl = 0xFE,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
+impl Default for IdentityFlag {
+    fn default() -> Self {
+        IdentityFlag::PubkeyHash
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Default)]
 pub struct Identity {
     /// Indicate what's auth content of auth_content will be.
     flag: IdentityFlag,
     /// The auth content of the identity.
     auth_content: H160,
 }
+
 impl Identity {
+    /// Create a new identity.
+    pub fn new(flag: IdentityFlag, auth_content: H160) -> Self {
+        Identity { flag, auth_content }
+    }
     /// convert the identify to smt_key.
     pub fn to_smt_key(&self) -> [u8; 32] {
         let mut ret = [0u8; 32];
@@ -78,6 +102,17 @@ impl Identity {
     /// get the auth content of the identity
     pub fn auth_content(&self) -> &H160 {
         &self.auth_content
+    }
+
+    /// Parse the Identity from an u8 slice.
+    pub fn from_slice(slice: &[u8]) -> Result<Self, String> {
+        if slice.len() < 21 {
+            return Err("Not enough bytes to parse".to_string());
+        }
+        let flag = IdentityFlag::try_from(slice[0])
+            .map_err(|e| format!("can't parse {} to valide IdentityFlat.", e))?;
+        let auth_content = H160::from_slice(&slice[1..21]).map_err(|e| e.to_string())?;
+        Ok(Identity { flag, auth_content })
     }
 }
 
@@ -184,21 +219,14 @@ impl PartialEq for SmtProofEntryVec {
 impl Eq for SmtProofEntryVec {}
 
 /// The administrator mode configuration.
-#[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Default)]
 pub struct AdminConfig {
     /// The rc cell's type script hash, the type script should be a type id script.
     rc_type_id: H256,
     /// The smt proofs
     proofs: SmtProofEntryVec,
-}
-
-impl Default for AdminConfig {
-    fn default() -> Self {
-        Self {
-            rc_type_id: Default::default(),
-            proofs: SmtProofEntryVec::default(),
-        }
-    }
+    /// The alternative auth content to the args part.
+    auth: Option<Identity>,
 }
 
 impl AdminConfig {
@@ -215,10 +243,16 @@ impl AdminConfig {
         &self.proofs
     }
 
+    /// set the additional auth, it will be used to sign the transaction.
+    pub fn set_auth(&mut self, auth: Identity) {
+        self.auth = Some(auth);
+    }
+
     pub fn new(root: H256, proofs: SmtProofEntryVec) -> AdminConfig {
         AdminConfig {
             rc_type_id: root,
             proofs,
+            ..Default::default()
         }
     }
 }
@@ -398,8 +432,13 @@ impl OmniLockConfig {
 
         if let Some(config) = self.admin_config.as_ref() {
             let mut temp = [0u8; 21];
-            temp[0] = self.id.flag as u8;
-            temp[1..21].copy_from_slice(self.id.auth_content.as_bytes());
+            let auth = if let Some(auth) = config.auth.as_ref() {
+                auth
+            } else {
+                &self.id
+            };
+            temp[0] = auth.flag as u8;
+            temp[1..21].copy_from_slice(auth.auth_content.as_bytes());
             let auth = Auth::from_slice(&temp).unwrap();
             let ident = IdentityType::new_builder()
                 .identity(auth)
@@ -464,6 +503,7 @@ mod tests {
         let cfg = AdminConfig {
             rc_type_id: type_id,
             proofs: proofs_builder.build(),
+            ..Default::default()
         };
         let x = serde_json::to_string_pretty(&cfg).unwrap();
         let cfg2: AdminConfig = serde_json::from_str(&x).unwrap();
