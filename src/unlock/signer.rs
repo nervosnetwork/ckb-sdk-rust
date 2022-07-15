@@ -735,46 +735,48 @@ impl ScriptSigner for OmniLockScriptSigner {
         } else {
             self.config.id().clone()
         };
-        if id.flag() == IdentityFlag::PubkeyHash {
-            let witness_idx = script_group.input_indices[0];
-            let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
-            while witnesses.len() <= witness_idx {
-                witnesses.push(Default::default());
+        match id.flag() {
+            IdentityFlag::PubkeyHash => {
+                let witness_idx = script_group.input_indices[0];
+                let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+                while witnesses.len() <= witness_idx {
+                    witnesses.push(Default::default());
+                }
+                let tx_new = tx
+                    .as_advanced_builder()
+                    .set_witnesses(witnesses.clone())
+                    .build();
+
+                let zero_lock = self.config.zero_lock();
+                let message = generate_message(&tx_new, script_group, zero_lock)?;
+
+                let signature =
+                    self.signer
+                        .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
+
+                // Put signature into witness
+                let witness_data = witnesses[witness_idx].raw_data();
+                let mut current_witness: WitnessArgs = if witness_data.is_empty() {
+                    WitnessArgs::default()
+                } else {
+                    WitnessArgs::from_slice(witness_data.as_ref())?
+                };
+
+                let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
+
+                current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
+                witnesses[witness_idx] = current_witness.as_bytes().pack();
+                Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
             }
-            let tx_new = tx
-                .as_advanced_builder()
-                .set_witnesses(witnesses.clone())
-                .build();
-
-            let zero_lock = self.config.zero_lock();
-            let message = generate_message(&tx_new, script_group, zero_lock)?;
-
-            let signature =
-                self.signer
-                    .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
-
-            // Put signature into witness
-            let witness_data = witnesses[witness_idx].raw_data();
-            let mut current_witness: WitnessArgs = if witness_data.is_empty() {
-                WitnessArgs::default()
-            } else {
-                WitnessArgs::from_slice(witness_data.as_ref())?
-            };
-
-            let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
-
-            current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
-            witnesses[witness_idx] = current_witness.as_bytes().pack();
-            Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
-        } else if id.flag() == IdentityFlag::Ethereum {
-            self.sign_ethereum_tx(tx, script_group, &id)
-        } else if id.flag() == IdentityFlag::Multisig {
-            self.sign_multisig_tx(tx, script_group)
-        } else if id.flag() == IdentityFlag::OwnerLock {
-            // should not reach here, just return a clone for compatible reason.
-            Ok(tx.clone())
-        } else {
-            todo!("not supported yet");
+            IdentityFlag::Ethereum => self.sign_ethereum_tx(tx, script_group, &id),
+            IdentityFlag::Multisig => self.sign_multisig_tx(tx, script_group),
+            IdentityFlag::OwnerLock => {
+                // should not reach here, just return a clone for compatible reason.
+                Ok(tx.clone())
+            }
+            _ => {
+                todo!("not supported yet");
+            }
         }
     }
 }

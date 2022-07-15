@@ -483,7 +483,7 @@ impl OmniLockConfig {
                 WitnessArgs::new_builder().lock(Some(lock).pack()).build()
             }
             IdentityFlag::OwnerLock => {
-                if self.admin_config.as_ref().is_some() {
+                if self.admin_config.is_some() {
                     let lock = self.placeholder_witness_lock();
                     WitnessArgs::new_builder().lock(Some(lock).pack()).build()
                 } else {
