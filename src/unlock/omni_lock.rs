@@ -227,6 +227,8 @@ pub struct AdminConfig {
     proofs: SmtProofEntryVec,
     /// The alternative auth content to the args part.
     auth: Identity,
+    /// multisig cnfiguration
+    multisig_config: Option<MultisigConfig>,
 }
 
 impl AdminConfig {
@@ -253,11 +255,22 @@ impl AdminConfig {
         &self.auth
     }
 
-    pub fn new(root: H256, proofs: SmtProofEntryVec, auth: Identity) -> AdminConfig {
+    /// return the content of the multisig config
+    pub fn get_multisig_config(&self) -> Option<&MultisigConfig> {
+        self.multisig_config.as_ref()
+    }
+
+    pub fn new(
+        root: H256,
+        proofs: SmtProofEntryVec,
+        auth: Identity,
+        multisig_config: Option<MultisigConfig>,
+    ) -> AdminConfig {
         AdminConfig {
             rc_type_id: root,
             proofs,
             auth,
+            multisig_config,
         }
     }
 }
@@ -338,6 +351,9 @@ impl OmniLockConfig {
         }
     }
 
+    /// Set the admin cofiguration.
+    /// # Arguments
+    /// * `admin_config` The new admin config.
     pub fn set_admin_config(&mut self, admin_config: AdminConfig) {
         self.omni_lock_flags.set(OmniLockFlags::ADMIN, true);
         self.admin_config = Some(admin_config);
@@ -375,23 +391,6 @@ impl OmniLockConfig {
         }
 
         bytes.freeze()
-    }
-
-    /// Check if the args match the rc_type_id in the admin_config
-    pub fn match_rc_type_id(&self, args: &[u8]) -> bool {
-        // must be admin mode
-        if !self.omni_lock_flags.contains(OmniLockFlags::ADMIN) {
-            return false;
-        }
-        // must have enough length
-        if args.len() < 54 {
-            return false;
-        }
-        // must have admin config
-        if let Some(admin_config) = self.admin_config.as_ref() {
-            return admin_config.rc_type_id().as_bytes() == &args[22..54];
-        }
-        false
     }
 
     /// return the internal reference of admin_config

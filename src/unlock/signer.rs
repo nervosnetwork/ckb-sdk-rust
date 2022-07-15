@@ -504,28 +504,6 @@ impl OmniLockScriptSigner {
         &self.config
     }
 
-    fn extract_identity(witness: &Bytes) -> Result<Identity, ScriptSignError> {
-        let current_witness = WitnessArgs::from_slice(witness.as_ref())?;
-        let lock_field = current_witness
-            .lock()
-            .to_opt()
-            .map(|data| data.raw_data())
-            .ok_or_else(|| {
-                ScriptSignError::InvalidOmniLockWitnessLock("lock field is None".to_string())
-            })?;
-        let omnilock_witnesslock = OmniLockWitnessLock::from_slice(lock_field.as_ref())?;
-        let vec = omnilock_witnesslock
-            .omni_identity()
-            .to_opt()
-            .map(|data| data.identity().raw_data())
-            .ok_or_else(|| {
-                ScriptSignError::InvalidOmniLockWitnessLock("omni_identity is None".to_string())
-            })?;
-        let id = Identity::from_slice(&vec[0..21])
-            .map_err(ScriptSignError::InvalidOmniLockWitnessLock)?;
-        Ok(id)
-    }
-
     fn sign_multisig_tx(
         &self,
         tx: &TransactionView,
@@ -545,9 +523,15 @@ impl OmniLockScriptSigner {
         let zero_lock_len = zero_lock.len();
         let message = generate_message(&tx_new, script_group, zero_lock)?;
 
-        let signatures = self
-            .config
-            .multisig_config()
+        let multi_cfg = if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
+            self.config
+                .get_admin_config()
+                .unwrap()
+                .get_multisig_config()
+        } else {
+            self.config.multisig_config()
+        };
+        let signatures = multi_cfg
             .unwrap()
             .sighash_addresses
             .iter()
@@ -691,8 +675,20 @@ impl ScriptSigner for OmniLockScriptSigner {
                     .any(|id| self.signer.match_id(id.as_bytes()));
         }
         if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
-            if self.config.match_rc_type_id(args) {
-                if let Some(admin_config) = self.config.get_admin_config() {
+            if let Some(admin_config) = self.config.get_admin_config() {
+                if args.len() < 54 {
+                    return false;
+                }
+                // Check if the args match the rc_type_id in the admin_config
+                if admin_config.rc_type_id().as_bytes() != &args[22..54] {
+                    return false;
+                }
+                if let Some(multisig_cfg) = admin_config.get_multisig_config() {
+                    return multisig_cfg
+                        .sighash_addresses
+                        .iter()
+                        .any(|id| self.signer.match_id(id.as_bytes()));
+                } else {
                     return self
                         .signer
                         .match_id(admin_config.get_auth().auth_content().as_bytes());
@@ -708,7 +704,14 @@ impl ScriptSigner for OmniLockScriptSigner {
                 .signer
                 .match_id(self.config.id().auth_content().as_ref()),
             IdentityFlag::Multisig => {
-                unreachable!("should not reach here, already checked previous.")
+                self.config.id().auth_content().as_ref() == &args[1..21]
+                    && self
+                        .config
+                        .multisig_config()
+                        .unwrap()
+                        .sighash_addresses
+                        .iter()
+                        .any(|id| self.signer.match_id(id.as_bytes()))
             }
 
             IdentityFlag::OwnerLock => {
@@ -725,13 +728,7 @@ impl ScriptSigner for OmniLockScriptSigner {
         script_group: &ScriptGroup,
     ) -> Result<TransactionView, ScriptSignError> {
         let id = if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
-            let witness_idx = script_group.input_indices[0];
-            let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
-            while witnesses.len() <= witness_idx {
-                witnesses.push(Default::default());
-            }
-            let witness = witnesses[witness_idx].raw_data();
-            Self::extract_identity(&witness)?
+            self.config.get_admin_config().unwrap().get_auth().clone()
         } else {
             self.config.id().clone()
         };
