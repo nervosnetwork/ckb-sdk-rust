@@ -1,24 +1,21 @@
 use ckb_types::{
     bytes::Bytes,
     core::TransactionView,
-    packed::{self, Byte32, BytesOpt, BytesVec, WitnessArgs},
+    packed::{self, Byte32, BytesOpt, WitnessArgs},
     prelude::*,
-    H160,
 };
 use thiserror::Error;
 
 use super::{
+    omni_lock::OmniLockFlags,
     signer::{
         AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig, ScriptSignError,
         ScriptSigner, SecpMultisigScriptSigner, SecpSighashScriptSigner,
     },
     OmniLockConfig, OmniLockScriptSigner,
 };
+use crate::traits::{Signer, TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptGroup;
-use crate::{
-    traits::{Signer, TransactionDependencyError, TransactionDependencyProvider},
-    types::omni_lock::OmniLockWitnessLock,
-};
 
 const CHEQUE_CLAIM_SINCE: u64 = 0;
 const CHEQUE_WITHDRAW_SINCE: u64 = 0xA000000000000006;
@@ -598,15 +595,17 @@ impl ScriptUnlocker for ChequeUnlocker {
 
 pub struct OmniLockUnlocker {
     signer: OmniLockScriptSigner,
+    config: OmniLockConfig,
 }
 impl OmniLockUnlocker {
-    pub fn new(signer: OmniLockScriptSigner) -> OmniLockUnlocker {
-        OmniLockUnlocker { signer }
+    pub fn new(signer: OmniLockScriptSigner, config: OmniLockConfig) -> OmniLockUnlocker {
+        OmniLockUnlocker { signer, config }
     }
 }
 impl From<(Box<dyn Signer>, OmniLockConfig)> for OmniLockUnlocker {
     fn from((signer, config): (Box<dyn Signer>, OmniLockConfig)) -> OmniLockUnlocker {
-        OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config))
+        let cfg = config.clone();
+        OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config), cfg)
     }
 }
 impl ScriptUnlocker for OmniLockUnlocker {
@@ -621,33 +620,10 @@ impl ScriptUnlocker for OmniLockUnlocker {
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<bool, UnlockError> {
-        fn extract_auth(witnesses: &BytesVec, idx: usize) -> Result<Bytes, UnlockError> {
-            let witness = witnesses
-                .get(idx)
-                .ok_or(UnlockError::InvalidWitnessArgs(idx))?;
-            let current_witness = WitnessArgs::from_slice(witness.raw_data().as_ref())
-                .map_err(|_e| UnlockError::InvalidWitnessArgs(idx))?;
-            let lock_field = current_witness
-                .lock()
-                .to_opt()
-                .map(|data| data.raw_data())
-                .ok_or(UnlockError::InvalidWitnessArgs(idx))?;
-            let omnilock_witnesslock = OmniLockWitnessLock::from_slice(lock_field.as_ref())
-                .map_err(|_| UnlockError::InvalidWitnessArgs(idx))?;
-            let vec = omnilock_witnesslock
-                .omni_identity()
-                .to_opt()
-                .map(|data| data.identity().raw_data())
-                .ok_or(UnlockError::InvalidWitnessArgs(idx))?;
-            if vec.len() < 21 {
-                return Err(UnlockError::InvalidWitnessArgs(idx));
-            }
-            Ok(vec)
-        }
         if !self.signer.config().is_ownerlock() {
             return Ok(false);
         }
-        let mut args = script_group.script.args().raw_data();
+        let args = script_group.script.args().raw_data();
         if args.len() < 22 {
             return Err(UnlockError::Other(
                 format!(
@@ -657,10 +633,16 @@ impl ScriptUnlocker for OmniLockUnlocker {
                 .into(),
             ));
         }
-        if &args.as_ref()[1..21] == H160::default().as_bytes() {
-            let idx = script_group.input_indices[0];
-            args = extract_auth(&tx.witnesses(), idx)?;
-        }
+        // If use admin mode, should use the id in admin configuration
+        let auth_content = if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
+            self.config
+                .get_admin_config()
+                .unwrap()
+                .get_auth()
+                .auth_content()
+        } else {
+            self.config.id().auth_content()
+        };
 
         let inputs = tx.inputs();
         if tx.inputs().len() < 2 {
@@ -677,7 +659,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
                 if let Ok(output) = tx_dep_provider.get_cell(&input.previous_output()) {
                     let lock_hash = output.calc_lock_hash();
                     let h = &lock_hash.as_slice()[0..20];
-                    h == &args[1..21]
+                    h == auth_content.as_bytes()
                 } else {
                     false
                 }

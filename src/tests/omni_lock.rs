@@ -56,8 +56,9 @@ fn build_omnilock_unlockers(
         SecpCkbRawKeySigner::new_with_secret_keys(vec![key])
     };
     let script = build_omnilock_script(&config);
-    let omnilock_script_signer = OmniLockScriptSigner::new(Box::new(signer) as Box<_>, config);
-    let omnilock_unlocker = OmniLockUnlocker::new(omnilock_script_signer);
+    let omnilock_script_signer =
+        OmniLockScriptSigner::new(Box::new(signer) as Box<_>, config.clone());
+    let omnilock_unlocker = OmniLockUnlocker::new(omnilock_script_signer, config);
     let omnilock_script_id = ScriptId::from(&script);
     let mut unlockers = HashMap::default();
     unlockers.insert(
