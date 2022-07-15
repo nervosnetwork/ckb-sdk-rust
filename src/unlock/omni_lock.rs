@@ -248,6 +248,11 @@ impl AdminConfig {
         self.auth = auth;
     }
 
+    /// return a reference to the auth content
+    pub fn get_auth(&self) -> &Identity {
+        &self.auth
+    }
+
     pub fn new(root: H256, proofs: SmtProofEntryVec, auth: Identity) -> AdminConfig {
         AdminConfig {
             rc_type_id: root,
@@ -370,6 +375,28 @@ impl OmniLockConfig {
         }
 
         bytes.freeze()
+    }
+
+    /// Check if the args match the rc_type_id in the admin_config
+    pub fn match_rc_type_id(&self, args: &[u8]) -> bool {
+        // must be admin mode
+        if !self.omni_lock_flags.contains(OmniLockFlags::ADMIN) {
+            return false;
+        }
+        // must have enough length
+        if args.len() < 54 {
+            return false;
+        }
+        // must have admin config
+        if let Some(admin_config) = self.admin_config.as_ref() {
+            return admin_config.rc_type_id().as_bytes() == &args[22..54];
+        }
+        false
+    }
+
+    /// return the internal reference of admin_config
+    pub fn get_admin_config(&self) -> Option<&AdminConfig> {
+        self.admin_config.as_ref()
     }
 
     /// Calculate script args length

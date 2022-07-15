@@ -680,8 +680,25 @@ impl ScriptSigner for OmniLockScriptSigner {
         if args.len() != self.config.get_args_len() {
             return false;
         }
+        if self.config.is_multisig() {
+            return self.config.id().auth_content().as_ref() == &args[1..21]
+                && self
+                    .config
+                    .multisig_config()
+                    .unwrap()
+                    .sighash_addresses
+                    .iter()
+                    .any(|id| self.signer.match_id(id.as_bytes()));
+        }
         if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
-            return true;
+            if self.config.match_rc_type_id(args) {
+                if let Some(admin_config) = self.config.get_admin_config() {
+                    return self
+                        .signer
+                        .match_id(admin_config.get_auth().auth_content().as_bytes());
+                }
+            }
+            return false;
         }
         if self.config.id().flag() as u8 != args[0] {
             return false;
@@ -691,15 +708,9 @@ impl ScriptSigner for OmniLockScriptSigner {
                 .signer
                 .match_id(self.config.id().auth_content().as_ref()),
             IdentityFlag::Multisig => {
-                self.config.id().auth_content().as_ref() == &args[1..21]
-                    && self
-                        .config
-                        .multisig_config()
-                        .unwrap()
-                        .sighash_addresses
-                        .iter()
-                        .any(|id| self.signer.match_id(id.as_bytes()))
+                unreachable!("should not reach here, already checked previous.")
             }
+
             IdentityFlag::OwnerLock => {
                 // should not reach here, return true for compatible reason
                 true
