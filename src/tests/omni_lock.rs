@@ -165,9 +165,9 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
     let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
-    let (proof_vec, rc_root, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key().into());
+    let (proof_vec, rc_type_id, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key().into());
     cfg.set_admin_config(AdminConfig::new(
-        H256::from_slice(rc_root.as_ref()).unwrap(),
+        H256::from_slice(rc_type_id.as_ref()).unwrap(),
         proof_vec,
         cfg.id().clone(),
         None,
@@ -260,10 +260,10 @@ fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
     let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
     let alternative_auth =
         build_alternative_auth(ACCOUNT1_KEY.as_bytes(), IdentityFlag::PubkeyHash);
-    let (proof_vec, rc_root, rce_cells) =
+    let (proof_vec, rc_type_id, rce_cells) =
         generate_rc(&mut ctx, alternative_auth.to_smt_key().into());
     let admin_config = AdminConfig::new(
-        H256::from_slice(rc_root.as_ref()).unwrap(),
+        H256::from_slice(rc_type_id.as_ref()).unwrap(),
         proof_vec,
         alternative_auth,
         None,
@@ -411,9 +411,9 @@ fn test_omnilock_transfer_from_multisig_wl() {
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
     let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
-    let (proof_vec, rc_root, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key().into());
+    let (proof_vec, rc_type_id, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key().into());
     cfg.set_admin_config(AdminConfig::new(
-        H256::from_slice(rc_root.as_ref()).unwrap(),
+        H256::from_slice(rc_type_id.as_ref()).unwrap(),
         proof_vec,
         cfg.id().clone(),
         Some(multi_cfg),
@@ -581,9 +581,9 @@ fn test_omnilock_transfer_from_ownerlock_wl() {
         vec![(OMNILOCK_BIN, true)],
         vec![(sender1.clone(), Some(61 * ONE_CKB))],
     );
-    let (proof_vec, rc_root, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key().into());
+    let (proof_vec, rc_type_id, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key().into());
     cfg.set_admin_config(AdminConfig::new(
-        H256::from_slice(rc_root.as_ref()).unwrap(),
+        H256::from_slice(rc_type_id.as_ref()).unwrap(),
         proof_vec,
         cfg.id().clone(),
         None,

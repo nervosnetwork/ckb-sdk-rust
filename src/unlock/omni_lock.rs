@@ -261,13 +261,13 @@ impl AdminConfig {
     }
 
     pub fn new(
-        root: H256,
+        rc_type_id: H256,
         proofs: SmtProofEntryVec,
         auth: Identity,
         multisig_config: Option<MultisigConfig>,
     ) -> AdminConfig {
         AdminConfig {
-            rc_type_id: root,
+            rc_type_id,
             proofs,
             auth,
             multisig_config,

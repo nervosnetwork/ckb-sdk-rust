@@ -17,10 +17,10 @@ pub fn generate_rc(
 ) -> (SmtProofEntryVec, Bytes, Vec<OutPoint>) {
     let (proofs_with_mask, rc_rules) = generate_proofs(&[smt_key], true).unwrap();
     let mut rce_cells = vec![];
-    let rc_root = generate_rce_cell(ctx, rc_rules, &mut rce_cells);
+    let rc_type_id = generate_rce_cell(ctx, rc_rules, &mut rce_cells);
 
     let proof_vec = build_proofs(proofs_with_mask);
-    (proof_vec, rc_root.as_bytes(), rce_cells)
+    (proof_vec, rc_type_id.as_bytes(), rce_cells)
 }
 
 pub fn build_always_success_script() -> Script {
