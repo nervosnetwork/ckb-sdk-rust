@@ -7,7 +7,7 @@ use crate::{
         build_sighash_script, init_context,
         omni_lock_util::{add_rce_cells, generate_rc},
         ACCOUNT0_ARG, ACCOUNT0_KEY, ACCOUNT1_ARG, ACCOUNT1_KEY, ACCOUNT2_ARG, ACCOUNT2_KEY,
-        FEE_RATE,
+        ACCOUNT3_ARG, ACCOUNT3_KEY, FEE_RATE,
     },
     traits::SecpCkbRawKeySigner,
     tx_builder::{
@@ -570,22 +570,27 @@ fn test_omnilock_transfer_from_ownerlock() {
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 
+// unlock by administrator configuration
 #[test]
-fn test_omnilock_transfer_from_ownerlock_wl() {
+fn test_omnilock_transfer_from_ownerlock_wl_admin() {
     let receiver = build_sighash_script(ACCOUNT2_ARG);
     let sender1 = build_sighash_script(ACCOUNT1_ARG);
     let hash = H160::from_slice(&sender1.calc_script_hash().as_slice()[0..20]).unwrap();
     let mut cfg = OmniLockConfig::new_ownerlock(hash);
 
+    let owner_sender = build_sighash_script(ACCOUNT3_ARG);
     let mut ctx = init_context(
         vec![(OMNILOCK_BIN, true)],
-        vec![(sender1.clone(), Some(61 * ONE_CKB))],
+        vec![(owner_sender.clone(), Some(61 * ONE_CKB))],
     );
-    let (proof_vec, rc_type_id, rce_cells) = generate_rc(&mut ctx, cfg.id().to_smt_key().into());
+
+    let owner_hash = H160::from_slice(&owner_sender.calc_script_hash().as_slice()[0..20]).unwrap();
+    let owner_id = Identity::new(IdentityFlag::OwnerLock, owner_hash);
+    let (proof_vec, rc_type_id, rce_cells) = generate_rc(&mut ctx, owner_id.to_smt_key().into());
     cfg.set_admin_config(AdminConfig::new(
         H256::from_slice(rc_type_id.as_ref()).unwrap(),
         proof_vec,
-        cfg.id().clone(),
+        owner_id,
         None,
     ));
     let sender0 = build_omnilock_script(&cfg);
@@ -607,7 +612,7 @@ fn test_omnilock_transfer_from_ownerlock_wl() {
         fee_rate: FeeRate::from_u64(FEE_RATE),
         capacity_provider: CapacityProvider::new(vec![
             (sender0.clone(), placeholder_witness0.clone()),
-            (sender1.clone(), placeholder_witness1.clone()),
+            (owner_sender.clone(), placeholder_witness1.clone()),
         ]),
         change_lock_script: None,
         force_small_change_as_fee: Some(ONE_CKB),
@@ -617,8 +622,8 @@ fn test_omnilock_transfer_from_ownerlock_wl() {
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
     let mut unlockers = build_omnilock_unlockers(account0_key, cfg);
 
-    let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
-    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
+    let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes()).unwrap();
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account3_key]);
     let script_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
 
     unlockers.insert(
@@ -651,7 +656,7 @@ fn test_omnilock_transfer_from_ownerlock_wl() {
     assert_eq!(tx.header_deps().len(), 0);
     assert_eq!(tx.cell_deps().len(), 5);
     assert_eq!(tx.inputs().len(), 2);
-    let mut senders = vec![sender0, sender1];
+    let mut senders = vec![sender0, owner_sender];
     for out_point in tx.input_pts_iter() {
         let sender = ctx.get_input(&out_point).unwrap().0.lock();
         // println!("code hash:{:?}", sender.code_hash());

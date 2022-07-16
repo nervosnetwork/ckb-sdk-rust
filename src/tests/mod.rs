@@ -51,6 +51,11 @@ const ACCOUNT2_KEY: H256 =
     h256!("0x5f9eceb1af9fe48b97e2df350450d7416887ccca62f537733f1377ee9efb8906");
 const ACCOUNT2_ARG: H160 = h160!("0x507736d8f98c779ee47294d5d061d9eaa0dbf856");
 
+// ckt1qyqd405g5etkp3nzacls0hhpvfqf77eqk62q90dhzj
+const ACCOUNT3_KEY: H256 =
+    h256!("0xeee9d3c8b01ade50e1cc22c64cf358a4f20fc2b4f93f89af0a281e0de11ca06f");
+const ACCOUNT3_ARG: H160 = h160!("0xdabe88a65760c662ee3f07dee162409f7b20b694");
+
 const FEE_RATE: u64 = 1000;
 const GENESIS_JSON: &str = include_str!("../test-data/genesis_block.json");
 const SUDT_BIN: &[u8] = include_bytes!("../test-data/simple_udt");
