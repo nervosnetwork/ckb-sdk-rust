@@ -44,9 +44,6 @@ pub enum ScriptSignError {
     #[error("there already too many signatures in current WitnessArgs.lock field (old_count + new_count > threshold)")]
     TooManySignatures,
 
-    #[error("there is no admin configuration in the OmniLockConfig")]
-    NoAdminConfig,
-
     #[error("there is an configuration error: `{0}`")]
     InvalidConfig(#[from] ConfigError),
 
@@ -558,16 +555,16 @@ impl OmniLockScriptSigner {
         let zero_lock_len = zero_lock.len();
         let message = generate_message(&tx_new, script_group, zero_lock)?;
 
-        let multi_cfg = match self.unlock_mode {
+        let multisig_config = match self.unlock_mode {
             OmniUnlockMode::Admin => self
                 .config
                 .get_admin_config()
-                .ok_or(ScriptSignError::NoAdminConfig)?
+                .ok_or(ConfigError::NoAdminConfig)?
                 .get_multisig_config(),
             OmniUnlockMode::Normal => self.config.multisig_config(),
-        };
-        let signatures = multi_cfg
-            .unwrap()
+        }
+        .ok_or(ConfigError::NoMultiSigConfig)?;
+        let signatures = multisig_config
             .sighash_addresses
             .iter()
             .filter(|id| self.signer.match_id(id.as_bytes()))
@@ -597,7 +594,6 @@ impl OmniLockScriptSigner {
         } else {
             OmniLockWitnessLock::default()
         };
-        let multisig_config = self.config.multisig_config().unwrap();
         let config_data = multisig_config.to_witness_data();
         let mut omni_sig = omnilock_witnesslock
             .signature()
@@ -699,16 +695,7 @@ impl ScriptSigner for OmniLockScriptSigner {
         if args.len() != self.config.get_args_len() {
             return false;
         }
-        if self.config.is_multisig() {
-            return self.config.id().auth_content().as_ref() == &args[1..21]
-                && self
-                    .config
-                    .multisig_config()
-                    .unwrap()
-                    .sighash_addresses
-                    .iter()
-                    .any(|id| self.signer.match_id(id.as_bytes()));
-        }
+
         if self.unlock_mode == OmniUnlockMode::Admin {
             if let Some(admin_config) = self.config.get_admin_config() {
                 if args.len() < 54 {
@@ -766,7 +753,7 @@ impl ScriptSigner for OmniLockScriptSigner {
             OmniUnlockMode::Admin => self
                 .config
                 .get_admin_config()
-                .ok_or(ScriptSignError::NoAdminConfig)?
+                .ok_or(ConfigError::NoAdminConfig)?
                 .get_auth()
                 .clone(),
             OmniUnlockMode::Normal => self.config.id().clone(),

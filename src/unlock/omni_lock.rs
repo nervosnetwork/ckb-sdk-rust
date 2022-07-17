@@ -88,6 +88,31 @@ impl Identity {
     pub fn new(flag: IdentityFlag, auth_content: H160) -> Self {
         Identity { flag, auth_content }
     }
+
+    /// Create a pubkey hash algorithm Identity
+    pub fn new_pubkey_hash(pubkey: &Pubkey) -> Self {
+        let pubkey_hash = blake160(&pubkey.serialize());
+        Self::new(IdentityFlag::PubkeyHash, pubkey_hash)
+    }
+
+    /// Create a mulltisig Identity
+    pub fn new_multisig(multisig_config: MultisigConfig) -> Self {
+        let blake160 = multisig_config.hash160();
+        Identity::new(IdentityFlag::Multisig, blake160)
+    }
+    /// Create an ethereum Identity omnilock with pubkey
+    pub fn new_ethereum(pubkey: &Pubkey) -> Self {
+        let pubkey_hash = keccak160(pubkey.as_ref());
+        Self::new(IdentityFlag::Ethereum, pubkey_hash)
+    }
+
+    /// Create an ownerlock omnilock with according script hash.
+    /// # Arguments
+    /// * `script_hash` the proper blake160 hash of according ownerlock script.
+    pub fn new_ownerlock(script_hash: H160) -> Self {
+        Self::new(IdentityFlag::OwnerLock, script_hash)
+    }
+
     /// convert the identify to smt_key.
     pub fn to_smt_key(&self) -> [u8; 32] {
         let mut ret = [0u8; 32];
@@ -281,6 +306,9 @@ pub enum ConfigError {
     #[error("there is no admin configuration in the OmniLockConfig")]
     NoAdminConfig,
 
+    #[error("there is no multisig config in the OmniLockConfig")]
+    NoMultiSigConfig,
+
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
 }
@@ -454,7 +482,19 @@ impl OmniLockConfig {
             IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 65])).pack()),
             IdentityFlag::Multisig => {
-                let multisig_config = self.multisig_config.as_ref().unwrap();
+                let multisig_config = match unlock_mode {
+                    OmniUnlockMode::Admin => self
+                        .admin_config
+                        .as_ref()
+                        .ok_or(ConfigError::NoAdminConfig)?
+                        .multisig_config
+                        .as_ref()
+                        .ok_or(ConfigError::NoMultiSigConfig)?,
+                    OmniUnlockMode::Normal => self
+                        .multisig_config
+                        .as_ref()
+                        .ok_or(ConfigError::NoMultiSigConfig)?,
+                };
                 let config_data = multisig_config.to_witness_data();
                 let multisig_len = config_data.len() + multisig_config.threshold() as usize * 65;
                 let mut omni_sig = vec![0u8; multisig_len];
