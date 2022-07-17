@@ -492,8 +492,7 @@ pub fn generate_message(
 }
 
 /// specify the unlock mode for a omnilock transaction.
-#[derive(Clone, Copy, Eq, PartialEq)]
-#[repr(u8)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
 pub enum OmniUnlockMode {
     /// Use the normal mode to unlock the omnilock transaction.
     Normal = 1,
