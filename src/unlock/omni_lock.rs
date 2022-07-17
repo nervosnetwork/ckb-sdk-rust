@@ -216,11 +216,7 @@ impl<'de> Deserialize<'de> for SmtProofEntryVec {
         SmtProofEntryVec::from_slice(bytes.as_ref()).map_err(|e| {
             serde::de::Error::invalid_value(
                 Unexpected::Bytes(bytes.as_ref()),
-                &format!(
-                    "can not convert the value to SmtProofEntryVec:　{}",
-                    e.to_string()
-                )
-                .as_str(),
+                &format!("can not convert the value to SmtProofEntryVec:　{}", e).as_str(),
             )
         })
     }

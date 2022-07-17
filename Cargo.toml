@@ -52,7 +52,6 @@ test = []
 
 [dev-dependencies]
 clap = { version = "3.1.9", features = ["derive"] }
-os_str_bytes = "~6.1"
 httpmock = "0.6"
 async-global-executor = "=2.0.4"
 hex = "0.4"
