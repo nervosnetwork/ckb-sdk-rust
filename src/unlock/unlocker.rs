@@ -7,12 +7,12 @@ use ckb_types::{
 use thiserror::Error;
 
 use super::{
-    omni_lock::OmniLockFlags,
+    omni_lock::{ConfigError, OmniLockFlags},
     signer::{
         AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig, ScriptSignError,
         ScriptSigner, SecpMultisigScriptSigner, SecpSighashScriptSigner,
     },
-    OmniLockConfig, OmniLockScriptSigner,
+    OmniLockConfig, OmniLockScriptSigner, OmniUnlockMode,
 };
 use crate::traits::{Signer, TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptGroup;
@@ -30,6 +30,9 @@ pub enum UnlockError {
 
     #[error("invalid witness args: witness index=`{0}`")]
     InvalidWitnessArgs(usize),
+
+    #[error("there is an configuration error: `{0}`")]
+    InvalidConfig(#[from] ConfigError),
 
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
@@ -602,10 +605,12 @@ impl OmniLockUnlocker {
         OmniLockUnlocker { signer, config }
     }
 }
-impl From<(Box<dyn Signer>, OmniLockConfig)> for OmniLockUnlocker {
-    fn from((signer, config): (Box<dyn Signer>, OmniLockConfig)) -> OmniLockUnlocker {
+impl From<(Box<dyn Signer>, OmniLockConfig, OmniUnlockMode)> for OmniLockUnlocker {
+    fn from(
+        (signer, config, unlock_mode): (Box<dyn Signer>, OmniLockConfig, OmniUnlockMode),
+    ) -> OmniLockUnlocker {
         let cfg = config.clone();
-        OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config), cfg)
+        OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config, unlock_mode), cfg)
     }
 }
 impl ScriptUnlocker for OmniLockUnlocker {
@@ -688,7 +693,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
         _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
         let config = self.signer.config();
-        let zero_lock = config.zero_lock();
+        let zero_lock = config.zero_lock(self.signer.unlock_mode())?;
         fill_witness_lock(tx, script_group, zero_lock)
     }
 }

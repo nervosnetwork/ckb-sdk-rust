@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::{
-    omni_lock::{Identity, OmniLockFlags},
+    omni_lock::{ConfigError, Identity},
     IdentityFlag, OmniLockConfig,
 };
 
@@ -43,6 +43,12 @@ pub enum ScriptSignError {
 
     #[error("there already too many signatures in current WitnessArgs.lock field (old_count + new_count > threshold)")]
     TooManySignatures,
+
+    #[error("there is no admin configuration in the OmniLockConfig")]
+    NoAdminConfig,
+
+    #[error("there is an configuration error: `{0}`")]
+    InvalidConfig(#[from] ConfigError),
 
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
@@ -488,20 +494,49 @@ pub fn generate_message(
     Ok(Bytes::from(message))
 }
 
+/// specify the unlock mode for a omnilock transaction.
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[repr(u8)]
+pub enum OmniUnlockMode {
+    /// Use the normal mode to unlock the omnilock transaction.
+    Normal = 1,
+    /// Use the admin mode to unlock the omnilock transaction.
+    Admin = 2,
+}
+
+impl Default for OmniUnlockMode {
+    fn default() -> Self {
+        OmniUnlockMode::Normal
+    }
+}
+
 pub struct OmniLockScriptSigner {
     signer: Box<dyn Signer>,
     config: OmniLockConfig,
+    unlock_mode: OmniUnlockMode,
 }
 
 impl OmniLockScriptSigner {
-    pub fn new(signer: Box<dyn Signer>, config: OmniLockConfig) -> OmniLockScriptSigner {
-        OmniLockScriptSigner { signer, config }
+    pub fn new(
+        signer: Box<dyn Signer>,
+        config: OmniLockConfig,
+        unlock_mode: OmniUnlockMode,
+    ) -> OmniLockScriptSigner {
+        OmniLockScriptSigner {
+            signer,
+            config,
+            unlock_mode,
+        }
     }
     pub fn signer(&self) -> &dyn Signer {
         self.signer.as_ref()
     }
     pub fn config(&self) -> &OmniLockConfig {
         &self.config
+    }
+    /// return the unlock mode
+    pub fn unlock_mode(&self) -> OmniUnlockMode {
+        self.unlock_mode
     }
 
     fn sign_multisig_tx(
@@ -519,17 +554,17 @@ impl OmniLockScriptSigner {
             .set_witnesses(witnesses.clone())
             .build();
 
-        let zero_lock = self.config.zero_lock();
+        let zero_lock = self.config.zero_lock(self.unlock_mode)?;
         let zero_lock_len = zero_lock.len();
         let message = generate_message(&tx_new, script_group, zero_lock)?;
 
-        let multi_cfg = if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
-            self.config
+        let multi_cfg = match self.unlock_mode {
+            OmniUnlockMode::Admin => self
+                .config
                 .get_admin_config()
-                .unwrap()
-                .get_multisig_config()
-        } else {
-            self.config.multisig_config()
+                .ok_or(ScriptSignError::NoAdminConfig)?
+                .get_multisig_config(),
+            OmniUnlockMode::Normal => self.config.multisig_config(),
         };
         let signatures = multi_cfg
             .unwrap()
@@ -617,7 +652,7 @@ impl OmniLockScriptSigner {
             .set_witnesses(witnesses.clone())
             .build();
 
-        let zero_lock = self.config.zero_lock();
+        let zero_lock = self.config.zero_lock(self.unlock_mode())?;
         let message = generate_message(&tx_new, script_group, zero_lock)?;
         let message = convert_keccak256_hash(message.as_ref());
 
@@ -674,7 +709,7 @@ impl ScriptSigner for OmniLockScriptSigner {
                     .iter()
                     .any(|id| self.signer.match_id(id.as_bytes()));
         }
-        if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
+        if self.unlock_mode == OmniUnlockMode::Admin {
             if let Some(admin_config) = self.config.get_admin_config() {
                 if args.len() < 54 {
                     return false;
@@ -727,10 +762,14 @@ impl ScriptSigner for OmniLockScriptSigner {
         tx: &TransactionView,
         script_group: &ScriptGroup,
     ) -> Result<TransactionView, ScriptSignError> {
-        let id = if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
-            self.config.get_admin_config().unwrap().get_auth().clone()
-        } else {
-            self.config.id().clone()
+        let id = match self.unlock_mode {
+            OmniUnlockMode::Admin => self
+                .config
+                .get_admin_config()
+                .ok_or(ScriptSignError::NoAdminConfig)?
+                .get_auth()
+                .clone(),
+            OmniUnlockMode::Normal => self.config.id().clone(),
         };
         match id.flag() {
             IdentityFlag::PubkeyHash => {
@@ -744,7 +783,7 @@ impl ScriptSigner for OmniLockScriptSigner {
                     .set_witnesses(witnesses.clone())
                     .build();
 
-                let zero_lock = self.config.zero_lock();
+                let zero_lock = self.config.zero_lock(self.unlock_mode)?;
                 let message = generate_message(&tx_new, script_group, zero_lock)?;
 
                 let signature =

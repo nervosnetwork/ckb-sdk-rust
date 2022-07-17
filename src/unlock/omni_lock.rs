@@ -23,7 +23,8 @@ use std::convert::TryFrom;
 
 use bitflags::bitflags;
 
-use super::MultisigConfig;
+use super::{MultisigConfig, OmniUnlockMode};
+use thiserror::Error;
 
 #[derive(
     Clone,
@@ -275,6 +276,15 @@ impl AdminConfig {
     }
 }
 
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("there is no admin configuration in the OmniLockConfig")]
+    NoAdminConfig,
+
+    #[error("other error: `{0}`")]
+    Other(#[from] Box<dyn std::error::Error>),
+}
+
 /// OmniLock configuration
 /// The lock argument has the following data structure:
 /// 1. 21 byte auth
@@ -436,7 +446,10 @@ impl OmniLockConfig {
         self.id.flag == IdentityFlag::OwnerLock
     }
 
-    pub fn placeholder_witness_lock(&self) -> Bytes {
+    pub fn placeholder_witness_lock(
+        &self,
+        unlock_mode: OmniUnlockMode,
+    ) -> Result<Bytes, ConfigError> {
         let mut builder = match self.id.flag {
             IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 65])).pack()),
@@ -452,41 +465,48 @@ impl OmniLockConfig {
             _ => todo!("to support other placeholder_witness_lock implementions"),
         };
 
-        if let Some(config) = self.admin_config.as_ref() {
-            let mut temp = [0u8; 21];
-            temp[0] = config.auth.flag as u8;
-            temp[1..21].copy_from_slice(config.auth.auth_content.as_bytes());
-            let auth = Auth::from_slice(&temp).unwrap();
-            let ident = IdentityType::new_builder()
-                .identity(auth)
-                .proofs(config.proofs.clone())
-                .build();
+        if unlock_mode == OmniUnlockMode::Admin {
+            if let Some(config) = self.admin_config.as_ref() {
+                let mut temp = [0u8; 21];
+                temp[0] = config.auth.flag as u8;
+                temp[1..21].copy_from_slice(config.auth.auth_content.as_bytes());
+                let auth = Auth::from_slice(&temp).unwrap();
+                let ident = IdentityType::new_builder()
+                    .identity(auth)
+                    .proofs(config.proofs.clone())
+                    .build();
 
-            let ident_opt = IdentityOpt::new_builder().set(Some(ident)).build();
-            builder = builder.omni_identity(ident_opt);
+                let ident_opt = IdentityOpt::new_builder().set(Some(ident)).build();
+                builder = builder.omni_identity(ident_opt);
+            } else {
+                return Err(ConfigError::NoAdminConfig);
+            }
         }
-        builder.build().as_bytes()
+        Ok(builder.build().as_bytes())
     }
 
     /// Build zero lock content for signature
-    pub fn zero_lock(&self) -> Bytes {
-        let len = self.placeholder_witness_lock().len();
-        Bytes::from(vec![0u8; len])
+    pub fn zero_lock(&self, unlock_mode: OmniUnlockMode) -> Result<Bytes, ConfigError> {
+        let len = self.placeholder_witness_lock(unlock_mode)?.len();
+        Ok(Bytes::from(vec![0u8; len]))
     }
 
     /// Create a zero lock witness placeholder
-    pub fn placeholder_witness(&self) -> WitnessArgs {
+    pub fn placeholder_witness(
+        &self,
+        unlock_mode: OmniUnlockMode,
+    ) -> Result<WitnessArgs, ConfigError> {
         match self.id.flag {
             IdentityFlag::PubkeyHash | IdentityFlag::Ethereum | IdentityFlag::Multisig => {
-                let lock = self.placeholder_witness_lock();
-                WitnessArgs::new_builder().lock(Some(lock).pack()).build()
+                let lock = self.placeholder_witness_lock(unlock_mode)?;
+                Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
             }
             IdentityFlag::OwnerLock => {
                 if self.admin_config.is_some() {
-                    let lock = self.placeholder_witness_lock();
-                    WitnessArgs::new_builder().lock(Some(lock).pack()).build()
+                    let lock = self.placeholder_witness_lock(unlock_mode)?;
+                    Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
                 } else {
-                    WitnessArgs::default()
+                    Ok(WitnessArgs::default())
                 }
             }
             _ => todo!("to support other placeholder_witness implementions"),

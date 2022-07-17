@@ -17,7 +17,7 @@ use crate::{
     unlock::{
         omni_lock::{AdminConfig, Identity},
         IdentityFlag, MultisigConfig, OmniLockConfig, OmniLockScriptSigner, OmniLockUnlocker,
-        ScriptUnlocker, SecpSighashUnlocker,
+        OmniUnlockMode, ScriptUnlocker, SecpSighashUnlocker,
     },
     util::blake160,
     ScriptId,
@@ -49,6 +49,7 @@ fn build_omnilock_script(cfg: &OmniLockConfig) -> Script {
 fn build_omnilock_unlockers(
     key: secp256k1::SecretKey,
     config: OmniLockConfig,
+    unlock_mode: OmniUnlockMode,
 ) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
     let signer = if config.is_ethereum() {
         SecpCkbRawKeySigner::new_with_ethereum_secret_keys(vec![key])
@@ -57,7 +58,7 @@ fn build_omnilock_unlockers(
     };
     let script = build_omnilock_script(&config);
     let omnilock_script_signer =
-        OmniLockScriptSigner::new(Box::new(signer) as Box<_>, config.clone());
+        OmniLockScriptSigner::new(Box::new(signer) as Box<_>, config.clone(), unlock_mode);
     let omnilock_unlocker = OmniLockUnlocker::new(omnilock_script_signer, config);
     let omnilock_script_id = ScriptId::from(&script);
     let mut unlockers = HashMap::default();
@@ -86,6 +87,7 @@ fn test_omnilock_transfer_from_ethereum() {
     test_omnilock_simple_hash(cfg);
 }
 fn test_omnilock_simple_hash(cfg: OmniLockConfig) {
+    let unlock_mode = OmniUnlockMode::Normal;
     let sender = build_omnilock_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
@@ -103,18 +105,18 @@ fn test_omnilock_simple_hash(cfg: OmniLockConfig) {
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
-    let placeholder_witness = cfg.placeholder_witness();
+    let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
     let balancer =
         CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
-    let unlockers = build_omnilock_unlockers(account2_key, cfg.clone());
+    let unlockers = build_omnilock_unlockers(account2_key, cfg.clone(), unlock_mode);
     let mut tx = builder
         .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
         .unwrap();
 
-    let unlockers = build_omnilock_unlockers(account2_key, cfg);
+    let unlockers = build_omnilock_unlockers(account2_key, cfg, unlock_mode);
     let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
     assert!(new_locked_groups.is_empty());
     tx = new_tx;
@@ -162,6 +164,7 @@ fn test_omnilock_transfer_from_ethereum_wl() {
 }
 
 fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
+    let unlock_mode = OmniUnlockMode::Admin;
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
     let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
@@ -183,13 +186,13 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
-    let placeholder_witness = cfg.placeholder_witness();
+    let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
     let balancer =
         CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
-    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone());
+    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone(), unlock_mode);
 
     let base_tx = builder
         .build_base(&mut cell_collector, &ctx, &ctx, &ctx)
@@ -207,7 +210,7 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig) {
     )
     .unwrap();
 
-    let unlockers = build_omnilock_unlockers(account0_key, cfg);
+    let unlockers = build_omnilock_unlockers(account0_key, cfg, unlock_mode);
     let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
     assert!(new_locked_groups.is_empty());
     tx = new_tx;
@@ -255,6 +258,7 @@ fn build_alternative_auth(secretkey: &[u8], flag: IdentityFlag) -> Identity {
 }
 
 fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
+    let unlock_mode = OmniUnlockMode::Admin;
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
     let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
@@ -280,13 +284,13 @@ fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
-    let placeholder_witness = cfg.placeholder_witness();
+    let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
     let balancer =
         CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
-    let unlockers = build_omnilock_unlockers(account1_key, cfg.clone());
+    let unlockers = build_omnilock_unlockers(account1_key, cfg.clone(), unlock_mode);
 
     let base_tx = builder
         .build_base(&mut cell_collector, &ctx, &ctx, &ctx)
@@ -304,7 +308,7 @@ fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
     )
     .unwrap();
 
-    let unlockers = build_omnilock_unlockers(account1_key, cfg);
+    let unlockers = build_omnilock_unlockers(account1_key, cfg, unlock_mode);
 
     let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
     assert!(new_locked_groups.is_empty());
@@ -331,6 +335,7 @@ fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
 }
 #[test]
 fn test_omnilock_transfer_from_multisig() {
+    let unlock_mode = OmniUnlockMode::Normal;
     let lock_args = vec![
         ACCOUNT0_ARG.clone(),
         ACCOUNT1_ARG.clone(),
@@ -356,21 +361,21 @@ fn test_omnilock_transfer_from_multisig() {
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
-    let placeholder_witness = cfg.placeholder_witness();
+    let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
     let balancer =
         CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
     let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes()).unwrap();
-    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone());
+    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone(), unlock_mode);
     let mut tx = builder
         .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
         .unwrap();
 
     let mut locked_groups = None;
     for key in [account0_key, account2_key] {
-        let unlockers = build_omnilock_unlockers(key, cfg.clone());
+        let unlockers = build_omnilock_unlockers(key, cfg.clone(), unlock_mode);
         let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
         assert!(new_locked_groups.is_empty());
         tx = new_tx;
@@ -400,6 +405,7 @@ fn test_omnilock_transfer_from_multisig() {
 
 #[test]
 fn test_omnilock_transfer_from_multisig_wl() {
+    let unlock_mode = OmniUnlockMode::Admin;
     let lock_args = vec![
         ACCOUNT0_ARG.clone(),
         ACCOUNT1_ARG.clone(),
@@ -432,14 +438,14 @@ fn test_omnilock_transfer_from_multisig_wl() {
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
-    let placeholder_witness = cfg.placeholder_witness();
+    let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
     let balancer =
         CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
     let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT2_KEY.as_bytes()).unwrap();
-    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone());
+    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone(), unlock_mode);
     // let mut tx = builder
     //     .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
     //     .unwrap();
@@ -461,7 +467,7 @@ fn test_omnilock_transfer_from_multisig_wl() {
 
     let mut locked_groups = None;
     for key in [account0_key, account2_key] {
-        let unlockers = build_omnilock_unlockers(key, cfg.clone());
+        let unlockers = build_omnilock_unlockers(key, cfg.clone(), unlock_mode);
         let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
         assert!(new_locked_groups.is_empty());
         tx = new_tx;
@@ -491,6 +497,7 @@ fn test_omnilock_transfer_from_multisig_wl() {
 
 #[test]
 fn test_omnilock_transfer_from_ownerlock() {
+    let unlock_mode = OmniUnlockMode::Admin;
     let receiver = build_sighash_script(ACCOUNT2_ARG);
     let sender1 = build_sighash_script(ACCOUNT1_ARG);
     let hash = H160::from_slice(&sender1.calc_script_hash().as_slice()[0..20]).unwrap();
@@ -510,7 +517,7 @@ fn test_omnilock_transfer_from_ownerlock() {
         .lock(receiver.clone())
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
-    let placeholder_witness0 = cfg.placeholder_witness();
+    let placeholder_witness0 = cfg.placeholder_witness(unlock_mode).unwrap();
     let placeholder_witness1 = WitnessArgs::new_builder()
         .lock(Some(Bytes::from(vec![0u8; 65])).pack())
         .build();
@@ -527,7 +534,7 @@ fn test_omnilock_transfer_from_ownerlock() {
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
-    let mut unlockers = build_omnilock_unlockers(account0_key, cfg);
+    let mut unlockers = build_omnilock_unlockers(account0_key, cfg, unlock_mode);
 
     let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
@@ -573,6 +580,7 @@ fn test_omnilock_transfer_from_ownerlock() {
 // unlock by administrator configuration
 #[test]
 fn test_omnilock_transfer_from_ownerlock_wl_admin() {
+    let unlock_mode = OmniUnlockMode::Admin;
     let receiver = build_sighash_script(ACCOUNT2_ARG);
     let sender1 = build_sighash_script(ACCOUNT1_ARG);
     let hash = H160::from_slice(&sender1.calc_script_hash().as_slice()[0..20]).unwrap();
@@ -603,7 +611,7 @@ fn test_omnilock_transfer_from_ownerlock_wl_admin() {
         .lock(receiver.clone())
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
-    let placeholder_witness0 = cfg.placeholder_witness();
+    let placeholder_witness0 = cfg.placeholder_witness(unlock_mode).unwrap();
     let placeholder_witness1 = WitnessArgs::new_builder()
         .lock(Some(Bytes::from(vec![0u8; 65])).pack())
         .build();
@@ -620,7 +628,7 @@ fn test_omnilock_transfer_from_ownerlock_wl_admin() {
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
-    let mut unlockers = build_omnilock_unlockers(account0_key, cfg);
+    let mut unlockers = build_omnilock_unlockers(account0_key, cfg, unlock_mode);
 
     let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes()).unwrap();
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account3_key]);

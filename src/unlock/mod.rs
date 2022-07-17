@@ -5,7 +5,7 @@ mod unlocker;
 
 pub use signer::{
     generate_message, AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig,
-    OmniLockScriptSigner, ScriptSignError, ScriptSigner, SecpMultisigScriptSigner,
+    OmniLockScriptSigner, OmniUnlockMode, ScriptSignError, ScriptSigner, SecpMultisigScriptSigner,
     SecpSighashScriptSigner,
 };
 pub use unlocker::{

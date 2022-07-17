@@ -11,7 +11,7 @@ use ckb_sdk::{
         unlock_tx, CapacityBalancer, TxBuilder,
     },
     types::NetworkType,
-    unlock::{OmniLockConfig, OmniLockScriptSigner},
+    unlock::{OmniLockConfig, OmniLockScriptSigner, OmniUnlockMode},
     unlock::{OmniLockUnlocker, ScriptUnlocker},
     util::keccak160,
     Address, HumanCapacity, ScriptGroup, ScriptId, SECP256K1,
@@ -202,7 +202,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             let witness_args =
                 WitnessArgs::from_slice(tx.witnesses().get(0).unwrap().raw_data().as_ref())?;
             let lock_field = witness_args.lock().to_opt().unwrap().raw_data();
-            if lock_field != tx_info.omnilock_config.zero_lock() {
+            if lock_field != tx_info.omnilock_config.zero_lock(OmniUnlockMode::Normal)? {
                 println!("> transaction ready to send!");
             } else {
                 println!("failed to sign tx");
@@ -280,7 +280,7 @@ fn build_transfer_tx(
         .hash_type(ScriptHashType::Type.into())
         .args(omnilock_config.build_args().pack())
         .build();
-    let placeholder_witness = omnilock_config.placeholder_witness();
+    let placeholder_witness = omnilock_config.placeholder_witness(OmniUnlockMode::Normal)?;
     let balancer = CapacityBalancer::new_simple(sender, placeholder_witness, 1000);
 
     // Build:
@@ -368,7 +368,8 @@ fn build_omnilock_unlockers(
 ) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
     // NOTE: this is the difference with sighash
     let signer = SecpCkbRawKeySigner::new_with_ethereum_secret_keys(keys);
-    let omnilock_signer = OmniLockScriptSigner::new(Box::new(signer), config.clone());
+    let omnilock_signer =
+        OmniLockScriptSigner::new(Box::new(signer), config.clone(), OmniUnlockMode::Normal);
     let omnilock_unlocker = OmniLockUnlocker::new(omnilock_signer, config);
     let omnilock_script_id = ScriptId::new_type(omni_lock_type_hash);
     HashMap::from([(
