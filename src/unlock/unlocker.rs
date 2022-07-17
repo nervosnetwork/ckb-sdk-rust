@@ -7,11 +7,12 @@ use ckb_types::{
 use thiserror::Error;
 
 use super::{
+    omni_lock::{ConfigError, OmniLockFlags},
     signer::{
         AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig, ScriptSignError,
         ScriptSigner, SecpMultisigScriptSigner, SecpSighashScriptSigner,
     },
-    OmniLockConfig, OmniLockScriptSigner,
+    OmniLockConfig, OmniLockScriptSigner, OmniUnlockMode,
 };
 use crate::traits::{Signer, TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptGroup;
@@ -29,6 +30,9 @@ pub enum UnlockError {
 
     #[error("invalid witness args: witness index=`{0}`")]
     InvalidWitnessArgs(usize),
+
+    #[error("there is an configuration error: `{0}`")]
+    InvalidConfig(#[from] ConfigError),
 
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
@@ -594,20 +598,24 @@ impl ScriptUnlocker for ChequeUnlocker {
 
 pub struct OmniLockUnlocker {
     signer: OmniLockScriptSigner,
+    config: OmniLockConfig,
 }
 impl OmniLockUnlocker {
-    pub fn new(signer: OmniLockScriptSigner) -> OmniLockUnlocker {
-        OmniLockUnlocker { signer }
+    pub fn new(signer: OmniLockScriptSigner, config: OmniLockConfig) -> OmniLockUnlocker {
+        OmniLockUnlocker { signer, config }
     }
 }
-impl From<(Box<dyn Signer>, OmniLockConfig)> for OmniLockUnlocker {
-    fn from((signer, config): (Box<dyn Signer>, OmniLockConfig)) -> OmniLockUnlocker {
-        OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config))
+impl From<(Box<dyn Signer>, OmniLockConfig, OmniUnlockMode)> for OmniLockUnlocker {
+    fn from(
+        (signer, config, unlock_mode): (Box<dyn Signer>, OmniLockConfig, OmniUnlockMode),
+    ) -> OmniLockUnlocker {
+        let cfg = config.clone();
+        OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config, unlock_mode), cfg)
     }
 }
 impl ScriptUnlocker for OmniLockUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
-        args.len() == 22 && self.signer.match_args(args)
+        self.signer.match_args(args)
     }
 
     /// Check if the script group is already unlocked
@@ -630,6 +638,17 @@ impl ScriptUnlocker for OmniLockUnlocker {
                 .into(),
             ));
         }
+        // If use admin mode, should use the id in admin configuration
+        let auth_content = if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
+            self.config
+                .get_admin_config()
+                .unwrap()
+                .get_auth()
+                .auth_content()
+        } else {
+            self.config.id().auth_content()
+        };
+
         let inputs = tx.inputs();
         if tx.inputs().len() < 2 {
             return Err(UnlockError::Other(
@@ -645,7 +664,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
                 if let Ok(output) = tx_dep_provider.get_cell(&input.previous_output()) {
                     let lock_hash = output.calc_lock_hash();
                     let h = &lock_hash.as_slice()[0..20];
-                    h == &args[1..21]
+                    h == auth_content.as_bytes()
                 } else {
                     false
                 }
@@ -674,7 +693,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
         _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
         let config = self.signer.config();
-        let zero_lock = config.zero_lock();
+        let zero_lock = config.zero_lock(self.signer.unlock_mode())?;
         fill_witness_lock(tx, script_group, zero_lock)
     }
 }
