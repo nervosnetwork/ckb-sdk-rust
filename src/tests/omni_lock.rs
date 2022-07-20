@@ -587,7 +587,7 @@ fn test_omnilock_transfer_from_multisig_wl_commnon(unlock_mode: OmniUnlockMode) 
 
 #[test]
 fn test_omnilock_transfer_from_ownerlock() {
-    let unlock_mode = OmniUnlockMode::Admin;
+    let unlock_mode = OmniUnlockMode::Normal;
     let receiver = build_sighash_script(ACCOUNT2_ARG);
     let sender1 = build_sighash_script(ACCOUNT1_ARG);
     let hash = H160::from_slice(&sender1.calc_script_hash().as_slice()[0..20]).unwrap();
