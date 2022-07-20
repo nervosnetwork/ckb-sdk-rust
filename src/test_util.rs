@@ -18,17 +18,16 @@ use crate::{
     tx_builder::tx_fee,
     ScriptId,
 };
-use ckb_chain_spec::consensus::ConsensusBuilder;
 use ckb_hash::blake2b_256;
 use ckb_mock_tx_types::{
     MockCellDep, MockInfo, MockInput, MockResourceLoader, MockTransaction, Resource,
 };
-use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
+use ckb_script::TransactionScriptsVerifier;
 use ckb_types::{
     bytes::Bytes,
     core::{
-        cell::resolve_transaction, hardfork::HardForkSwitch, BlockView, Capacity, Cycle, DepType,
-        EpochNumberWithFraction, FeeRate, HeaderView, ScriptHashType, TransactionView,
+        cell::resolve_transaction, BlockView, Capacity, Cycle, DepType, FeeRate, HeaderView,
+        ScriptHashType, TransactionView,
     },
     packed::{Byte32, CellDep, CellInput, CellOutput, OutPoint, OutPointVec, Script, Transaction},
     prelude::*,
@@ -307,31 +306,12 @@ impl Context {
 
     /// Run all scripts in the transaction in ckb-vm
     pub fn verify_scripts(&self, tx: TransactionView) -> Result<Cycle, Error> {
-        let (consensus, tx_env) = {
-            let enable_epoch_number = 200;
-            let commit_epoch_number = 200 + 100;
-            let epoch = EpochNumberWithFraction::new(commit_epoch_number, 0, 1);
-            let header = HeaderView::new_advanced_builder()
-                .epoch(epoch.pack())
-                .build();
-            let tx_env = TxVerifyEnv::new_commit(&header);
-            let hardfork_switch = HardForkSwitch::new_without_any_enabled()
-                .as_builder()
-                .rfc_0032(enable_epoch_number)
-                .build()
-                .unwrap();
-            let consensus = ConsensusBuilder::default()
-                .hardfork_switch(hardfork_switch)
-                .build();
-            (consensus, tx_env)
-        };
-
         let mock_tx = self.to_mock_tx(tx.data());
         let resource = Resource::from_both(&mock_tx, DummyLoader).map_err(Error::VerifyScript)?;
         let rtx = resolve_transaction(tx, &mut HashSet::new(), &resource, &resource)
             .map_err(|err| Error::VerifyScript(format!("Resolve transaction error: {:?}", err)))?;
 
-        let mut verifier = TransactionScriptsVerifier::new(&rtx, &consensus, &resource, &tx_env);
+        let mut verifier = TransactionScriptsVerifier::new(&rtx, &resource);
         verifier.set_debug_printer(|script_hash, message| {
             println!("script: {:x}, debug: {}", script_hash, message);
         });

@@ -157,6 +157,7 @@ pub enum TransactionFeeError {
 
 /// Calculate the actual transaction fee of the transaction, include dao
 /// withdraw capacity.
+#[allow(clippy::unnecessary_lazy_evaluations)]
 pub fn tx_fee(
     tx: TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,
