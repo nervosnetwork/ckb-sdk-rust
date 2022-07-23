@@ -309,6 +309,23 @@ pub enum ConfigError {
     Other(#[from] Box<dyn std::error::Error>),
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Default)]
+pub struct OmniLockAcpConfig {
+    /// Tthe minimal transfer amount will be 10^ckb_minimum, if ckb_minimum is 0, means no minimum is enforced on the transfer operation.
+    pub ckb_minimum: u8,
+    /// Tthe minimal transfer amount will be 10^udt_minimum, if udt_minimum is 0, means no minimum is enforced on the transfer operation.
+    pub udt_minimum: u8,
+}
+
+impl OmniLockAcpConfig {
+    pub fn new(ckb_minimum: u8, udt_minimum: u8) -> Self {
+        OmniLockAcpConfig {
+            ckb_minimum,
+            udt_minimum,
+        }
+    }
+}
+
 /// OmniLock configuration
 /// The lock argument has the following data structure:
 /// 1. 21 byte auth
@@ -327,6 +344,8 @@ pub struct OmniLockConfig {
     omni_lock_flags: OmniLockFlags,
     ///　The administrator configuration.
     admin_config: Option<AdminConfig>,
+    /// The acp configuration
+    acp_config: Option<OmniLockAcpConfig>,
 }
 
 impl OmniLockConfig {
@@ -353,6 +372,7 @@ impl OmniLockConfig {
             multisig_config: Some(multisig_config),
             omni_lock_flags: OmniLockFlags::empty(),
             admin_config: None,
+            acp_config: None,
         }
     }
     /// Create an ethereum algorithm omnilock with pubkey
@@ -382,6 +402,7 @@ impl OmniLockConfig {
             multisig_config: None,
             omni_lock_flags: OmniLockFlags::empty(),
             admin_config: None,
+            acp_config: None,
         }
     }
 
@@ -391,6 +412,24 @@ impl OmniLockConfig {
     pub fn set_admin_config(&mut self, admin_config: AdminConfig) {
         self.omni_lock_flags.set(OmniLockFlags::ADMIN, true);
         self.admin_config = Some(admin_config);
+    }
+
+    /// Remote the admin configuration, set it to `None`
+    pub fn clear_admin_config(&mut self) {
+        self.omni_lock_flags.set(OmniLockFlags::ADMIN, false);
+        self.admin_config = None;
+    }
+
+    /// Set the acp configura
+    pub fn set_acp_config(&mut self, acp_config: OmniLockAcpConfig) {
+        self.omni_lock_flags.set(OmniLockFlags::ACP, true);
+        self.acp_config = Some(acp_config);
+    }
+
+    /// Remove the acp config, set it to None.
+    pub fn clear_acp_config(&mut self) {
+        self.omni_lock_flags.set(OmniLockFlags::ACP, false);
+        self.acp_config = None;
     }
 
     pub fn id(&self) -> &Identity {
@@ -422,6 +461,10 @@ impl OmniLockConfig {
 
         if let Some(config) = self.admin_config.as_ref() {
             bytes.put(config.rc_type_id.as_bytes());
+        }
+        if let Some(config) = self.acp_config.as_ref() {
+            bytes.put_u8(config.ckb_minimum);
+            bytes.put_u8(config.udt_minimum);
         }
 
         bytes.freeze()
