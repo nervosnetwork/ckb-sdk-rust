@@ -726,15 +726,11 @@ impl ScriptUnlocker for OmniLockUnlocker {
     fn fill_placeholder_witness(
         &self,
         tx: &TransactionView,
-        _script_group: &ScriptGroup,
+        script_group: &ScriptGroup,
         _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        // The lock field is an OmniLockWitnessLock struct,
-        // so if set the field to all zero will destroy the information in it, like the omni_identity,
-        // and can not restore the OmniLockWitnessLock structure.
-        //
-        // The correct way is to backup the lock field, clear the lock field, sign the transaction,
-        // and restore the lock field with the backup value and the generated signature.
-        Ok(tx.clone())
+        let config = self.signer.config();
+        let lock_field = config.placeholder_witness_lock(self.signer.unlock_mode())?;
+        fill_witness_lock(tx, script_group, lock_field)
     }
 }
