@@ -229,7 +229,7 @@ fn acp_is_unlocked(
     tx: &TransactionView,
     script_group: &ScriptGroup,
     tx_dep_provider: &dyn TransactionDependencyProvider,
-    script_args: &[u8],
+    acp_args: &[u8],
 ) -> Result<bool, UnlockError> {
     const POW10: [u64; 20] = [
         1,
@@ -253,17 +253,17 @@ fn acp_is_unlocked(
         1000000000000000000,
         10000000000000000000,
     ];
-    let min_ckb_amount = if script_args.is_empty() {
+    let min_ckb_amount = if acp_args.is_empty() {
         0
     } else {
-        let idx = script_args[0];
+        let idx = acp_args[0];
         if idx >= 20 {
             return Err(UnlockError::Other(format!("invalid min ckb amount config in script.args, got: {}, expected: value >=0 and value < 20", idx).into()));
         }
         POW10[idx as usize]
     };
-    let min_udt_amount = if script_args.len() > 1 {
-        let idx = script_args[1];
+    let min_udt_amount = if acp_args.len() > 1 {
+        let idx = acp_args[1];
         if idx >= 39 {
             return Err(UnlockError::Other(format!("invalid min udt amount config in script.args, got: {}, expected: value >=0 and value < 39", idx).into()));
         }
