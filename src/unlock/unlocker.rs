@@ -414,7 +414,7 @@ impl ScriptUnlocker for AcpUnlocker {
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<bool, UnlockError> {
         let raw_data = script_group.script.args().raw_data();
-        let script_args = {
+        let acp_args = {
             let data = raw_data.as_ref();
             if data.len() > 20 {
                 &data[20..]
@@ -422,7 +422,7 @@ impl ScriptUnlocker for AcpUnlocker {
                 &[]
             }
         };
-        acp_is_unlocked(tx, script_group, tx_dep_provider, script_args)
+        acp_is_unlocked(tx, script_group, tx_dep_provider, acp_args)
     }
 
     fn unlock(
@@ -645,7 +645,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
     ) -> Result<bool, UnlockError> {
         if self.config.omni_lock_flags().contains(OmniLockFlags::ACP) {
             let raw_data = script_group.script.args().raw_data();
-            let script_args = {
+            let acp_args = {
                 let mut offset = 22;
                 if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
                     offset += 32;
@@ -657,7 +657,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
                     &[]
                 }
             };
-            let acp_unlocked = acp_is_unlocked(tx, script_group, tx_dep_provider, script_args)?;
+            let acp_unlocked = acp_is_unlocked(tx, script_group, tx_dep_provider, acp_args)?;
             if acp_unlocked {
                 return Ok(true);
             }
