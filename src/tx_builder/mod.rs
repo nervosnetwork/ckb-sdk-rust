@@ -294,6 +294,9 @@ pub enum BalanceTxCapacityError {
 
     #[error("invalid witness args: `{0}`")]
     InvalidWitnessArgs(Box<dyn std::error::Error>),
+
+    #[error("Fail to parse since value from args, offset: `{0}`, args length: `{1}`")]
+    InvalidSinceValue(usize, usize),
 }
 
 /// Transaction capacity balancer config
@@ -581,6 +584,12 @@ pub fn balance_tx_capacity(
             let since = match since_source {
                 SinceSource::LockArgs(offset) => {
                     let lock_arg = lock_script.args().raw_data();
+                    if lock_arg.len() < offset + 8 {
+                        return Err(BalanceTxCapacityError::InvalidSinceValue(
+                            *offset,
+                            lock_arg.len(),
+                        ));
+                    }
                     let mut since_bytes = [0u8; 8];
                     since_bytes.copy_from_slice(&lock_arg[*offset..]);
                     u64::from_le_bytes(since_bytes)

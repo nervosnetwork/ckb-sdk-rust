@@ -8,7 +8,6 @@ use crate::{
         xudt_rce_mol::SmtProofEntryVec,
     },
     util::{blake160, keccak160},
-    Since,
 };
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
@@ -441,11 +440,6 @@ impl OmniLockConfig {
     pub fn set_time_lock_config(&mut self, since: u64) {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, true);
         self.time_lock_config = Some(since);
-    }
-    /// Set the time lock config with since object.
-    pub fn set_time_lock_since(&mut self, since: Since) {
-        self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, true);
-        self.time_lock_config = Some(since.value());
     }
     /// Remove the time lock config, set it to None.
     pub fn clear_time_lock_config(&mut self) {

@@ -1059,7 +1059,7 @@ fn test_omnilock_simple_hash_timelock(mut cfg: OmniLockConfig) {
     let epoch_number = 200;
     let since = Since::new_absolute_epoch(epoch_number);
 
-    cfg.set_time_lock_since(since);
+    cfg.set_time_lock_config(since.value());
 
     let sender = build_omnilock_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
