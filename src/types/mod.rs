@@ -2,9 +2,13 @@
 mod address;
 mod human_capacity;
 mod network_type;
+#[allow(clippy::all)]
+pub mod omni_lock;
 mod script_group;
 mod script_id;
 mod since;
+#[allow(clippy::all)]
+pub mod xudt_rce_mol;
 
 pub use address::{
     Address, AddressPayload, AddressType, CodeHashIndex, OldAddress, OldAddressFormat,

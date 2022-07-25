@@ -5,16 +5,24 @@ use ckb_types::{
     bytes::{Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
     error::VerificationError,
-    packed::{self, WitnessArgs},
+    packed::{self, BytesOpt, WitnessArgs},
     prelude::*,
     H160,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::constants::MULTISIG_TYPE_HASH;
-use crate::traits::{Signer, SignerError};
 use crate::types::{AddressPayload, CodeHashIndex, ScriptGroup, Since};
+use crate::{constants::MULTISIG_TYPE_HASH, types::omni_lock::OmniLockWitnessLock};
+use crate::{
+    traits::{Signer, SignerError},
+    util::convert_keccak256_hash,
+};
+
+use super::{
+    omni_lock::{ConfigError, Identity},
+    IdentityFlag, OmniLockConfig,
+};
 
 #[derive(Error, Debug)]
 pub enum ScriptSignError {
@@ -27,11 +35,17 @@ pub enum ScriptSignError {
     #[error("the witness is not empty and not WitnessArgs format: `{0}`")]
     InvalidWitnessArgs(#[from] VerificationError),
 
+    #[error("the Omni lock witness lock field is invalid: `{0}`")]
+    InvalidOmniLockWitnessLock(String),
+
     #[error("invalid multisig config: `{0}`")]
     InvalidMultisigConfig(String),
 
     #[error("there already too many signatures in current WitnessArgs.lock field (old_count + new_count > threshold)")]
     TooManySignatures,
+
+    #[error("there is an configuration error: `{0}`")]
+    InvalidConfig(#[from] ConfigError),
 
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
@@ -119,7 +133,7 @@ impl ScriptSigner for SecpSighashScriptSigner {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Hash, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Hash, Serialize, Deserialize, Debug)]
 pub struct MultisigConfig {
     sighash_addresses: Vec<H160>,
     require_first_n: u8,
@@ -475,4 +489,316 @@ pub fn generate_message(
     let mut message = vec![0u8; 32];
     blake2b.finalize(&mut message);
     Ok(Bytes::from(message))
+}
+
+/// specify the unlock mode for a omnilock transaction.
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
+pub enum OmniUnlockMode {
+    /// Use the normal mode to unlock the omnilock transaction.
+    Normal = 1,
+    /// Use the admin mode to unlock the omnilock transaction.
+    Admin = 2,
+}
+
+impl Default for OmniUnlockMode {
+    fn default() -> Self {
+        OmniUnlockMode::Normal
+    }
+}
+
+pub struct OmniLockScriptSigner {
+    signer: Box<dyn Signer>,
+    config: OmniLockConfig,
+    unlock_mode: OmniUnlockMode,
+}
+
+impl OmniLockScriptSigner {
+    pub fn new(
+        signer: Box<dyn Signer>,
+        config: OmniLockConfig,
+        unlock_mode: OmniUnlockMode,
+    ) -> OmniLockScriptSigner {
+        OmniLockScriptSigner {
+            signer,
+            config,
+            unlock_mode,
+        }
+    }
+    pub fn signer(&self) -> &dyn Signer {
+        self.signer.as_ref()
+    }
+    pub fn config(&self) -> &OmniLockConfig {
+        &self.config
+    }
+    /// return the unlock mode
+    pub fn unlock_mode(&self) -> OmniUnlockMode {
+        self.unlock_mode
+    }
+
+    fn sign_multisig_tx(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+    ) -> Result<TransactionView, ScriptSignError> {
+        let witness_idx = script_group.input_indices[0];
+        let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+        while witnesses.len() <= witness_idx {
+            witnesses.push(Default::default());
+        }
+        let tx_new = tx
+            .as_advanced_builder()
+            .set_witnesses(witnesses.clone())
+            .build();
+
+        let zero_lock = self.config.zero_lock(self.unlock_mode)?;
+        let zero_lock_len = zero_lock.len();
+        let message = generate_message(&tx_new, script_group, zero_lock)?;
+
+        let multisig_config = match self.unlock_mode {
+            OmniUnlockMode::Admin => self
+                .config
+                .get_admin_config()
+                .ok_or(ConfigError::NoAdminConfig)?
+                .get_multisig_config(),
+            OmniUnlockMode::Normal => self.config.multisig_config(),
+        }
+        .ok_or(ConfigError::NoMultiSigConfig)?;
+        let signatures = multisig_config
+            .sighash_addresses
+            .iter()
+            .filter(|id| self.signer.match_id(id.as_bytes()))
+            .map(|id| self.signer.sign(id.as_bytes(), message.as_ref(), true, tx))
+            .collect::<Result<Vec<_>, SignerError>>()?;
+        // Put signature into witness
+        let witness_idx = script_group.input_indices[0];
+        let witness_data = witnesses[witness_idx].raw_data();
+        let mut current_witness: WitnessArgs = if witness_data.is_empty() {
+            WitnessArgs::default()
+        } else {
+            WitnessArgs::from_slice(witness_data.as_ref())?
+        };
+        let lock_field = current_witness.lock().to_opt().map(|data| data.raw_data());
+        let omnilock_witnesslock = if let Some(lock_field) = lock_field {
+            if lock_field.len() != zero_lock_len {
+                return Err(ScriptSignError::Other(
+                    format!(
+                        "invalid witness lock field length: {}, expected: {}",
+                        lock_field.len(),
+                        zero_lock_len,
+                    )
+                    .into(),
+                ));
+            }
+            OmniLockWitnessLock::from_slice(lock_field.as_ref())?
+        } else {
+            OmniLockWitnessLock::default()
+        };
+        let config_data = multisig_config.to_witness_data();
+        let mut omni_sig = omnilock_witnesslock
+            .signature()
+            .to_opt()
+            .map(|data| data.raw_data().as_ref().to_vec())
+            .unwrap_or_else(|| {
+                let mut omni_sig =
+                    vec![0u8; config_data.len() + multisig_config.threshold() as usize * 65];
+                omni_sig[..config_data.len()].copy_from_slice(&config_data);
+                omni_sig
+            });
+        for signature in signatures {
+            let mut idx = config_data.len();
+            while idx < omni_sig.len() {
+                // Put signature into an empty place.
+                if omni_sig[idx..idx + 65] == signature {
+                    break;
+                } else if omni_sig[idx..idx + 65] == [0u8; 65] {
+                    omni_sig[idx..idx + 65].copy_from_slice(signature.as_ref());
+                    break;
+                }
+                idx += 65;
+            }
+            if idx >= omni_sig.len() {
+                return Err(ScriptSignError::TooManySignatures);
+            }
+        }
+        let lock = omnilock_witnesslock
+            .as_builder()
+            .signature(Some(Bytes::from(omni_sig)).pack())
+            .build()
+            .as_bytes();
+
+        current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
+        witnesses[witness_idx] = current_witness.as_bytes().pack();
+        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+    }
+
+    fn sign_ethereum_tx(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        id: &Identity,
+    ) -> Result<TransactionView, ScriptSignError> {
+        let witness_idx = script_group.input_indices[0];
+        let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+        while witnesses.len() <= witness_idx {
+            witnesses.push(Default::default());
+        }
+        let tx_new = tx
+            .as_advanced_builder()
+            .set_witnesses(witnesses.clone())
+            .build();
+
+        let zero_lock = self.config.zero_lock(self.unlock_mode())?;
+        let message = generate_message(&tx_new, script_group, zero_lock)?;
+        let message = convert_keccak256_hash(message.as_ref());
+
+        let signature = self
+            .signer
+            .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
+
+        // Put signature into witness
+        let witness_data = witnesses[witness_idx].raw_data();
+        let mut current_witness: WitnessArgs = if witness_data.is_empty() {
+            WitnessArgs::default()
+        } else {
+            WitnessArgs::from_slice(witness_data.as_ref())?
+        };
+
+        let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
+        current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
+        witnesses[witness_idx] = current_witness.as_bytes().pack();
+        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+    }
+
+    /// Build proper witness lock
+    pub fn build_witness_lock(
+        orig_lock: BytesOpt,
+        signature: Bytes,
+    ) -> Result<Bytes, ScriptSignError> {
+        let lock_field = orig_lock.to_opt().map(|data| data.raw_data());
+        let omnilock_witnesslock = if let Some(lock_field) = lock_field {
+            OmniLockWitnessLock::from_slice(lock_field.as_ref())?
+        } else {
+            OmniLockWitnessLock::default()
+        };
+
+        Ok(omnilock_witnesslock
+            .as_builder()
+            .signature(Some(signature).pack())
+            .build()
+            .as_bytes())
+    }
+}
+
+impl ScriptSigner for OmniLockScriptSigner {
+    fn match_args(&self, args: &[u8]) -> bool {
+        if args.len() != self.config.get_args_len() {
+            return false;
+        }
+
+        if self.unlock_mode == OmniUnlockMode::Admin {
+            if let Some(admin_config) = self.config.get_admin_config() {
+                if args.len() < 54 {
+                    return false;
+                }
+                // Check if the args match the rc_type_id in the admin_config
+                if admin_config.rc_type_id().as_bytes() != &args[22..54] {
+                    return false;
+                }
+                if let Some(multisig_cfg) = admin_config.get_multisig_config() {
+                    return multisig_cfg
+                        .sighash_addresses
+                        .iter()
+                        .any(|id| self.signer.match_id(id.as_bytes()));
+                } else {
+                    return self
+                        .signer
+                        .match_id(admin_config.get_auth().auth_content().as_bytes());
+                }
+            }
+            return false;
+        }
+        if self.config.id().flag() as u8 != args[0] {
+            return false;
+        }
+        match self.config.id().flag() {
+            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => self
+                .signer
+                .match_id(self.config.id().auth_content().as_ref()),
+            IdentityFlag::Multisig => {
+                self.config.id().auth_content().as_ref() == &args[1..21]
+                    && self
+                        .config
+                        .multisig_config()
+                        .unwrap()
+                        .sighash_addresses
+                        .iter()
+                        .any(|id| self.signer.match_id(id.as_bytes()))
+            }
+
+            IdentityFlag::OwnerLock => {
+                // should not reach here, return true for compatible reason
+                true
+            }
+            _ => todo!("other auth type not supported yet"),
+        }
+    }
+
+    fn sign_tx(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+    ) -> Result<TransactionView, ScriptSignError> {
+        let id = match self.unlock_mode {
+            OmniUnlockMode::Admin => self
+                .config
+                .get_admin_config()
+                .ok_or(ConfigError::NoAdminConfig)?
+                .get_auth()
+                .clone(),
+            OmniUnlockMode::Normal => self.config.id().clone(),
+        };
+        match id.flag() {
+            IdentityFlag::PubkeyHash => {
+                let witness_idx = script_group.input_indices[0];
+                let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+                while witnesses.len() <= witness_idx {
+                    witnesses.push(Default::default());
+                }
+                let tx_new = tx
+                    .as_advanced_builder()
+                    .set_witnesses(witnesses.clone())
+                    .build();
+
+                let zero_lock = self.config.zero_lock(self.unlock_mode)?;
+                let message = generate_message(&tx_new, script_group, zero_lock)?;
+
+                let signature =
+                    self.signer
+                        .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
+
+                // Put signature into witness
+                let witness_data = witnesses[witness_idx].raw_data();
+                let mut current_witness: WitnessArgs = if witness_data.is_empty() {
+                    WitnessArgs::default()
+                } else {
+                    WitnessArgs::from_slice(witness_data.as_ref())?
+                };
+
+                let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
+
+                current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
+                witnesses[witness_idx] = current_witness.as_bytes().pack();
+                Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+            }
+            IdentityFlag::Ethereum => self.sign_ethereum_tx(tx, script_group, &id),
+            IdentityFlag::Multisig => self.sign_multisig_tx(tx, script_group),
+            IdentityFlag::OwnerLock => {
+                // should not reach here, just return a clone for compatible reason.
+                Ok(tx.clone())
+            }
+            _ => {
+                todo!("not supported yet");
+            }
+        }
+    }
 }

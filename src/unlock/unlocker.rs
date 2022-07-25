@@ -6,9 +6,13 @@ use ckb_types::{
 };
 use thiserror::Error;
 
-use super::signer::{
-    AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig, ScriptSignError,
-    ScriptSigner, SecpMultisigScriptSigner, SecpSighashScriptSigner,
+use super::{
+    omni_lock::{ConfigError, OmniLockFlags},
+    signer::{
+        AcpScriptSigner, ChequeAction, ChequeScriptSigner, MultisigConfig, ScriptSignError,
+        ScriptSigner, SecpMultisigScriptSigner, SecpSighashScriptSigner,
+    },
+    OmniLockConfig, OmniLockScriptSigner, OmniUnlockMode,
 };
 use crate::traits::{Signer, TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptGroup;
@@ -26,6 +30,9 @@ pub enum UnlockError {
 
     #[error("invalid witness args: witness index=`{0}`")]
     InvalidWitnessArgs(usize),
+
+    #[error("there is an configuration error: `{0}`")]
+    InvalidConfig(#[from] ConfigError),
 
     #[error("other error: `{0}`")]
     Other(#[from] Box<dyn std::error::Error>),
@@ -217,6 +224,184 @@ impl From<Box<dyn Signer>> for AcpUnlocker {
         AcpUnlocker::new(AcpScriptSigner::new(signer))
     }
 }
+
+fn acp_is_unlocked(
+    tx: &TransactionView,
+    script_group: &ScriptGroup,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+    acp_args: &[u8],
+) -> Result<bool, UnlockError> {
+    const POW10: [u64; 20] = [
+        1,
+        10,
+        100,
+        1000,
+        10000,
+        100000,
+        1000000,
+        10000000,
+        100000000,
+        1000000000,
+        10000000000,
+        100000000000,
+        1000000000000,
+        10000000000000,
+        100000000000000,
+        1000000000000000,
+        10000000000000000,
+        100000000000000000,
+        1000000000000000000,
+        10000000000000000000,
+    ];
+    let min_ckb_amount = if acp_args.is_empty() {
+        0
+    } else {
+        let idx = acp_args[0];
+        if idx >= 20 {
+            return Err(UnlockError::Other(format!("invalid min ckb amount config in script.args, got: {}, expected: value >=0 and value < 20", idx).into()));
+        }
+        POW10[idx as usize]
+    };
+    let min_udt_amount = if acp_args.len() > 1 {
+        let idx = acp_args[1];
+        if idx >= 39 {
+            return Err(UnlockError::Other(format!("invalid min udt amount config in script.args, got: {}, expected: value >=0 and value < 39", idx).into()));
+        }
+        if idx >= 20 {
+            (POW10[19] as u128) * (POW10[idx as usize - 19] as u128)
+        } else {
+            POW10[idx as usize] as u128
+        }
+    } else {
+        0
+    };
+
+    struct InputWallet {
+        type_hash_opt: Option<Byte32>,
+        ckb_amount: u64,
+        udt_amount: u128,
+        output_cnt: usize,
+    }
+    let mut input_wallets = script_group
+        .input_indices
+        .iter()
+        .map(|idx| {
+            let input = tx.inputs().get(*idx).ok_or_else(|| {
+                UnlockError::Other(
+                    format!("input index in script group is out of bound: {}", idx).into(),
+                )
+            })?;
+            let output = tx_dep_provider.get_cell(&input.previous_output())?;
+            let output_data = tx_dep_provider.get_cell_data(&input.previous_output())?;
+
+            let type_hash_opt = output
+                .type_()
+                .to_opt()
+                .map(|script| script.calc_script_hash());
+            if type_hash_opt.is_some() && output_data.len() < 16 {
+                return Err(UnlockError::Other(
+                    format!("invalid udt output data in input cell: {:?}", input).into(),
+                ));
+            }
+            let udt_amount = if type_hash_opt.is_some() {
+                let mut amount_bytes = [0u8; 16];
+                amount_bytes.copy_from_slice(&output_data[0..16]);
+                u128::from_le_bytes(amount_bytes)
+            } else {
+                0
+            };
+            Ok(InputWallet {
+                type_hash_opt,
+                ckb_amount: output.capacity().unpack(),
+                udt_amount,
+                output_cnt: 0,
+            })
+        })
+        .collect::<Result<Vec<InputWallet>, UnlockError>>()?;
+
+    for (output_idx, output) in tx.outputs().into_iter().enumerate() {
+        if output.lock() != script_group.script {
+            continue;
+        }
+        let output_data: Bytes = tx
+            .outputs_data()
+            .get(output_idx)
+            .map(|data| data.raw_data())
+            .ok_or_else(|| {
+                UnlockError::Other(
+                    format!(
+                        "output data index in script group is out of bound: {}",
+                        output_idx
+                    )
+                    .into(),
+                )
+            })?;
+        let type_hash_opt = output
+            .type_()
+            .to_opt()
+            .map(|script| script.calc_script_hash());
+        if type_hash_opt.is_some() && output_data.len() < 16 {
+            return Err(UnlockError::Other(
+                format!(
+                    "invalid udt output data in output cell: index={}",
+                    output_idx
+                )
+                .into(),
+            ));
+        }
+        let ckb_amount: u64 = output.capacity().unpack();
+        let udt_amount = if type_hash_opt.is_some() {
+            let mut amount_bytes = [0u8; 16];
+            amount_bytes.copy_from_slice(&output_data[0..16]);
+            u128::from_le_bytes(amount_bytes)
+        } else {
+            0
+        };
+        let mut found_inputs = 0;
+        for input_wallet in &mut input_wallets {
+            if input_wallet.type_hash_opt == type_hash_opt {
+                let (min_output_ckb_amount, ckb_overflow) =
+                    input_wallet.ckb_amount.overflowing_add(min_ckb_amount);
+                let meet_ckb_cond = !ckb_overflow && ckb_amount >= min_output_ckb_amount;
+                let (min_output_udt_amount, udt_overflow) =
+                    input_wallet.udt_amount.overflowing_add(min_udt_amount);
+                let meet_udt_cond = !udt_overflow && udt_amount >= min_output_udt_amount;
+                if !(meet_ckb_cond || meet_udt_cond) {
+                    // ERROR_OUTPUT_AMOUNT_NOT_ENOUGH
+                    return Ok(false);
+                }
+                if (!meet_ckb_cond && ckb_amount != input_wallet.ckb_amount)
+                    || (!meet_udt_cond && udt_amount != input_wallet.udt_amount)
+                {
+                    // ERROR_OUTPUT_AMOUNT_NOT_ENOUGH
+                    return Ok(false);
+                }
+                found_inputs += 1;
+                input_wallet.output_cnt += 1;
+                if found_inputs > 1 {
+                    // ERROR_DUPLICATED_INPUTS
+                    return Ok(false);
+                }
+                if input_wallet.output_cnt > 1 {
+                    // ERROR_DUPLICATED_OUTPUTS
+                    return Ok(false);
+                }
+            }
+        }
+        if found_inputs != 1 {
+            // ERROR_NO_PAIR + ERROR_DUPLICATED_INPUTS
+            return Ok(false);
+        }
+    }
+    for input_wallet in &input_wallets {
+        if input_wallet.output_cnt != 1 {
+            // ERROR_NO_PAIR + ERROR_DUPLICATED_OUTPUTS
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 impl ScriptUnlocker for AcpUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
@@ -228,176 +413,16 @@ impl ScriptUnlocker for AcpUnlocker {
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<bool, UnlockError> {
-        const POW10: [u64; 20] = [
-            1,
-            10,
-            100,
-            1000,
-            10000,
-            100000,
-            1000000,
-            10000000,
-            100000000,
-            1000000000,
-            10000000000,
-            100000000000,
-            1000000000000,
-            10000000000000,
-            100000000000000,
-            1000000000000000,
-            10000000000000000,
-            100000000000000000,
-            1000000000000000000,
-            10000000000000000000,
-        ];
-        let script_args = script_group.script.args().raw_data();
-        let min_ckb_amount = if script_args.len() > 20 {
-            let idx = script_args.as_ref()[20];
-            if idx >= 20 {
-                return Err(UnlockError::Other(format!("invalid min ckb amount config in script.args, got: {}, expected: value >=0 and value < 20", idx).into()));
-            }
-            POW10[idx as usize]
-        } else {
-            0
-        };
-        let min_udt_amount = if script_args.len() > 21 {
-            let idx = script_args.as_ref()[21];
-            if idx >= 39 {
-                return Err(UnlockError::Other(format!("invalid min udt amount config in script.args, got: {}, expected: value >=0 and value < 39", idx).into()));
-            }
-            if idx >= 20 {
-                (POW10[19] as u128) * (POW10[idx as usize - 19] as u128)
+        let raw_data = script_group.script.args().raw_data();
+        let acp_args = {
+            let data = raw_data.as_ref();
+            if data.len() > 20 {
+                &data[20..]
             } else {
-                POW10[idx as usize] as u128
+                &[]
             }
-        } else {
-            0
         };
-
-        struct InputWallet {
-            type_hash_opt: Option<Byte32>,
-            ckb_amount: u64,
-            udt_amount: u128,
-            output_cnt: usize,
-        }
-        let mut input_wallets = script_group
-            .input_indices
-            .iter()
-            .map(|idx| {
-                let input = tx.inputs().get(*idx).ok_or_else(|| {
-                    UnlockError::Other(
-                        format!("input index in script group is out of bound: {}", idx).into(),
-                    )
-                })?;
-                let output = tx_dep_provider.get_cell(&input.previous_output())?;
-                let output_data = tx_dep_provider.get_cell_data(&input.previous_output())?;
-
-                let type_hash_opt = output
-                    .type_()
-                    .to_opt()
-                    .map(|script| script.calc_script_hash());
-                if type_hash_opt.is_some() && output_data.len() < 16 {
-                    return Err(UnlockError::Other(
-                        format!("invalid udt output data in input cell: {:?}", input).into(),
-                    ));
-                }
-                let udt_amount = if type_hash_opt.is_some() {
-                    let mut amount_bytes = [0u8; 16];
-                    amount_bytes.copy_from_slice(&output_data[0..16]);
-                    u128::from_le_bytes(amount_bytes)
-                } else {
-                    0
-                };
-                Ok(InputWallet {
-                    type_hash_opt,
-                    ckb_amount: output.capacity().unpack(),
-                    udt_amount,
-                    output_cnt: 0,
-                })
-            })
-            .collect::<Result<Vec<InputWallet>, UnlockError>>()?;
-
-        for (output_idx, output) in tx.outputs().into_iter().enumerate() {
-            if output.lock() != script_group.script {
-                continue;
-            }
-            let output_data: Bytes = tx
-                .outputs_data()
-                .get(output_idx)
-                .map(|data| data.raw_data())
-                .ok_or_else(|| {
-                    UnlockError::Other(
-                        format!(
-                            "output data index in script group is out of bound: {}",
-                            output_idx
-                        )
-                        .into(),
-                    )
-                })?;
-            let type_hash_opt = output
-                .type_()
-                .to_opt()
-                .map(|script| script.calc_script_hash());
-            if type_hash_opt.is_some() && output_data.len() < 16 {
-                return Err(UnlockError::Other(
-                    format!(
-                        "invalid udt output data in output cell: index={}",
-                        output_idx
-                    )
-                    .into(),
-                ));
-            }
-            let ckb_amount: u64 = output.capacity().unpack();
-            let udt_amount = if type_hash_opt.is_some() {
-                let mut amount_bytes = [0u8; 16];
-                amount_bytes.copy_from_slice(&output_data[0..16]);
-                u128::from_le_bytes(amount_bytes)
-            } else {
-                0
-            };
-            let mut found_inputs = 0;
-            for input_wallet in &mut input_wallets {
-                if input_wallet.type_hash_opt == type_hash_opt {
-                    let (min_output_ckb_amount, ckb_overflow) =
-                        input_wallet.ckb_amount.overflowing_add(min_ckb_amount);
-                    let meet_ckb_cond = !ckb_overflow && ckb_amount >= min_output_ckb_amount;
-                    let (min_output_udt_amount, udt_overflow) =
-                        input_wallet.udt_amount.overflowing_add(min_udt_amount);
-                    let meet_udt_cond = !udt_overflow && udt_amount >= min_output_udt_amount;
-                    if !(meet_ckb_cond || meet_udt_cond) {
-                        // ERROR_OUTPUT_AMOUNT_NOT_ENOUGH
-                        return Ok(false);
-                    }
-                    if (!meet_ckb_cond && ckb_amount != input_wallet.ckb_amount)
-                        || (!meet_udt_cond && udt_amount != input_wallet.udt_amount)
-                    {
-                        // ERROR_OUTPUT_AMOUNT_NOT_ENOUGH
-                        return Ok(false);
-                    }
-                    found_inputs += 1;
-                    input_wallet.output_cnt += 1;
-                    if found_inputs > 1 {
-                        // ERROR_DUPLICATED_INPUTS
-                        return Ok(false);
-                    }
-                    if input_wallet.output_cnt > 1 {
-                        // ERROR_DUPLICATED_OUTPUTS
-                        return Ok(false);
-                    }
-                }
-            }
-            if found_inputs != 1 {
-                // ERROR_NO_PAIR + ERROR_DUPLICATED_INPUTS
-                return Ok(false);
-            }
-        }
-        for input_wallet in &input_wallets {
-            if input_wallet.output_cnt != 1 {
-                // ERROR_NO_PAIR + ERROR_DUPLICATED_OUTPUTS
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        acp_is_unlocked(tx, script_group, tx_dep_provider, acp_args)
     }
 
     fn unlock(
@@ -586,5 +611,126 @@ impl ScriptUnlocker for ChequeUnlocker {
         } else {
             fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
         }
+    }
+}
+
+pub struct OmniLockUnlocker {
+    signer: OmniLockScriptSigner,
+    config: OmniLockConfig,
+}
+impl OmniLockUnlocker {
+    pub fn new(signer: OmniLockScriptSigner, config: OmniLockConfig) -> OmniLockUnlocker {
+        OmniLockUnlocker { signer, config }
+    }
+}
+impl From<(Box<dyn Signer>, OmniLockConfig, OmniUnlockMode)> for OmniLockUnlocker {
+    fn from(
+        (signer, config, unlock_mode): (Box<dyn Signer>, OmniLockConfig, OmniUnlockMode),
+    ) -> OmniLockUnlocker {
+        let cfg = config.clone();
+        OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config, unlock_mode), cfg)
+    }
+}
+impl ScriptUnlocker for OmniLockUnlocker {
+    fn match_args(&self, args: &[u8]) -> bool {
+        self.signer.match_args(args)
+    }
+
+    /// Check if the script group is already unlocked
+    fn is_unlocked(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<bool, UnlockError> {
+        if self.config.omni_lock_flags().contains(OmniLockFlags::ACP) {
+            let raw_data = script_group.script.args().raw_data();
+            let acp_args = {
+                let mut offset = 22;
+                if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
+                    offset += 32;
+                }
+                let data = raw_data.as_ref();
+                if data.len() > offset {
+                    &data[offset..]
+                } else {
+                    &[]
+                }
+            };
+            let acp_unlocked = acp_is_unlocked(tx, script_group, tx_dep_provider, acp_args)?;
+            if acp_unlocked {
+                return Ok(true);
+            }
+        }
+        if !self.signer.config().is_ownerlock() {
+            return Ok(false);
+        }
+        let args = script_group.script.args().raw_data();
+        if args.len() < 22 {
+            return Err(UnlockError::Other(
+                format!(
+                    "invalid script args length, expected not less than 22, got: {}",
+                    args.len()
+                )
+                .into(),
+            ));
+        }
+        // If use admin mode, should use the id in admin configuration
+        let auth_content = if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
+            self.config
+                .get_admin_config()
+                .unwrap()
+                .get_auth()
+                .auth_content()
+        } else {
+            self.config.id().auth_content()
+        };
+
+        let inputs = tx.inputs();
+        if tx.inputs().len() < 2 {
+            return Err(UnlockError::Other(
+                format!("expect more than 1 input, got: {}", inputs.len()).into(),
+            ));
+        }
+        let matched = tx
+            .inputs()
+            .into_iter()
+            .enumerate()
+            .filter(|(idx, _input)| !script_group.input_indices.contains(idx))
+            .any(|(_idx, input)| {
+                if let Ok(output) = tx_dep_provider.get_cell(&input.previous_output()) {
+                    let lock_hash = output.calc_lock_hash();
+                    let h = &lock_hash.as_slice()[0..20];
+                    h == auth_content.as_bytes()
+                } else {
+                    false
+                }
+            });
+        if !matched {
+            return Err(UnlockError::Other(
+                "can not find according owner lock input".into(),
+            ));
+        }
+        Ok(matched)
+    }
+
+    fn unlock(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        Ok(self.signer.sign_tx(tx, script_group)?)
+    }
+
+    fn fill_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        let config = self.signer.config();
+        let lock_field = config.placeholder_witness_lock(self.signer.unlock_mode())?;
+        fill_witness_lock(tx, script_group, lock_field)
     }
 }
