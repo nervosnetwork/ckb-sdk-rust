@@ -1102,6 +1102,12 @@ fn test_omnilock_simple_hash_timelock(mut cfg: OmniLockConfig) {
     assert_eq!(tx.header_deps().len(), 0);
     assert_eq!(tx.cell_deps().len(), 1);
     assert_eq!(tx.inputs().len(), 1);
+
+    let mut since_bytes = [0u8; 8];
+    since_bytes.copy_from_slice(tx.inputs().get(0).unwrap().since().as_slice());
+    let input_since = u64::from_le_bytes(since_bytes);
+    assert_eq!(input_since, since.value());
+
     for out_point in tx.input_pts_iter() {
         assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
     }
