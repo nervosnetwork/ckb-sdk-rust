@@ -437,19 +437,19 @@ impl OmniLockConfig {
         self.omni_lock_flags.set(OmniLockFlags::ACP, false);
         self.acp_config = None;
     }
-    /// Set the time lock config
+    /// Set the time lock config with raw since value
     pub fn set_time_lock_config(&mut self, since: u64) {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, true);
         self.time_lock_config = Some(since);
     }
-    /// Set the time lock config
+    /// Set the time lock config with since object.
     pub fn set_time_lock_since(&mut self, since: Since) {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, true);
         self.time_lock_config = Some(since.value());
     }
     /// Remove the time lock config, set it to None.
     pub fn clear_time_lock_config(&mut self) {
-        self.omni_lock_flags.set(OmniLockFlags::ACP, false);
+        self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, false);
         self.time_lock_config = None;
     }
     pub fn id(&self) -> &Identity {
@@ -526,7 +526,7 @@ impl OmniLockConfig {
             if self.omni_lock_flags.contains(OmniLockFlags::ACP) {
                 offset += 2;
             }
-            SinceSource::LockArgs { offset }
+            SinceSource::LockArgs(offset)
         } else {
             SinceSource::Value(0)
         }

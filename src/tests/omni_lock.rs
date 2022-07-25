@@ -24,7 +24,7 @@ use crate::{
         OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker, SecpSighashUnlocker,
     },
     util::blake160,
-    ScriptId, Since, SinceType,
+    ScriptId, Since,
 };
 
 use ckb_crypto::secp::{Pubkey, SECP256K1};
@@ -617,7 +617,7 @@ fn test_omnilock_transfer_from_ownerlock() {
 
     let balancer = CapacityBalancer {
         fee_rate: FeeRate::from_u64(FEE_RATE),
-        capacity_provider: CapacityProvider::new(vec![
+        capacity_provider: CapacityProvider::new_simple(vec![
             (sender0.clone(), placeholder_witness0.clone()),
             (sender1.clone(), placeholder_witness1.clone()),
         ]),
@@ -711,7 +711,7 @@ fn test_omnilock_transfer_from_ownerlock_wl_admin() {
 
     let balancer = CapacityBalancer {
         fee_rate: FeeRate::from_u64(FEE_RATE),
-        capacity_provider: CapacityProvider::new(vec![
+        capacity_provider: CapacityProvider::new_simple(vec![
             (sender0.clone(), placeholder_witness0.clone()),
             (owner_sender.clone(), placeholder_witness1.clone()),
         ]),
@@ -1056,8 +1056,8 @@ fn test_omnilock_transfer_from_ethereum_timelock() {
 
 fn test_omnilock_simple_hash_timelock(mut cfg: OmniLockConfig) {
     let unlock_mode = OmniUnlockMode::Normal;
-    let since_value = 200;
-    let since = Since::new(SinceType::EpochNumberWithFraction, since_value, false);
+    let epoch_number = 200;
+    let since = Since::new_absolute_epoch(epoch_number);
 
     cfg.set_time_lock_since(since);
 
@@ -1081,7 +1081,7 @@ fn test_omnilock_simple_hash_timelock(mut cfg: OmniLockConfig) {
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
     let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
     let since_source = cfg.get_since_source();
-    let balancer = CapacityBalancer::new(
+    let balancer = CapacityBalancer::new_simple_with_since(
         sender.clone(),
         placeholder_witness.clone(),
         since_source,

@@ -230,11 +230,8 @@ pub fn tx_fee(
 
 #[derive(Debug, Clone)]
 pub enum SinceSource {
-    /// The `since` is stored in `lock.args[offset..offset+8]`
-    LockArgs {
-        /// The offset position of the since value in lock.args
-        offset: usize,
-    },
+    /// The vaule in the tuple is offset of the args, and the `since` is stored in `lock.args[offset..offset+8]`
+    LockArgs(usize),
     /// raw since value
     Value(u64),
 }
@@ -257,15 +254,13 @@ pub struct CapacityProvider {
 }
 
 impl CapacityProvider {
-    /// create a new capacity provider with since source in it.
-    pub fn new_with_since(
-        lock_scripts: Vec<(Script, WitnessArgs, SinceSource)>,
-    ) -> CapacityProvider {
+    /// create a new capacity provider.
+    pub fn new(lock_scripts: Vec<(Script, WitnessArgs, SinceSource)>) -> CapacityProvider {
         CapacityProvider { lock_scripts }
     }
 
-    /// create a new capacity provider withe the default since source.
-    pub fn new(lock_scripts: Vec<(Script, WitnessArgs)>) -> CapacityProvider {
+    /// create a new capacity provider with the default since source.
+    pub fn new_simple(lock_scripts: Vec<(Script, WitnessArgs)>) -> CapacityProvider {
         let lock_scripts = lock_scripts
             .into_iter()
             .map(|(script, witness)| (script, witness, SinceSource::default()))
@@ -327,7 +322,7 @@ impl CapacityBalancer {
     ) -> CapacityBalancer {
         CapacityBalancer {
             fee_rate: FeeRate::from_u64(fee_rate),
-            capacity_provider: CapacityProvider::new(vec![(
+            capacity_provider: CapacityProvider::new_simple(vec![(
                 capacity_provider,
                 placeholder_witness,
             )]),
@@ -336,8 +331,8 @@ impl CapacityBalancer {
         }
     }
 
-    /// Create new capacity balancer.
-    pub fn new(
+    /// Create new simple capacity balancer with since source.
+    pub fn new_simple_with_since(
         capacity_provider: Script,
         placeholder_witness: WitnessArgs,
         since_source: SinceSource,
@@ -345,7 +340,7 @@ impl CapacityBalancer {
     ) -> CapacityBalancer {
         CapacityBalancer {
             fee_rate: FeeRate::from_u64(fee_rate),
-            capacity_provider: CapacityProvider::new_with_since(vec![(
+            capacity_provider: CapacityProvider::new(vec![(
                 capacity_provider,
                 placeholder_witness,
                 since_source,
@@ -584,7 +579,7 @@ pub fn balance_tx_capacity(
                 }
             }
             let since = match since_source {
-                SinceSource::LockArgs { offset } => {
+                SinceSource::LockArgs(offset) => {
                     let lock_arg = lock_script.args().raw_data();
                     let mut since_bytes = [0u8; 8];
                     since_bytes.copy_from_slice(&lock_arg[*offset..]);
