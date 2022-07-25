@@ -24,7 +24,7 @@ use crate::{
         OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker, SecpSighashUnlocker,
     },
     util::blake160,
-    ScriptId,
+    ScriptId, Since,
 };
 
 use ckb_crypto::secp::{Pubkey, SECP256K1};
@@ -617,7 +617,7 @@ fn test_omnilock_transfer_from_ownerlock() {
 
     let balancer = CapacityBalancer {
         fee_rate: FeeRate::from_u64(FEE_RATE),
-        capacity_provider: CapacityProvider::new(vec![
+        capacity_provider: CapacityProvider::new_simple(vec![
             (sender0.clone(), placeholder_witness0.clone()),
             (sender1.clone(), placeholder_witness1.clone()),
         ]),
@@ -711,7 +711,7 @@ fn test_omnilock_transfer_from_ownerlock_wl_admin() {
 
     let balancer = CapacityBalancer {
         fee_rate: FeeRate::from_u64(FEE_RATE),
-        capacity_provider: CapacityProvider::new(vec![
+        capacity_provider: CapacityProvider::new_simple(vec![
             (sender0.clone(), placeholder_witness0.clone()),
             (owner_sender.clone(), placeholder_witness1.clone()),
         ]),
@@ -933,7 +933,7 @@ fn build_omnilock_acp_cfg(account_key: &H256) -> OmniLockConfig {
 #[test]
 fn test_omnilock_udt_transfer() {
     // +---------+--------+--------+--------+------+------+-----------+
-    // | ccount  |  role  |from_ckb|from_udt|to_ckb|to_udt|   type    |
+    // | account |  role  |from_ckb|from_udt|to_ckb|to_udt|   type    |
     // +---------+--------+--------+--------+------+------+-----------+
     // |account1 |sender  |200     |500     |200   |200   |udt        |
     // +---------+--------+--------+--------+------+------+-----------+
@@ -1033,5 +1033,93 @@ fn test_omnilock_udt_transfer() {
         witnesses_len,
         vec![placeholder_witness.as_slice().len(), 0, 0]
     );
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
+fn test_omnilock_transfer_from_sighash_timelock() {
+    let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))
+        .unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+    let cfg = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+    test_omnilock_simple_hash_timelock(cfg);
+}
+
+#[test]
+fn test_omnilock_transfer_from_ethereum_timelock() {
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
+    let cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
+    test_omnilock_simple_hash_timelock(cfg);
+}
+
+fn test_omnilock_simple_hash_timelock(mut cfg: OmniLockConfig) {
+    let unlock_mode = OmniUnlockMode::Normal;
+    let epoch_number = 200;
+    let since = Since::new_absolute_epoch(epoch_number);
+
+    cfg.set_time_lock_config(since.value());
+
+    let sender = build_omnilock_script(&cfg);
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+
+    let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
+
+    let prepare_out_point = random_out_point();
+    let prepare_input = CellInput::new(prepare_out_point, since.value());
+    let prepare_output = CellOutput::new_builder()
+        .capacity((300 * ONE_CKB + 1000).pack())
+        .lock(sender.clone())
+        .build();
+    ctx.add_live_cell(prepare_input, prepare_output, Bytes::default(), None);
+
+    let output = CellOutput::new_builder()
+        .capacity((200 * ONE_CKB).pack())
+        .lock(receiver)
+        .build();
+    let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
+    let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
+    let since_source = cfg.get_since_source();
+    let balancer = CapacityBalancer::new_simple_with_since(
+        sender.clone(),
+        placeholder_witness.clone(),
+        since_source,
+        FEE_RATE,
+    );
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let unlockers = build_omnilock_unlockers(account2_key, cfg.clone(), unlock_mode);
+    let (tx, locked_groups) = builder
+        .build_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+        .unwrap();
+    // let unlockers = build_omnilock_unlockers(account2_key, cfg, unlock_mode);
+    // let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
+    assert!(locked_groups.is_empty());
+    // tx = new_tx;
+
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 1);
+    assert_eq!(tx.inputs().len(), 1);
+
+    let mut since_bytes = [0u8; 8];
+    since_bytes.copy_from_slice(tx.inputs().get(0).unwrap().since().as_slice());
+    let input_since = u64::from_le_bytes(since_bytes);
+    assert_eq!(input_since, since.value());
+
+    for out_point in tx.input_pts_iter() {
+        assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    assert_eq!(tx.output(0).unwrap(), output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 1);
+    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
     ctx.verify(tx, FEE_RATE).unwrap();
 }

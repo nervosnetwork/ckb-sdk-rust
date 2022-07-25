@@ -14,7 +14,7 @@ use ckb_types::{
     prelude::*,
 };
 
-use crate::constants::{DAO_TYPE_HASH, MULTISIG_TYPE_HASH};
+use crate::constants::DAO_TYPE_HASH;
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
     TransactionDependencyError, TransactionDependencyProvider, ValueRangeOption,
@@ -228,6 +228,20 @@ pub fn tx_fee(
         .ok_or_else(|| TransactionFeeError::CapacityOverflow(output_total - input_total))
 }
 
+#[derive(Debug, Clone)]
+pub enum SinceSource {
+    /// The vaule in the tuple is offset of the args, and the `since` is stored in `lock.args[offset..offset+8]`
+    LockArgs(usize),
+    /// raw since value
+    Value(u64),
+}
+
+impl Default for SinceSource {
+    fn default() -> SinceSource {
+        SinceSource::Value(0)
+    }
+}
+
 /// Provide capacity locked by a list of lock scripts.
 ///
 /// The cells collected by `lock_script` will filter out those have type script
@@ -236,11 +250,21 @@ pub fn tx_fee(
 pub struct CapacityProvider {
     /// The lock scripts provider capacity. The second field of the tuple is the
     /// placeholder witness of the lock script.
-    pub lock_scripts: Vec<(Script, WitnessArgs)>,
+    pub lock_scripts: Vec<(Script, WitnessArgs, SinceSource)>,
 }
 
 impl CapacityProvider {
-    pub fn new(lock_scripts: Vec<(Script, WitnessArgs)>) -> CapacityProvider {
+    /// create a new capacity provider.
+    pub fn new(lock_scripts: Vec<(Script, WitnessArgs, SinceSource)>) -> CapacityProvider {
+        CapacityProvider { lock_scripts }
+    }
+
+    /// create a new capacity provider with the default since source.
+    pub fn new_simple(lock_scripts: Vec<(Script, WitnessArgs)>) -> CapacityProvider {
+        let lock_scripts = lock_scripts
+            .into_iter()
+            .map(|(script, witness)| (script, witness, SinceSource::default()))
+            .collect();
         CapacityProvider { lock_scripts }
     }
 }
@@ -270,6 +294,9 @@ pub enum BalanceTxCapacityError {
 
     #[error("invalid witness args: `{0}`")]
     InvalidWitnessArgs(Box<dyn std::error::Error>),
+
+    #[error("Fail to parse since value from args, offset: `{0}`, args length: `{1}`")]
+    InvalidSinceValue(usize, usize),
 }
 
 /// Transaction capacity balancer config
@@ -298,9 +325,28 @@ impl CapacityBalancer {
     ) -> CapacityBalancer {
         CapacityBalancer {
             fee_rate: FeeRate::from_u64(fee_rate),
+            capacity_provider: CapacityProvider::new_simple(vec![(
+                capacity_provider,
+                placeholder_witness,
+            )]),
+            change_lock_script: None,
+            force_small_change_as_fee: None,
+        }
+    }
+
+    /// Create new simple capacity balancer with since source.
+    pub fn new_simple_with_since(
+        capacity_provider: Script,
+        placeholder_witness: WitnessArgs,
+        since_source: SinceSource,
+        fee_rate: u64,
+    ) -> CapacityBalancer {
+        CapacityBalancer {
+            fee_rate: FeeRate::from_u64(fee_rate),
             capacity_provider: CapacityProvider::new(vec![(
                 capacity_provider,
                 placeholder_witness,
+                since_source,
             )]),
             change_lock_script: None,
             force_small_change_as_fee: None,
@@ -333,9 +379,9 @@ pub fn balance_tx_capacity(
 
     let mut lock_scripts = Vec::new();
     // remove duplicated lock script
-    for (script, placeholder) in &capacity_provider.lock_scripts {
-        if lock_scripts.iter().all(|(target, _)| target != script) {
-            lock_scripts.push((script.clone(), placeholder.clone()));
+    for (script, placeholder, since_source) in &capacity_provider.lock_scripts {
+        if lock_scripts.iter().all(|(target, _, _)| target != script) {
+            lock_scripts.push((script.clone(), placeholder.clone(), since_source.clone()));
         }
     }
     let mut lock_script_idx = 0;
@@ -346,7 +392,7 @@ pub fn balance_tx_capacity(
     let mut changed_witnesses: HashMap<usize, WitnessArgs> = HashMap::default();
     let mut witnesses = Vec::new();
     loop {
-        let (lock_script, placeholder_witness) = &lock_scripts[lock_script_idx];
+        let (lock_script, placeholder_witness, since_source) = &lock_scripts[lock_script_idx];
         let base_query = {
             let mut query = CellQueryOptions::new_lock(lock_script.clone());
             query.data_len_range = Some(ValueRangeOption::new_exact(0));
@@ -535,15 +581,20 @@ pub fn balance_tx_capacity(
                     witnesses.push(placeholder_witness.as_bytes().pack());
                 }
             }
-            let since = {
-                let lock_arg = lock_script.args().raw_data();
-                if lock_script.code_hash() == MULTISIG_TYPE_HASH.pack() && lock_arg.len() == 28 {
+            let since = match since_source {
+                SinceSource::LockArgs(offset) => {
+                    let lock_arg = lock_script.args().raw_data();
+                    if lock_arg.len() < offset + 8 {
+                        return Err(BalanceTxCapacityError::InvalidSinceValue(
+                            *offset,
+                            lock_arg.len(),
+                        ));
+                    }
                     let mut since_bytes = [0u8; 8];
-                    since_bytes.copy_from_slice(&lock_arg[20..]);
+                    since_bytes.copy_from_slice(&lock_arg[*offset..]);
                     u64::from_le_bytes(since_bytes)
-                } else {
-                    0
                 }
+                SinceSource::Value(since_value) => *since_value,
             };
             inputs.extend(
                 more_cells

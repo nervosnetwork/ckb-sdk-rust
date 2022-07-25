@@ -2,6 +2,7 @@ use core::hash;
 use std::fmt::Display;
 
 use crate::{
+    tx_builder::SinceSource,
     types::{
         omni_lock::{Auth, Identity as IdentityType, IdentityOpt, OmniLockWitnessLock},
         xudt_rce_mol::SmtProofEntryVec,
@@ -346,6 +347,8 @@ pub struct OmniLockConfig {
     admin_config: Option<AdminConfig>,
     /// The acp configuration
     acp_config: Option<OmniLockAcpConfig>,
+    /// 8 bytes since for time lock
+    time_lock_config: Option<u64>,
 }
 
 impl OmniLockConfig {
@@ -373,6 +376,7 @@ impl OmniLockConfig {
             omni_lock_flags: OmniLockFlags::empty(),
             admin_config: None,
             acp_config: None,
+            time_lock_config: None,
         }
     }
     /// Create an ethereum algorithm omnilock with pubkey
@@ -403,6 +407,7 @@ impl OmniLockConfig {
             omni_lock_flags: OmniLockFlags::empty(),
             admin_config: None,
             acp_config: None,
+            time_lock_config: None,
         }
     }
 
@@ -431,7 +436,16 @@ impl OmniLockConfig {
         self.omni_lock_flags.set(OmniLockFlags::ACP, false);
         self.acp_config = None;
     }
-
+    /// Set the time lock config with raw since value
+    pub fn set_time_lock_config(&mut self, since: u64) {
+        self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, true);
+        self.time_lock_config = Some(since);
+    }
+    /// Remove the time lock config, set it to None.
+    pub fn clear_time_lock_config(&mut self) {
+        self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, false);
+        self.time_lock_config = None;
+    }
     pub fn id(&self) -> &Identity {
         &self.id
     }
@@ -466,6 +480,9 @@ impl OmniLockConfig {
             bytes.put_u8(config.ckb_minimum);
             bytes.put_u8(config.udt_minimum);
         }
+        if let Some(since) = self.time_lock_config.as_ref() {
+            bytes.extend(since.to_le_bytes().iter());
+        }
 
         bytes.freeze()
     }
@@ -491,6 +508,22 @@ impl OmniLockConfig {
             len += 32;
         }
         len
+    }
+
+    /// Get the since source from args.
+    pub fn get_since_source(&self) -> SinceSource {
+        if self.omni_lock_flags.contains(OmniLockFlags::TIME_LOCK) {
+            let mut offset = 22;
+            if self.omni_lock_flags.contains(OmniLockFlags::ADMIN) {
+                offset += 32;
+            }
+            if self.omni_lock_flags.contains(OmniLockFlags::ACP) {
+                offset += 2;
+            }
+            SinceSource::LockArgs(offset)
+        } else {
+            SinceSource::Value(0)
+        }
     }
 
     /// Indicate whether is a sighash type.
