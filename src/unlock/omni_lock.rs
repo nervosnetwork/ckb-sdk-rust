@@ -349,6 +349,8 @@ pub struct OmniLockConfig {
     acp_config: Option<OmniLockAcpConfig>,
     /// 8 bytes since for time lock
     time_lock_config: Option<u64>,
+    /// If set the smt cell in the input
+    smt_in_input: bool,
 }
 
 impl OmniLockConfig {
@@ -377,6 +379,7 @@ impl OmniLockConfig {
             admin_config: None,
             acp_config: None,
             time_lock_config: None,
+            smt_in_input: false,
         }
     }
     /// Create an ethereum algorithm omnilock with pubkey
@@ -408,6 +411,7 @@ impl OmniLockConfig {
             admin_config: None,
             acp_config: None,
             time_lock_config: None,
+            smt_in_input: false,
         }
     }
 
@@ -446,6 +450,17 @@ impl OmniLockConfig {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, false);
         self.time_lock_config = None;
     }
+
+    /// Set the config smt_in_input to the specified value
+    pub fn set_smt_in_input(&mut self, value: bool) {
+        self.smt_in_input = value;
+    }
+
+    /// Get the configuration about if smt is in the input list.
+    pub fn smt_in_input(&self) -> bool {
+        self.smt_in_input
+    }
+
     pub fn id(&self) -> &Identity {
         &self.id
     }

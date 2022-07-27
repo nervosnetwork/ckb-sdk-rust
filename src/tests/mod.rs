@@ -61,7 +61,7 @@ const GENESIS_JSON: &str = include_str!("../test-data/genesis_block.json");
 const SUDT_BIN: &[u8] = include_bytes!("../test-data/simple_udt");
 const ACP_BIN: &[u8] = include_bytes!("../test-data/anyone_can_pay");
 const CHEQUE_BIN: &[u8] = include_bytes!("../test-data/ckb-cheque-script");
-const ALWAYS_SUCCESS: &[u8] = include_bytes!("../test-data/always_success");
+const ALWAYS_SUCCESS_BIN: &[u8] = include_bytes!("../test-data/always_success");
 
 fn build_sighash_script(args: H160) -> Script {
     Script::new_builder()

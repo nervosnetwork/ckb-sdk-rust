@@ -1,30 +1,35 @@
+use std::collections::HashSet;
+
 use bytes::Bytes;
 use ckb_types::core::{DepType, ScriptHashType};
-use rand::{thread_rng, Rng};
 
+use crate::constants::ONE_CKB;
 use crate::test_util::{random_out_point, Context};
+use crate::traits::CellDepResolver;
 use crate::types::xudt_rce_mol::{RCCellVecBuilder, RCDataBuilder, RCDataUnion, SmtProofEntryVec};
 use crate::unlock::rc_data::{build_proofs, generate_proofs};
 
-use ckb_types::{packed::*, prelude::*};
+use ckb_types::{packed::*, prelude::*, H160};
 use sparse_merkle_tree::H256 as SmtH256;
 
-use super::ALWAYS_SUCCESS;
+use super::{build_sighash_script, ALWAYS_SUCCESS_BIN};
 
 pub fn generate_rc(
     ctx: &mut Context,
     smt_key: SmtH256,
+    in_input_cell: bool,
+    args: H160,
 ) -> (SmtProofEntryVec, Bytes, Vec<OutPoint>) {
     let (proofs_with_mask, rc_rules) = generate_proofs(&[smt_key], true).unwrap();
     let mut rce_cells = vec![];
-    let rc_type_id = generate_rce_cell(ctx, rc_rules, &mut rce_cells);
+    let rc_type_id = generate_rce_cell(ctx, rc_rules, &mut rce_cells, in_input_cell, args);
 
     let proof_vec = build_proofs(proofs_with_mask);
     (proof_vec, rc_type_id.as_bytes(), rce_cells)
 }
 
 pub fn build_always_success_script() -> Script {
-    let data_hash = CellOutput::calc_data_hash(ALWAYS_SUCCESS);
+    let data_hash = CellOutput::calc_data_hash(ALWAYS_SUCCESS_BIN);
     Script::new_builder()
         .code_hash(data_hash)
         .hash_type(ScriptHashType::Data.into())
@@ -47,7 +52,7 @@ fn build_script(
     is_type: bool,
     in_input_cell: bool,
     bin: &Bytes,
-    args: Bytes,
+    args: H160,
     rce_cells: &mut Vec<OutPoint>,
 ) -> Script {
     // this hash to make type script in code unique
@@ -58,11 +63,7 @@ fn build_script(
     let type_script_in_code = {
         if in_input_cell {
             let hash: Bytes = Bytes::copy_from_slice(&hash);
-            always_success
-                .clone()
-                .as_builder()
-                .args(hash.pack())
-                .build()
+            always_success.as_builder().args(hash.pack()).build()
         } else {
             // this args can be anything
             let args = vec![0u8; 32];
@@ -74,19 +75,25 @@ fn build_script(
         }
     };
 
+    let lock_script = build_sighash_script(args.clone());
     // it not needed to set "type script" when is_type is false
-    let capacity = bin.len() as u64;
+    let capacity = bin.len() as u64 * ONE_CKB;
     let output = CellOutput::new_builder()
         .capacity(capacity.pack())
-        .lock(always_success)
+        .lock(lock_script)
         .type_(Some(type_script_in_code.clone()).pack())
         .build();
     let out_point = random_out_point();
-    let cell_dep = CellDep::new_builder()
-        .out_point(out_point.clone())
-        .dep_type(DepType::Code.into())
-        .build();
-    ctx.add_cell_dep(cell_dep, output, bin.clone(), None);
+    if in_input_cell {
+        let input = CellInput::new(out_point.clone(), 0);
+        ctx.add_live_cell(input, output, bin.clone(), None);
+    } else {
+        let cell_dep = CellDep::new_builder()
+            .out_point(out_point.clone())
+            .dep_type(DepType::Code.into())
+            .build();
+        ctx.add_cell_dep(cell_dep, output, bin.clone(), None);
+    }
     rce_cells.push(out_point);
 
     let code_hash = if is_type {
@@ -100,6 +107,7 @@ fn build_script(
         ScriptHashType::Data
     };
 
+    let args = Bytes::copy_from_slice(args.as_bytes());
     Script::new_builder()
         .args(args.pack())
         .code_hash(code_hash.pack())
@@ -113,21 +121,13 @@ pub fn generate_rce_cell(
     ctx: &mut Context,
     rc_rules: Vec<Bytes>,
     rce_cells: &mut Vec<OutPoint>,
+    in_input_cell: bool,
+    args: H160,
 ) -> Byte32 {
-    let mut rng = thread_rng();
     let mut cell_vec_builder = RCCellVecBuilder::default();
 
     for rc_rule in rc_rules {
-        let mut random_args: [u8; 32] = Default::default();
-        rng.fill(&mut random_args[..]);
-        let rce_script = build_script(
-            ctx,
-            true,
-            false,
-            &rc_rule,
-            Bytes::copy_from_slice(random_args.as_ref()),
-            rce_cells,
-        );
+        let rce_script = build_script(ctx, true, in_input_cell, &rc_rule, args.clone(), rce_cells);
 
         let hash = rce_script.code_hash();
 
@@ -141,15 +141,13 @@ pub fn generate_rce_cell(
         .set(RCDataUnion::RCCellVec(cell_vec))
         .build();
 
-    let mut random_args: [u8; 32] = Default::default();
-    rng.fill(&mut random_args[..]);
     let bin = rce_cell_content.as_slice();
     let rce_script = build_script(
         ctx,
         true,
-        false,
+        in_input_cell,
         &Bytes::copy_from_slice(bin),
-        Bytes::copy_from_slice(random_args.as_ref()),
+        args,
         rce_cells,
     );
     rce_script.code_hash()
@@ -168,5 +166,34 @@ pub fn add_rce_cells(
                 .build(),
         );
     }
+    builder.build()
+}
+
+pub fn add_rce_cells_to_input(
+    ctx: &Context,
+    tx: ckb_types::core::TransactionView,
+    rce_cells: &[OutPoint],
+) -> ckb_types::core::TransactionView {
+    let mut builder = tx.as_advanced_builder();
+    let mut cell_deps: HashSet<CellDep> = tx.cell_deps().into_iter().collect();
+    for cell in rce_cells {
+        builder = builder.input(
+            CellInput::new_builder()
+                .previous_output(cell.clone())
+                .build(),
+        );
+        let (cell_output, _) = ctx.get_input(cell).unwrap();
+        // extract lock dep
+        let lock = cell_output.lock();
+        let cell_dep = ctx.resolve(&lock).unwrap();
+        cell_deps.insert(cell_dep);
+        // extract type dependency
+
+        if let Some(type_) = cell_output.type_().to_opt() {
+            let cell_dep = ctx.resolve(&type_).unwrap();
+            cell_deps.insert(cell_dep);
+        }
+    }
+    builder = builder.cell_deps(cell_deps);
     builder.build()
 }
