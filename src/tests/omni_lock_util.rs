@@ -1,11 +1,8 @@
-use std::collections::HashSet;
-
 use bytes::Bytes;
 use ckb_types::core::{DepType, ScriptHashType};
 
 use crate::constants::ONE_CKB;
 use crate::test_util::{random_out_point, Context};
-use crate::traits::CellDepResolver;
 use crate::types::xudt_rce_mol::{RCCellVecBuilder, RCDataBuilder, RCDataUnion, SmtProofEntryVec};
 use crate::unlock::rc_data::{build_proofs, generate_proofs};
 
@@ -151,49 +148,4 @@ pub fn generate_rce_cell(
         rce_cells,
     );
     rce_script.code_hash()
-}
-
-pub fn add_rce_cells(
-    tx: ckb_types::core::TransactionView,
-    rce_cells: &[OutPoint],
-) -> ckb_types::core::TransactionView {
-    let mut builder = tx.as_advanced_builder();
-    for cell in rce_cells {
-        builder = builder.cell_dep(
-            CellDep::new_builder()
-                .out_point(cell.clone())
-                .dep_type(DepType::Code.into())
-                .build(),
-        );
-    }
-    builder.build()
-}
-
-pub fn add_rce_cells_to_input(
-    ctx: &Context,
-    tx: ckb_types::core::TransactionView,
-    rce_cells: &[OutPoint],
-) -> ckb_types::core::TransactionView {
-    let mut builder = tx.as_advanced_builder();
-    let mut cell_deps: HashSet<CellDep> = tx.cell_deps().into_iter().collect();
-    for cell in rce_cells {
-        builder = builder.input(
-            CellInput::new_builder()
-                .previous_output(cell.clone())
-                .build(),
-        );
-        let (cell_output, _) = ctx.get_input(cell).unwrap();
-        // extract lock dep
-        let lock = cell_output.lock();
-        let cell_dep = ctx.resolve(&lock).unwrap();
-        cell_deps.insert(cell_dep);
-        // extract type dependency
-
-        if let Some(type_) = cell_output.type_().to_opt() {
-            let cell_dep = ctx.resolve(&type_).unwrap();
-            cell_deps.insert(cell_dep);
-        }
-    }
-    builder = builder.cell_deps(cell_deps);
-    builder.build()
 }
