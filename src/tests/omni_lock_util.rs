@@ -4,7 +4,8 @@ use ckb_types::core::{DepType, ScriptHashType};
 use crate::constants::ONE_CKB;
 use crate::test_util::{random_out_point, Context};
 use crate::types::xudt_rce_mol::{RCCellVecBuilder, RCDataBuilder, RCDataUnion, SmtProofEntryVec};
-use crate::unlock::rc_data::{build_proofs, generate_proofs};
+use crate::unlock::rc_data::ListType;
+use crate::unlock::rc_data::{Mask, RcRuleVecBuilder};
 
 use ckb_types::{packed::*, prelude::*, H160};
 use sparse_merkle_tree::H256 as SmtH256;
@@ -17,11 +18,19 @@ pub fn generate_rc(
     in_input_cell: bool,
     args: H160,
 ) -> (SmtProofEntryVec, Bytes, Vec<OutPoint>) {
-    let (proofs_with_mask, rc_rules) = generate_proofs(&[smt_key], true).unwrap();
+    let mut builder = RcRuleVecBuilder::new();
+    builder
+        .build_single_proof_and_rule(&[smt_key], Mask::Input, ListType::White, false, true)
+        .unwrap();
+    builder
+        .build_single_proof_and_rule(&[smt_key], Mask::Output, ListType::White, false, false)
+        .unwrap();
+    let proof_vec = builder.build_proofs();
+
+    let rc_rules = builder.rc_rules();
     let mut rce_cells = vec![];
     let rc_type_id = generate_rce_cell(ctx, rc_rules, &mut rce_cells, in_input_cell, args);
 
-    let proof_vec = build_proofs(proofs_with_mask);
     (proof_vec, rc_type_id.as_bytes(), rce_cells)
 }
 
@@ -116,7 +125,7 @@ fn build_script(
 // then collect all these RCE cell hash and create the final RCE cell.
 pub fn generate_rce_cell(
     ctx: &mut Context,
-    rc_rules: Vec<Bytes>,
+    rc_rules: &Vec<Bytes>,
     rce_cells: &mut Vec<OutPoint>,
     in_input_cell: bool,
     args: H160,
@@ -124,7 +133,7 @@ pub fn generate_rce_cell(
     let mut cell_vec_builder = RCCellVecBuilder::default();
 
     for rc_rule in rc_rules {
-        let rce_script = build_script(ctx, true, in_input_cell, &rc_rule, args.clone(), rce_cells);
+        let rce_script = build_script(ctx, true, in_input_cell, rc_rule, args.clone(), rce_cells);
 
         let hash = rce_script.code_hash();
 
