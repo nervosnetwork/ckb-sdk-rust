@@ -194,6 +194,30 @@ fn test_omnilock_transfer_from_sighash_wl_input() {
     test_omnilock_simple_hash_rc_input(cfg, OmniUnlockMode::Normal);
 }
 
+#[test]
+fn test_omnilock_transfer_from_sighash_wl_input_admin() {
+    let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))
+        .unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+    let pubkey_hash = blake160(&pubkey.serialize());
+    let mut cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(pubkey_hash);
+
+    let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))
+        .unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
+    let id = Identity::new_pubkey_hash(&pubkey.into());
+    cfg.set_admin_config(AdminConfig::new(
+        H256::default(),
+        SmtProofEntryVec::default(),
+        id,
+        None,
+        true,
+    ));
+    test_omnilock_simple_hash_rc_input(cfg, OmniUnlockMode::Admin);
+}
+
 fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig, unlock_mode: OmniUnlockMode) {
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
@@ -315,6 +339,29 @@ fn test_omnilock_transfer_from_ethereum_wl_input() {
         true,
     ));
     test_omnilock_simple_hash_rc_input(cfg, OmniUnlockMode::Normal);
+}
+
+#[test]
+fn test_omnilock_transfer_from_ethereum_wl_input_admin() {
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))
+        .unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
+    let mut cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
+
+    let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))
+        .unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
+    let id = Identity::new_ethereum(&pubkey.into());
+    cfg.set_admin_config(AdminConfig::new(
+        H256::default(),
+        SmtProofEntryVec::default(),
+        id,
+        None,
+        true,
+    ));
+    test_omnilock_simple_hash_rc_input(cfg, OmniUnlockMode::Admin);
 }
 
 #[test]
