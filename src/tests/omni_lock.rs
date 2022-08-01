@@ -171,30 +171,6 @@ fn test_omnilock_transfer_from_sighash_wl() {
 }
 
 #[test]
-fn test_omnilock_transfer_from_sighash_wl_input() {
-    let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
-        .map_err(|err| format!("invalid sender secret key: {}", err))
-        .unwrap();
-    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
-    let pubkey_hash = blake160(&pubkey.serialize());
-    let mut cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(pubkey_hash);
-
-    let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
-        .map_err(|err| format!("invalid sender secret key: {}", err))
-        .unwrap();
-    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
-    let id = Identity::new_pubkey_hash(&pubkey.into());
-    cfg.set_admin_config(AdminConfig::new(
-        H256::default(),
-        SmtProofEntryVec::default(),
-        id,
-        None,
-        true,
-    ));
-    test_omnilock_simple_hash_rc_input(cfg, OmniUnlockMode::Normal);
-}
-
-#[test]
 fn test_omnilock_transfer_from_sighash_wl_input_admin() {
     let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))
@@ -215,10 +191,11 @@ fn test_omnilock_transfer_from_sighash_wl_input_admin() {
         None,
         true,
     ));
-    test_omnilock_simple_hash_rc_input(cfg, OmniUnlockMode::Admin);
+    test_omnilock_simple_hash_rc_input(cfg);
 }
 
-fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig, unlock_mode: OmniUnlockMode) {
+fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig) {
+    let unlock_mode = OmniUnlockMode::Admin;
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
     let mut ctx = init_context(
@@ -227,15 +204,11 @@ fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig, unlock_mode: Omni
     );
     let mut admin_config = cfg.get_admin_config().unwrap().clone();
 
-    let rc_arg = match unlock_mode {
-        OmniUnlockMode::Admin => ACCOUNT3_ARG,
-        OmniUnlockMode::Normal => ACCOUNT0_ARG,
-    };
     let (proof_vec, rc_type_id, rce_cells) = generate_rc(
         &mut ctx,
         admin_config.get_auth().to_smt_key().into(),
         admin_config.smt_in_input(),
-        rc_arg,
+        ACCOUNT3_ARG,
     );
     admin_config.set_proofs(proof_vec);
     admin_config.set_rc_type_id(H256::from_slice(rc_type_id.as_ref()).unwrap());
@@ -260,14 +233,10 @@ fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig, unlock_mode: Omni
         CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
 
     let mut cell_collector = ctx.to_live_cells_context();
-    let unlock_key = match unlock_mode {
-        OmniUnlockMode::Admin => ACCOUNT3_KEY,
-        OmniUnlockMode::Normal => ACCOUNT0_KEY,
-    };
-    let account0_key = secp256k1::SecretKey::from_slice(unlock_key.as_bytes()).unwrap();
-    let mut unlockers = build_omnilock_unlockers(account0_key, cfg.clone(), unlock_mode);
+    let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes()).unwrap();
+    let mut unlockers = build_omnilock_unlockers(account3_key, cfg.clone(), unlock_mode);
 
-    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account0_key]);
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account3_key]);
     let script_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
 
     unlockers.insert(
@@ -319,29 +288,6 @@ fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig, unlock_mode: Omni
 }
 
 #[test]
-fn test_omnilock_transfer_from_ethereum_wl_input() {
-    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
-        .map_err(|err| format!("invalid sender secret key: {}", err))
-        .unwrap();
-    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
-    let mut cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
-
-    let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
-        .map_err(|err| format!("invalid sender secret key: {}", err))
-        .unwrap();
-    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
-    let id = Identity::new_ethereum(&pubkey.into());
-    cfg.set_admin_config(AdminConfig::new(
-        H256::default(),
-        SmtProofEntryVec::default(),
-        id,
-        None,
-        true,
-    ));
-    test_omnilock_simple_hash_rc_input(cfg, OmniUnlockMode::Normal);
-}
-
-#[test]
 fn test_omnilock_transfer_from_ethereum_wl_input_admin() {
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))
@@ -361,7 +307,7 @@ fn test_omnilock_transfer_from_ethereum_wl_input_admin() {
         None,
         true,
     ));
-    test_omnilock_simple_hash_rc_input(cfg, OmniUnlockMode::Admin);
+    test_omnilock_simple_hash_rc_input(cfg);
 }
 
 #[test]
@@ -439,21 +385,27 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig, unlock_mode: OmniUnlock
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
     let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
-    let mut admin_config = cfg.get_admin_config().unwrap().clone();
-    let rc_args = match unlock_mode {
-        OmniUnlockMode::Admin => ACCOUNT3_ARG,
-        OmniUnlockMode::Normal => ACCOUNT0_ARG,
+    let (rce_cells, rce_cells_len) = match unlock_mode {
+        OmniUnlockMode::Admin => {
+            let mut admin_config = cfg.get_admin_config().unwrap().clone();
+            let rc_args = match unlock_mode {
+                OmniUnlockMode::Admin => ACCOUNT3_ARG,
+                OmniUnlockMode::Normal => ACCOUNT0_ARG,
+            };
+            let (proof_vec, rc_type_id, rce_cells) = generate_rc(
+                &mut ctx,
+                admin_config.get_auth().to_smt_key().into(),
+                false,
+                rc_args,
+            );
+            admin_config.set_proofs(proof_vec);
+            admin_config.set_rc_type_id(H256::from_slice(rc_type_id.as_ref()).unwrap());
+            cfg.set_admin_config(admin_config);
+            let rce_cells_len = rce_cells.len();
+            (Some(rce_cells), rce_cells_len)
+        }
+        OmniUnlockMode::Normal => (None, 0),
     };
-    let (proof_vec, rc_type_id, rce_cells) = generate_rc(
-        &mut ctx,
-        admin_config.get_auth().to_smt_key().into(),
-        false,
-        rc_args,
-    );
-    admin_config.set_proofs(proof_vec);
-    admin_config.set_rc_type_id(H256::from_slice(rc_type_id.as_ref()).unwrap());
-    cfg.set_admin_config(admin_config);
-
     let sender = build_omnilock_script(&cfg);
     for (lock, capacity_opt) in vec![(sender.clone(), Some(300 * ONE_CKB))] {
         ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
@@ -466,7 +418,7 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig, unlock_mode: OmniUnlock
     let builder = OmniLockTransferBuilder::new(
         vec![(output.clone(), Bytes::default())],
         cfg.clone(),
-        Some(rce_cells),
+        rce_cells,
     );
     let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
     let balancer =
@@ -505,7 +457,7 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig, unlock_mode: OmniUnlock
     //     serde_json::to_string_pretty(&json_types::TransactionView::from(tx.clone())).unwrap()
     // );
     assert_eq!(tx.header_deps().len(), 0);
-    assert_eq!(tx.cell_deps().len(), 4);
+    assert_eq!(tx.cell_deps().len(), 1 + rce_cells_len);
     assert_eq!(tx.inputs().len(), 1);
     for out_point in tx.input_pts_iter() {
         assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
