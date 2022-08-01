@@ -63,7 +63,7 @@ impl TxBuilder for OmniLockTransferBuilder {
         }
         if let Some(admin_cfg) = self.cfg.get_admin_config() {
             if let Some(rce_cells) = self.rce_cells.as_ref() {
-                if admin_cfg.smt_in_input() {
+                if admin_cfg.rce_in_input() {
                     for cell in rce_cells {
                         let input = CellInput::new_builder()
                             .previous_output(cell.clone())

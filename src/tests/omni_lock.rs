@@ -207,7 +207,7 @@ fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig) {
     let (proof_vec, rc_type_id, rce_cells) = generate_rc(
         &mut ctx,
         admin_config.get_auth().to_smt_key().into(),
-        admin_config.smt_in_input(),
+        admin_config.rce_in_input(),
         ACCOUNT3_ARG,
     );
     admin_config.set_proofs(proof_vec);

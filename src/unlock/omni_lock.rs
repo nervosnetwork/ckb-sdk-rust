@@ -252,8 +252,8 @@ pub struct AdminConfig {
     auth: Identity,
     /// multisig cnfiguration
     multisig_config: Option<MultisigConfig>,
-    /// If set the smt cell in the input
-    smt_in_input: bool,
+    /// If set the rce cell in the input
+    rce_in_input: bool,
 }
 
 impl AdminConfig {
@@ -285,14 +285,14 @@ impl AdminConfig {
         self.multisig_config.as_ref()
     }
 
-    /// Set the config smt_in_input to the specified value
-    pub fn set_smt_in_input(&mut self, value: bool) {
-        self.smt_in_input = value;
+    /// Set the config rce_in_input to the specified value
+    pub fn set_rce_in_input(&mut self, value: bool) {
+        self.rce_in_input = value;
     }
 
     /// Get the configuration about if smt is in the input list.
-    pub fn smt_in_input(&self) -> bool {
-        self.smt_in_input
+    pub fn rce_in_input(&self) -> bool {
+        self.rce_in_input
     }
 
     pub fn new(
@@ -300,14 +300,14 @@ impl AdminConfig {
         proofs: SmtProofEntryVec,
         auth: Identity,
         multisig_config: Option<MultisigConfig>,
-        smt_in_input: bool,
+        rce_in_input: bool,
     ) -> AdminConfig {
         AdminConfig {
             rc_type_id,
             proofs,
             auth,
             multisig_config,
-            smt_in_input,
+            rce_in_input,
         }
     }
 }
