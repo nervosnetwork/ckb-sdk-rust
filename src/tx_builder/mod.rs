@@ -1,6 +1,7 @@
 pub mod acp;
 pub mod cheque;
 pub mod dao;
+pub mod omni_lock;
 pub mod transfer;
 pub mod udt;
 

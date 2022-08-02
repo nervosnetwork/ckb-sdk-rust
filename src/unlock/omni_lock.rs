@@ -252,6 +252,8 @@ pub struct AdminConfig {
     auth: Identity,
     /// multisig cnfiguration
     multisig_config: Option<MultisigConfig>,
+    /// If set the rce cell in the input
+    rce_in_input: bool,
 }
 
 impl AdminConfig {
@@ -283,17 +285,29 @@ impl AdminConfig {
         self.multisig_config.as_ref()
     }
 
+    /// Set the config rce_in_input to the specified value
+    pub fn set_rce_in_input(&mut self, value: bool) {
+        self.rce_in_input = value;
+    }
+
+    /// Get the configuration about if smt is in the input list.
+    pub fn rce_in_input(&self) -> bool {
+        self.rce_in_input
+    }
+
     pub fn new(
         rc_type_id: H256,
         proofs: SmtProofEntryVec,
         auth: Identity,
         multisig_config: Option<MultisigConfig>,
+        rce_in_input: bool,
     ) -> AdminConfig {
         AdminConfig {
             rc_type_id,
             proofs,
             auth,
             multisig_config,
+            rce_in_input,
         }
     }
 }
@@ -446,6 +460,7 @@ impl OmniLockConfig {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, false);
         self.time_lock_config = None;
     }
+
     pub fn id(&self) -> &Identity {
         &self.id
     }
