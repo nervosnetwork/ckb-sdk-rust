@@ -363,6 +363,8 @@ pub struct OmniLockConfig {
     acp_config: Option<OmniLockAcpConfig>,
     /// 8 bytes since for time lock
     time_lock_config: Option<u64>,
+    // 32 bytes type script hash
+    info_cell: Option<H256>,
 }
 
 impl OmniLockConfig {
@@ -391,6 +393,7 @@ impl OmniLockConfig {
             admin_config: None,
             acp_config: None,
             time_lock_config: None,
+            info_cell: None,
         }
     }
     /// Create an ethereum algorithm omnilock with pubkey
@@ -422,6 +425,7 @@ impl OmniLockConfig {
             admin_config: None,
             acp_config: None,
             time_lock_config: None,
+            info_cell: None,
         }
     }
 
@@ -459,6 +463,17 @@ impl OmniLockConfig {
     pub fn clear_time_lock_config(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, false);
         self.time_lock_config = None;
+    }
+
+    /// Set the info cell to the configuration
+    pub fn set_info_cell(&mut self, type_script_hash: H256) {
+        self.omni_lock_flags.set(OmniLockFlags::SUPPLY, true);
+        self.info_cell = Some(type_script_hash);
+    }
+
+    pub fn clear_info_cell(&mut self) {
+        self.omni_lock_flags.set(OmniLockFlags::SUPPLY, false);
+        self.info_cell = None;
     }
 
     pub fn id(&self) -> &Identity {
@@ -499,6 +514,9 @@ impl OmniLockConfig {
             bytes.extend(since.to_le_bytes().iter());
         }
 
+        if let Some(info_cell) = self.info_cell.as_ref() {
+            bytes.extend(info_cell.as_bytes());
+        }
         bytes.freeze()
     }
 
