@@ -45,6 +45,7 @@ impl TxBuilder for OmniLockTransferBuilder {
     ) -> Result<TransactionView, TxBuilderError> {
         #[allow(clippy::mutable_key_type)]
         let mut cell_deps = HashSet::new();
+        #[allow(clippy::mutable_key_type)]
         let mut inputs = HashSet::new();
         let mut outputs = Vec::new();
         let mut outputs_data = Vec::new();

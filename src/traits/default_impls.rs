@@ -264,15 +264,16 @@ impl DefaultCellCollector {
         }
     }
 
-    /// Check if ckb-indexer synced with ckb node. This will check every 50ms for 10 times (500ms in total).
+    /// Check if ckb-indexer synced with ckb node. This will check every 50ms for 100 times (more than 5s in total, since ckb-indexer's poll interval is 2.0s).
     pub fn check_ckb_chain(&mut self) -> Result<(), CellCollectorError> {
         let tip_header = self
             .ckb_client
             .get_tip_header()
             .map_err(|err| CellCollectorError::Internal(err.into()))?;
-        let tip_hash = tip_header.hash;
-        let tip_number = tip_header.inner.number;
-        let mut retry = 10;
+
+        let mut tip_hash = tip_header.hash;
+        let mut tip_number = tip_header.inner.number;
+        let mut retry = 100;
         while retry > 0 {
             match self
                 .indexer_client
@@ -287,10 +288,26 @@ impl DefaultCellCollector {
                         thread::sleep(Duration::from_millis(50));
                         retry -= 1;
                         continue;
-                    } else if tip_hash == block_hash && tip_number == block_number {
-                        return Ok(());
+                    } else if tip_number == block_number {
+                        if tip_hash == block_hash {
+                            return Ok(());
+                        } else {
+                            return Err(CellCollectorError::Other(
+                                "ckb-indexer server inconsistent with currently connected ckb node"
+                                    .to_owned()
+                                    .into(),
+                            ));
+                        }
                     } else {
-                        return Err(CellCollectorError::Other("ckb-indexer server inconsistent with currently connected ckb node or not synced!".to_owned().into()));
+                        let tip_header = self
+                            .ckb_client
+                            .get_tip_header()
+                            .map_err(|err| CellCollectorError::Internal(err.into()))?;
+                        tip_hash = tip_header.hash;
+                        tip_number = tip_header.inner.number;
+                        if tip_hash == block_hash && tip_number == block_number {
+                            return Ok(());
+                        }
                     }
                 }
                 None => {

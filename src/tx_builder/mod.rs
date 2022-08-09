@@ -388,6 +388,7 @@ pub fn balance_tx_capacity(
     }
     let mut lock_script_idx = 0;
     let mut cell_deps = Vec::new();
+    #[allow(clippy::mutable_key_type)]
     let mut resolved_scripts = HashSet::new();
     let mut inputs = Vec::new();
     let mut change_output: Option<CellOutput> = None;
