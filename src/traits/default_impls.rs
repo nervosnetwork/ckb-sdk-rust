@@ -251,6 +251,7 @@ pub struct DefaultCellCollector {
     indexer_client: IndexerRpcClient,
     ckb_client: CkbRpcClient,
     offchain: OffchainCellCollector,
+    acceptable_indexer_leftbehind: u64,
 }
 
 impl DefaultCellCollector {
@@ -261,18 +262,26 @@ impl DefaultCellCollector {
             indexer_client,
             ckb_client,
             offchain: OffchainCellCollector::default(),
+            acceptable_indexer_leftbehind: 1,
         }
+    }
+
+    /// THe acceptable ckb-indexer leftbehind block number (default = 1)
+    pub fn acceptable_indexer_leftbehind(&self) -> u64 {
+        self.acceptable_indexer_leftbehind
+    }
+    /// Set the acceptable ckb-indexer leftbehind block number
+    pub fn set_acceptable_indexer_leftbehind(&mut self, value: u64) {
+        self.acceptable_indexer_leftbehind = value;
     }
 
     /// Check if ckb-indexer synced with ckb node. This will check every 50ms for 100 times (more than 5s in total, since ckb-indexer's poll interval is 2.0s).
     pub fn check_ckb_chain(&mut self) -> Result<(), CellCollectorError> {
-        let tip_header = self
+        let mut tip_number = self
             .ckb_client
-            .get_tip_header()
+            .get_tip_block_number()
             .map_err(|err| CellCollectorError::Internal(err.into()))?;
 
-        let mut tip_hash = tip_header.hash;
-        let mut tip_number = tip_header.inner.number;
         let mut retry = 100;
         while retry > 0 {
             match self
@@ -280,32 +289,20 @@ impl DefaultCellCollector {
                 .get_tip()
                 .map_err(|err| CellCollectorError::Internal(err.into()))?
             {
-                Some(Tip {
-                    block_hash,
-                    block_number,
-                }) => {
-                    if tip_number.value() > block_number.value() {
+                Some(Tip { block_number, .. }) => {
+                    if tip_number.value()
+                        > block_number.value() + self.acceptable_indexer_leftbehind
+                    {
                         thread::sleep(Duration::from_millis(50));
                         retry -= 1;
-                        continue;
                     } else if tip_number == block_number {
-                        if tip_hash == block_hash {
-                            return Ok(());
-                        } else {
-                            return Err(CellCollectorError::Other(
-                                "ckb-indexer server inconsistent with currently connected ckb node"
-                                    .to_owned()
-                                    .into(),
-                            ));
-                        }
+                        return Ok(());
                     } else {
-                        let tip_header = self
+                        tip_number = self
                             .ckb_client
-                            .get_tip_header()
+                            .get_tip_block_number()
                             .map_err(|err| CellCollectorError::Internal(err.into()))?;
-                        tip_hash = tip_header.hash;
-                        tip_number = tip_header.inner.number;
-                        if tip_hash == block_hash && tip_number == block_number {
+                        if tip_number == block_number {
                             return Ok(());
                         }
                     }
