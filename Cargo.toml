@@ -1,6 +1,6 @@
 [package]
 name = "ckb-sdk"
-version = "1.1.0"
+version = "1.1.1"
 authors = ["Linfeng Qian <thewawar@gmail.com>", "Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 license = "MIT"
@@ -51,6 +51,7 @@ default = []
 test = []
 
 [dev-dependencies]
+ckb-vm-definitions = "=0.21.3"
 clap = { version = "3.1.9", features = ["derive"] }
 httpmock = "0.6"
 async-global-executor = "=2.0.4"
