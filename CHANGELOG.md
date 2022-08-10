@@ -1,3 +1,19 @@
+
+# 2.0.0
+* Add omni-lock support
+  - Support administrator mode
+  - Support anyone-can-pay mode
+  - Support time-lock mode
+  - Support Unlock via owner's public key hash (sighash/multisig/ethereum)
+  - Support Unlock via owner's lock script hash
+* Add `acceptable_indexer_leftbehind` field in `DefaultCellCollector`
+* **breaking change**: change `CapacityProvider::new(lock_scripts)` argument type 
+  - from `Vec<(Script, WitnessArgs)>` to `Vec<(Script, WitnessArgs, SinceSource)>`
+  - Add `CapacityProvider::new_simple` for compatible with old function
+
+# 1.1.0
+* Update ckb to v0.104.0
+
 # 1.0.1
 * Fix sync_state rpc return data type
 
