@@ -594,7 +594,7 @@ pub fn balance_tx_capacity(
                         ));
                     }
                     let mut since_bytes = [0u8; 8];
-                    since_bytes.copy_from_slice(&lock_arg[*offset..]);
+                    since_bytes.copy_from_slice(&lock_arg[*offset..*offset + 8]);
                     u64::from_le_bytes(since_bytes)
                 }
                 SinceSource::Value(since_value) => *since_value,
