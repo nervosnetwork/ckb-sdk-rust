@@ -277,13 +277,12 @@ impl DefaultCellCollector {
 
     /// Check if ckb-indexer synced with ckb node. This will check every 50ms for 100 times (more than 5s in total, since ckb-indexer's poll interval is 2.0s).
     pub fn check_ckb_chain(&mut self) -> Result<(), CellCollectorError> {
-        let mut tip_number = self
+        let tip_number = self
             .ckb_client
             .get_tip_block_number()
             .map_err(|err| CellCollectorError::Internal(err.into()))?;
 
-        let mut retry = 100;
-        while retry > 0 {
+        for _ in 0..100 {
             match self
                 .indexer_client
                 .get_tip()
@@ -294,17 +293,8 @@ impl DefaultCellCollector {
                         > block_number.value() + self.acceptable_indexer_leftbehind
                     {
                         thread::sleep(Duration::from_millis(50));
-                        retry -= 1;
-                    } else if tip_number == block_number {
-                        return Ok(());
                     } else {
-                        tip_number = self
-                            .ckb_client
-                            .get_tip_block_number()
-                            .map_err(|err| CellCollectorError::Internal(err.into()))?;
-                        if tip_number == block_number {
-                            return Ok(());
-                        }
+                        return Ok(());
                     }
                 }
                 None => {
