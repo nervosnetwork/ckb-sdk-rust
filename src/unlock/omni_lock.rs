@@ -241,6 +241,55 @@ impl PartialEq for SmtProofEntryVec {
 }
 impl Eq for SmtProofEntryVec {}
 
+pub struct InfoCellData {
+    pub version: u8,
+    pub current_supply: u128,
+    pub max_supply: u128,
+    pub sudt_script_hash: H256,
+    pub other_data: Vec<u8>,
+}
+
+impl InfoCellData {
+    pub fn new_simple(current_supply: u128, max_supply: u128) -> Self {
+        InfoCellData::new(current_supply, max_supply, H256::default(), vec![])
+    }
+    pub fn new_with_script_hash(
+        current_supply: u128,
+        max_supply: u128,
+        sudt_script_hash: H256,
+    ) -> Self {
+        InfoCellData::new(current_supply, max_supply, sudt_script_hash, vec![])
+    }
+
+    pub fn new(
+        current_supply: u128,
+        max_supply: u128,
+        sudt_script_hash: H256,
+        other_data: Vec<u8>,
+    ) -> Self {
+        InfoCellData {
+            version: 0u8,
+            current_supply,
+            max_supply,
+            sudt_script_hash,
+            other_data,
+        }
+    }
+
+    pub fn pack(&self) -> Bytes {
+        let len = 65 + self.other_data.len();
+        let mut bytes = BytesMut::with_capacity(len);
+        bytes.put_u8(self.version);
+        bytes.put_u128_le(self.current_supply);
+        bytes.put_u128_le(self.max_supply);
+        bytes.extend(self.sudt_script_hash.as_bytes());
+        bytes.extend(&self.other_data);
+        let ret = bytes.freeze();
+        println!("======================================{}=========================================================={:#x}================================================================", ret.len(), ret);
+        ret
+    }
+}
+
 /// The administrator mode configuration.
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Default)]
 pub struct AdminConfig {
@@ -525,6 +574,10 @@ impl OmniLockConfig {
         self.admin_config.as_ref()
     }
 
+    pub fn get_info_cell(&self) -> Option<&H256> {
+        self.info_cell.as_ref()
+    }
+
     /// Calculate script args length
     pub fn get_args_len(&self) -> usize {
         let mut len = 22;
@@ -658,6 +711,7 @@ impl OmniLockConfig {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use ckb_types::packed::Byte;

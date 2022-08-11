@@ -8,7 +8,7 @@ use crate::{
         ACCOUNT0_KEY, ACCOUNT1_ARG, ACCOUNT1_KEY, ACCOUNT2_ARG, ACCOUNT2_KEY, ACCOUNT3_ARG,
         ACCOUNT3_KEY, ALWAYS_SUCCESS_BIN, FEE_RATE, SUDT_BIN,
     },
-    traits::SecpCkbRawKeySigner,
+    traits::{CellDepResolver, SecpCkbRawKeySigner},
     tx_builder::{
         acp::{AcpTransferBuilder, AcpTransferReceiver},
         balance_tx_capacity, fill_placeholder_witnesses,
@@ -19,8 +19,9 @@ use crate::{
     types::xudt_rce_mol::SmtProofEntryVec,
     unlock::{
         omni_lock::{AdminConfig, Identity},
-        IdentityFlag, MultisigConfig, OmniLockAcpConfig, OmniLockConfig, OmniLockScriptSigner,
-        OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker, SecpSighashUnlocker,
+        IdentityFlag, InfoCellData, MultisigConfig, OmniLockAcpConfig, OmniLockConfig,
+        OmniLockScriptSigner, OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker,
+        SecpSighashUnlocker,
     },
     util::blake160,
     ScriptId, Since,
@@ -28,13 +29,15 @@ use crate::{
 
 use ckb_crypto::secp::{Pubkey, SECP256K1};
 use ckb_hash::blake2b_256;
+use ckb_jsonrpc_types as json_types;
 use ckb_types::{
     bytes::Bytes,
     core::{FeeRate, ScriptHashType},
-    packed::{CellInput, CellOutput, Script, WitnessArgs},
+    packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
     H160, H256,
 };
+use rand::Rng;
 
 use crate::tx_builder::{unlock_tx, CapacityBalancer, TxBuilder};
 
@@ -1305,5 +1308,161 @@ fn test_omnilock_simple_hash_timelock(mut cfg: OmniLockConfig) {
         .collect::<Vec<_>>();
     assert_eq!(witnesses.len(), 1);
     assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+fn build_sudt_script(omnilock_hash: Byte32) -> Script {
+    let sudt_data_hash = H256::from(blake2b_256(SUDT_BIN));
+    Script::new_builder()
+        .code_hash(sudt_data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .args(omnilock_hash.as_bytes().pack())
+        .build()
+}
+
+fn build_info_cell_type_script() -> (Script, H256) {
+    let mut rng = rand::thread_rng();
+    let data_hash = H256::from(blake2b_256(ALWAYS_SUCCESS_BIN));
+    let mut args = vec![0u8; 32];
+    rng.fill(&mut args[..]);
+    let script = Script::new_builder()
+        .code_hash(data_hash.pack())
+        .hash_type(ScriptHashType::Data.into())
+        .args(Bytes::from(args).pack())
+        .build();
+    let script_hash = script.calc_script_hash();
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(script_hash.as_slice());
+    (script, H256::from_slice(&hash).unwrap())
+}
+
+#[test]
+fn test_omnilock_sudt_supply() {
+    let unlock_mode = OmniUnlockMode::Normal;
+    let sender_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))
+        .unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+    let mut cfg = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+    let (info_cell_type_script, type_script_hash) = build_info_cell_type_script();
+    cfg.set_info_cell(type_script_hash);
+
+    let sender = build_omnilock_script(&cfg);
+    let sudt_script = build_sudt_script(sender.calc_script_hash());
+    let mut ctx = init_context(
+        vec![
+            (OMNILOCK_BIN, true),
+            (SUDT_BIN, false),
+            (ALWAYS_SUCCESS_BIN, false),
+        ],
+        vec![
+            // (sender.clone(), Some(200 * ONE_CKB)),// transaction fee pool
+        ],
+    );
+    // build input cell
+    let mut info_cell = InfoCellData::new_with_script_hash(
+        2000,
+        10000,
+        H256::from_slice(sudt_script.calc_script_hash().as_slice()).unwrap(),
+    );
+    let input = CellInput::new(random_out_point(), 0);
+    let output = CellOutput::new_builder()
+        .capacity((1000 * ONE_CKB + 1000).pack())
+        .lock(sender.clone())
+        .type_(Some(info_cell_type_script.clone()).pack())
+        .build();
+
+    ctx.add_live_cell(input.clone(), output, info_cell.pack(), None);
+
+    info_cell.current_supply = 3000u128;
+    let output_supply_data = info_cell.pack();
+    let output_supply = CellOutput::new_builder()
+        .capacity(((1000 - 16) * ONE_CKB).pack())
+        .lock(sender.clone())
+        .type_(Some(info_cell_type_script).pack())
+        .build();
+
+    let mint_receiver = build_sighash_script(ACCOUNT1_ARG);
+    let mint_output = CellOutput::new_builder()
+        .capacity((16 * ONE_CKB).pack())
+        .type_(Some(sudt_script).pack())
+        .lock(mint_receiver.clone())
+        .build();
+
+    let builder = OmniLockTransferBuilder::new(
+        vec![
+            (output_supply.clone(), output_supply_data),
+            (mint_output, 1000u128.pack().as_bytes()),
+        ],
+        cfg.clone(),
+        None,
+    );
+    let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
+    let mut balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+    balancer.force_small_change_as_fee = Some(ONE_CKB); // TODO: use correct transaction fee
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let mut unlockers = build_omnilock_unlockers(account0_key, cfg.clone(), unlock_mode);
+
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account0_key]);
+    let script_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+
+    unlockers.insert(
+        ScriptId::new_type(SIGHASH_TYPE_HASH.clone()),
+        Box::new(script_unlocker),
+    );
+
+    let mut base_tx = builder
+        .build_base(&mut cell_collector, &ctx, &ctx, &ctx)
+        .unwrap();
+    base_tx = base_tx.as_advanced_builder().input(input).build();
+
+    if let Some(cell_dep) = ctx.resolve(&sender) {
+        base_tx = base_tx.as_advanced_builder().cell_dep(cell_dep).build();
+    }
+
+    println!(
+        "> base_tx: {}",
+        serde_json::to_string_pretty(&json_types::TransactionView::from(base_tx.clone())).unwrap()
+    );
+    let (tx_filled_witnesses, _) = fill_placeholder_witnesses(base_tx, &ctx, &unlockers).unwrap();
+    let mut tx = balance_tx_capacity(
+        &tx_filled_witnesses,
+        &balancer,
+        &mut cell_collector,
+        &ctx,
+        &ctx,
+        &ctx,
+    )
+    .unwrap();
+    println!(
+        "> tx: {}",
+        serde_json::to_string_pretty(&json_types::TransactionView::from(tx.clone())).unwrap()
+    );
+    let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
+    assert!(new_locked_groups.is_empty());
+
+    println!(
+        "> new_tx: {}",
+        serde_json::to_string_pretty(&json_types::TransactionView::from(new_tx.clone())).unwrap()
+    );
+    tx = new_tx;
+
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 3);
+    assert_eq!(tx.inputs().len(), 1);
+    assert_eq!(tx.outputs().len(), 2);
+    assert_eq!(tx.output(0).unwrap(), output_supply);
+    assert_eq!(tx.output(1).unwrap().lock(), mint_receiver);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 1);
+    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+
     ctx.verify(tx, FEE_RATE).unwrap();
 }

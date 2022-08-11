@@ -1,9 +1,0 @@
-import blockchain;
-
-table InfoCell {
-    version: byte,
-    current_supply: Uint128,
-    max_supply: Uint128,
-    sudt_script_hash: Uint256,
-    other_data: BytesOpt,
-}

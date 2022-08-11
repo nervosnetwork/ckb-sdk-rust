@@ -8,8 +8,6 @@ mod script_group;
 mod script_id;
 mod since;
 #[allow(clippy::all)]
-pub mod supply_mode;
-#[allow(clippy::all)]
 pub mod xudt_rce_mol;
 
 pub use address::{
