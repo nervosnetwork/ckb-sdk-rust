@@ -241,6 +241,60 @@ impl PartialEq for SmtProofEntryVec {
 }
 impl Eq for SmtProofEntryVec {}
 
+/// The info cell internal data of the supply mode.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct InfoCellData {
+    /// Current the version is 0, 1 byute
+    pub version: u8,
+    /// Only the current supply field can be updated during the transactions.16 bytes, little endian number
+    pub current_supply: u128,
+    /// The max supply limit.16 bytes, little endian number
+    pub max_supply: u128,
+    /// Type script hash. 32 bytes, sUDT type script hash
+    pub sudt_script_hash: H256,
+    /// Other data of variable length
+    pub other_data: Vec<u8>,
+}
+
+impl InfoCellData {
+    /// Create an InfoCellData with must exist fields.
+    /// # Arguments
+    /// * `current_supply` The current supply value
+    /// * `max_supply` The max supply value.
+    /// * `sudt_script_hash` The type script hash
+    pub fn new_simple(current_supply: u128, max_supply: u128, sudt_script_hash: H256) -> Self {
+        InfoCellData::new(current_supply, max_supply, sudt_script_hash, vec![])
+    }
+
+    /// Create an InfoCellData with all fields except `version` since it is 0 currently
+    pub fn new(
+        current_supply: u128,
+        max_supply: u128,
+        sudt_script_hash: H256,
+        other_data: Vec<u8>,
+    ) -> Self {
+        InfoCellData {
+            version: 0u8,
+            current_supply,
+            max_supply,
+            sudt_script_hash,
+            other_data,
+        }
+    }
+
+    /// Pack the data into bytes for the cell storage.
+    pub fn pack(&self) -> Bytes {
+        let len = 65 + self.other_data.len();
+        let mut bytes = BytesMut::with_capacity(len);
+        bytes.put_u8(self.version);
+        bytes.put_u128_le(self.current_supply);
+        bytes.put_u128_le(self.max_supply);
+        bytes.extend(self.sudt_script_hash.as_bytes());
+        bytes.extend(&self.other_data);
+        bytes.freeze()
+    }
+}
+
 /// The administrator mode configuration.
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Default)]
 pub struct AdminConfig {
@@ -363,6 +417,8 @@ pub struct OmniLockConfig {
     acp_config: Option<OmniLockAcpConfig>,
     /// 8 bytes since for time lock
     time_lock_config: Option<u64>,
+    // 32 bytes type script hash
+    info_cell: Option<H256>,
 }
 
 impl OmniLockConfig {
@@ -391,6 +447,7 @@ impl OmniLockConfig {
             admin_config: None,
             acp_config: None,
             time_lock_config: None,
+            info_cell: None,
         }
     }
     /// Create an ethereum algorithm omnilock with pubkey
@@ -422,10 +479,11 @@ impl OmniLockConfig {
             admin_config: None,
             acp_config: None,
             time_lock_config: None,
+            info_cell: None,
         }
     }
 
-    /// Set the admin cofiguration.
+    /// Set the admin cofiguration, and set the OmniLockFlags::ADMIN flag.
     /// # Arguments
     /// * `admin_config` The new admin config.
     pub fn set_admin_config(&mut self, admin_config: AdminConfig) {
@@ -433,32 +491,44 @@ impl OmniLockConfig {
         self.admin_config = Some(admin_config);
     }
 
-    /// Remote the admin configuration, set it to `None`
+    /// Remove the admin configuration, set it to `None`, and clear the OmniLockFlags::ADMIN flag.
     pub fn clear_admin_config(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::ADMIN, false);
         self.admin_config = None;
     }
 
-    /// Set the acp configura
+    /// Set the acp configuration, and set the OmniLockFlags::ACP flag.
     pub fn set_acp_config(&mut self, acp_config: OmniLockAcpConfig) {
         self.omni_lock_flags.set(OmniLockFlags::ACP, true);
         self.acp_config = Some(acp_config);
     }
 
-    /// Remove the acp config, set it to None.
+    /// Remove the acp config, set it to None, and clear the OmniLockFlags::ACP flag.
     pub fn clear_acp_config(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::ACP, false);
         self.acp_config = None;
     }
-    /// Set the time lock config with raw since value
+    /// Set the time lock config with raw since value, and set the OmniLockFlags::TIME_LOCK flag.
     pub fn set_time_lock_config(&mut self, since: u64) {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, true);
         self.time_lock_config = Some(since);
     }
-    /// Remove the time lock config, set it to None.
+    /// Remove the time lock config, set it to None, and clear the OmniLockFlags::TIME_LOCK flag.
     pub fn clear_time_lock_config(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, false);
         self.time_lock_config = None;
+    }
+
+    /// Set the info cell to the configuration, and set the OmniLockFlags::SUPPLY to omni_lock_flags.
+    pub fn set_info_cell(&mut self, type_script_hash: H256) {
+        self.omni_lock_flags.set(OmniLockFlags::SUPPLY, true);
+        self.info_cell = Some(type_script_hash);
+    }
+
+    /// Clear the info cell to None, and clear OmniLockFlags::SUPPLY from omni_lock_flags.
+    pub fn clear_info_cell(&mut self) {
+        self.omni_lock_flags.set(OmniLockFlags::SUPPLY, false);
+        self.info_cell = None;
     }
 
     pub fn id(&self) -> &Identity {
@@ -499,12 +569,19 @@ impl OmniLockConfig {
             bytes.extend(since.to_le_bytes().iter());
         }
 
+        if let Some(info_cell) = self.info_cell.as_ref() {
+            bytes.extend(info_cell.as_bytes());
+        }
         bytes.freeze()
     }
 
     /// return the internal reference of admin_config
     pub fn get_admin_config(&self) -> Option<&AdminConfig> {
         self.admin_config.as_ref()
+    }
+
+    pub fn get_info_cell(&self) -> Option<&H256> {
+        self.info_cell.as_ref()
     }
 
     /// Calculate script args length
@@ -640,6 +717,7 @@ impl OmniLockConfig {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use ckb_types::packed::Byte;
