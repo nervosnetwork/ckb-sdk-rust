@@ -483,7 +483,7 @@ impl OmniLockConfig {
         }
     }
 
-    /// Set the admin cofiguration.
+    /// Set the admin cofiguration, and set the OmniLockFlags::ADMIN flag.
     /// # Arguments
     /// * `admin_config` The new admin config.
     pub fn set_admin_config(&mut self, admin_config: AdminConfig) {
@@ -491,41 +491,41 @@ impl OmniLockConfig {
         self.admin_config = Some(admin_config);
     }
 
-    /// Remote the admin configuration, set it to `None`
+    /// Remove the admin configuration, set it to `None`, and clear the OmniLockFlags::ADMIN flag.
     pub fn clear_admin_config(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::ADMIN, false);
         self.admin_config = None;
     }
 
-    /// Set the acp configura
+    /// Set the acp configuration, and set the OmniLockFlags::ACP flag.
     pub fn set_acp_config(&mut self, acp_config: OmniLockAcpConfig) {
         self.omni_lock_flags.set(OmniLockFlags::ACP, true);
         self.acp_config = Some(acp_config);
     }
 
-    /// Remove the acp config, set it to None.
+    /// Remove the acp config, set it to None, and clear the OmniLockFlags::ACP flag.
     pub fn clear_acp_config(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::ACP, false);
         self.acp_config = None;
     }
-    /// Set the time lock config with raw since value
+    /// Set the time lock config with raw since value, and set the OmniLockFlags::TIME_LOCK flag.
     pub fn set_time_lock_config(&mut self, since: u64) {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, true);
         self.time_lock_config = Some(since);
     }
-    /// Remove the time lock config, set it to None.
+    /// Remove the time lock config, set it to None, and clear the OmniLockFlags::TIME_LOCK flag.
     pub fn clear_time_lock_config(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::TIME_LOCK, false);
         self.time_lock_config = None;
     }
 
-    /// Set the info cell to the configuration
+    /// Set the info cell to the configuration, and set the OmniLockFlags::SUPPLY to omni_lock_flags.
     pub fn set_info_cell(&mut self, type_script_hash: H256) {
         self.omni_lock_flags.set(OmniLockFlags::SUPPLY, true);
         self.info_cell = Some(type_script_hash);
     }
 
-    /// Clear the info cell to None.
+    /// Clear the info cell to None, and clear OmniLockFlags::SUPPLY from omni_lock_flags.
     pub fn clear_info_cell(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::SUPPLY, false);
         self.info_cell = None;
