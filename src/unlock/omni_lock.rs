@@ -241,26 +241,32 @@ impl PartialEq for SmtProofEntryVec {
 }
 impl Eq for SmtProofEntryVec {}
 
+/// The info cell internal data of the supply mode.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct InfoCellData {
+    /// Current the version is 0, 1 byute
     pub version: u8,
+    /// Only the current supply field can be updated during the transactions.16 bytes, little endian number
     pub current_supply: u128,
+    /// The max supply limit.16 bytes, little endian number
     pub max_supply: u128,
+    /// Type script hash. 32 bytes, sUDT type script hash
     pub sudt_script_hash: H256,
+    /// Other data of variable length
     pub other_data: Vec<u8>,
 }
 
 impl InfoCellData {
-    pub fn new_simple(current_supply: u128, max_supply: u128) -> Self {
-        InfoCellData::new(current_supply, max_supply, H256::default(), vec![])
-    }
-    pub fn new_with_script_hash(
-        current_supply: u128,
-        max_supply: u128,
-        sudt_script_hash: H256,
-    ) -> Self {
+    /// Create an InfoCellData with must exist fields.
+    /// # Arguments
+    /// * `current_supply` The current supply value
+    /// * `max_supply` The max supply value.
+    /// * `sudt_script_hash` The type script hash
+    pub fn new_simple(current_supply: u128, max_supply: u128, sudt_script_hash: H256) -> Self {
         InfoCellData::new(current_supply, max_supply, sudt_script_hash, vec![])
     }
 
+    /// Create an InfoCellData with all fields except `version` since it is 0 currently
     pub fn new(
         current_supply: u128,
         max_supply: u128,
@@ -276,6 +282,7 @@ impl InfoCellData {
         }
     }
 
+    /// Pack the data into bytes for the cell storage.
     pub fn pack(&self) -> Bytes {
         let len = 65 + self.other_data.len();
         let mut bytes = BytesMut::with_capacity(len);
@@ -284,9 +291,7 @@ impl InfoCellData {
         bytes.put_u128_le(self.max_supply);
         bytes.extend(self.sudt_script_hash.as_bytes());
         bytes.extend(&self.other_data);
-        let ret = bytes.freeze();
-        println!("======================================{}=========================================================={:#x}================================================================", ret.len(), ret);
-        ret
+        bytes.freeze()
     }
 }
 
@@ -520,6 +525,7 @@ impl OmniLockConfig {
         self.info_cell = Some(type_script_hash);
     }
 
+    /// Clear the info cell to None.
     pub fn clear_info_cell(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::SUPPLY, false);
         self.info_cell = None;

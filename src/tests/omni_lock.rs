@@ -29,7 +29,6 @@ use crate::{
 
 use ckb_crypto::secp::{Pubkey, SECP256K1};
 use ckb_hash::blake2b_256;
-use ckb_jsonrpc_types as json_types;
 use ckb_types::{
     bytes::Bytes,
     core::{FeeRate, ScriptHashType},
@@ -1360,7 +1359,7 @@ fn test_omnilock_sudt_supply() {
         ],
     );
     // build input cell
-    let mut info_cell = InfoCellData::new_with_script_hash(
+    let mut info_cell = InfoCellData::new_simple(
         2000,
         10000,
         H256::from_slice(sudt_script.calc_script_hash().as_slice()).unwrap(),
@@ -1423,10 +1422,6 @@ fn test_omnilock_sudt_supply() {
         base_tx = base_tx.as_advanced_builder().cell_dep(cell_dep).build();
     }
 
-    println!(
-        "> base_tx: {}",
-        serde_json::to_string_pretty(&json_types::TransactionView::from(base_tx.clone())).unwrap()
-    );
     let (tx_filled_witnesses, _) = fill_placeholder_witnesses(base_tx, &ctx, &unlockers).unwrap();
     let mut tx = balance_tx_capacity(
         &tx_filled_witnesses,
@@ -1437,17 +1432,10 @@ fn test_omnilock_sudt_supply() {
         &ctx,
     )
     .unwrap();
-    println!(
-        "> tx: {}",
-        serde_json::to_string_pretty(&json_types::TransactionView::from(tx.clone())).unwrap()
-    );
+
     let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
     assert!(new_locked_groups.is_empty());
 
-    println!(
-        "> new_tx: {}",
-        serde_json::to_string_pretty(&json_types::TransactionView::from(new_tx.clone())).unwrap()
-    );
     tx = new_tx;
 
     assert_eq!(tx.header_deps().len(), 0);
