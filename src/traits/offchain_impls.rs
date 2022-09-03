@@ -15,6 +15,7 @@ use crate::traits::{
     LiveCell, TransactionDependencyError, TransactionDependencyProvider,
 };
 use crate::types::ScriptId;
+use anyhow::anyhow;
 
 /// A offchain cell_dep resolver
 #[derive(Default, Clone)]
@@ -37,17 +38,11 @@ pub struct OffchainHeaderDepResolver {
 }
 
 impl HeaderDepResolver for OffchainHeaderDepResolver {
-    fn resolve_by_tx(
-        &self,
-        tx_hash: &Byte32,
-    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>> {
+    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
         let tx_hash: H256 = tx_hash.unpack();
         Ok(self.by_tx_hash.get(&tx_hash).cloned())
     }
-    fn resolve_by_number(
-        &self,
-        number: u64,
-    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>> {
+    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
         Ok(self.by_number.get(&number).cloned())
     }
 }
@@ -153,9 +148,10 @@ impl TransactionDependencyProvider for OffchainTransactionDependencyProvider {
         tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError> {
         let tx_hash: H256 = tx_hash.unpack();
-        self.txs.get(&tx_hash).cloned().ok_or_else(|| {
-            TransactionDependencyError::Other("offchain get_transaction".to_string().into())
-        })
+        self.txs
+            .get(&tx_hash)
+            .cloned()
+            .ok_or_else(|| TransactionDependencyError::Other(anyhow!("offchain get_transaction")))
     }
     // For get the output information of inputs or cell_deps, those cell should be live cell
     fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
@@ -164,9 +160,7 @@ impl TransactionDependencyProvider for OffchainTransactionDependencyProvider {
         self.cells
             .get(&(tx_hash, index))
             .map(|(output, _)| output.clone())
-            .ok_or_else(|| {
-                TransactionDependencyError::Other("offchain get_cell".to_string().into())
-            })
+            .ok_or_else(|| TransactionDependencyError::Other(anyhow!("offchain get_cell")))
     }
     // For get the output data information of inputs or cell_deps
     fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
@@ -175,15 +169,14 @@ impl TransactionDependencyProvider for OffchainTransactionDependencyProvider {
         self.cells
             .get(&(tx_hash, index))
             .map(|(_, data)| data.clone())
-            .ok_or_else(|| {
-                TransactionDependencyError::Other("offchain get_cell_data".to_string().into())
-            })
+            .ok_or_else(|| TransactionDependencyError::Other(anyhow!("offchain get_cell_data")))
     }
     // For get the header information of header_deps
     fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
         let block_hash: H256 = block_hash.unpack();
-        self.headers.get(&block_hash).cloned().ok_or_else(|| {
-            TransactionDependencyError::Other("offchain get_header".to_string().into())
-        })
+        self.headers
+            .get(&block_hash)
+            .cloned()
+            .ok_or_else(|| TransactionDependencyError::Other(anyhow!("offchain get_header")))
     }
 }

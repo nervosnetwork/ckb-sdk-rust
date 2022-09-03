@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use anyhow::anyhow;
 use ckb_types::{
     bytes::Bytes,
     core::{Capacity, FeeRate, ScriptHashType, TransactionBuilder, TransactionView},
@@ -52,9 +53,9 @@ impl TxBuilder for DaoDepositBuilder {
         _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError> {
         if self.receivers.is_empty() {
-            return Err(TxBuilderError::InvalidParameter(
-                "empty dao receivers".to_string().into(),
-            ));
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "empty dao receivers"
+            )));
         }
         let dao_type_script = Script::new_builder()
             .code_hash(DAO_TYPE_HASH.pack())
@@ -128,9 +129,9 @@ impl TxBuilder for DaoPrepareBuilder {
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError> {
         if self.items.is_empty() {
-            return Err(TxBuilderError::InvalidParameter(
-                "No cell to prepare".to_string().into(),
-            ));
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "No cell to prepare"
+            )));
         }
 
         let dao_type_script = Script::new_builder()
@@ -157,9 +158,9 @@ impl TxBuilder for DaoPrepareBuilder {
                 .ok_or_else(|| TxBuilderError::ResolveHeaderDepByTxHashFailed(tx_hash.clone()))?;
             let input_cell = tx_dep_provider.get_cell(&out_point)?;
             if input_cell.type_().to_opt().as_ref() != Some(&dao_type_script) {
-                return Err(TxBuilderError::InvalidParameter(
-                    "the input cell has invalid type script".to_string().into(),
-                ));
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
+                    "the input cell has invalid type script"
+                )));
             }
             let input_lock_cell_dep = cell_dep_resolver
                 .resolve(&input_cell.lock())
@@ -247,9 +248,9 @@ impl TxBuilder for DaoWithdrawBuilder {
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError> {
         if self.items.is_empty() {
-            return Err(TxBuilderError::InvalidParameter(
-                "No cell to withdraw".to_string().into(),
-            ));
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "No cell to withdraw"
+            )));
         }
 
         let dao_type_script = Script::new_builder()
@@ -281,22 +282,19 @@ impl TxBuilder for DaoWithdrawBuilder {
             prepare_block_hashes.push(prepare_header.hash());
             let input_cell = tx_dep_provider.get_cell(out_point)?;
             if input_cell.type_().to_opt().as_ref() != Some(&dao_type_script) {
-                return Err(TxBuilderError::InvalidParameter(
-                    "the input cell has invalid type script".to_string().into(),
-                ));
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
+                    "the input cell has invalid type script"
+                )));
             }
             let input_lock_cell_dep = cell_dep_resolver
                 .resolve(&input_cell.lock())
                 .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(input_cell.lock()))?;
             let data = tx_dep_provider.get_cell_data(out_point)?;
             if data.len() != 8 {
-                return Err(TxBuilderError::InvalidParameter(
-                    format!(
-                        "the input cell has invalid data length, expected: 8, got: {}",
-                        data.len()
-                    )
-                    .into(),
-                ));
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
+                    "the input cell has invalid data length, expected: 8, got: {}",
+                    data.len()
+                )));
             }
             let deposit_number = {
                 let mut number_bytes = [0u8; 8];
@@ -392,14 +390,11 @@ impl TxBuilder for DaoWithdrawBuilder {
                 outputs_data,
             } => {
                 if outputs.len() != outputs_data.len() {
-                    return Err(TxBuilderError::InvalidParameter(
-                        format!(
-                            "receiver outputs length ({}) not match with outputs data length ({})",
-                            outputs.len(),
-                            outputs_data.len(),
-                        )
-                        .into(),
-                    ));
+                    return Err(TxBuilderError::InvalidParameter(anyhow!(
+                        "receiver outputs length ({}) not match with outputs data length ({})",
+                        outputs.len(),
+                        outputs_data.len(),
+                    )));
                 }
                 (
                     outputs.clone(),

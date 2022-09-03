@@ -44,8 +44,8 @@ pub enum SignerError {
     InvalidTransaction(String),
 
     // maybe hardware wallet error or io error
-    #[error("other error: `{0}`")]
-    Other(#[from] Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// A signer abstraction, support signer type:
@@ -76,8 +76,8 @@ pub enum TransactionDependencyError {
     #[error("the resource is not found in the provider: `{0}`")]
     NotFound(String),
 
-    #[error("other error: `{0}`")]
-    Other(#[from] Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Provider dependency information of a transaction:
@@ -158,11 +158,11 @@ impl CellProvider for &dyn TransactionDependencyProvider {
 /// Cell collector errors
 #[derive(Error, Debug)]
 pub enum CellCollectorError {
-    #[error("internal error: `{0}`")]
-    Internal(Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Internal(anyhow::Error),
 
-    #[error("other error: `{0}`")]
-    Other(Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Other(anyhow::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -366,14 +366,8 @@ pub trait CellDepResolver {
 }
 pub trait HeaderDepResolver {
     /// Resolve header dep by trancation hash
-    fn resolve_by_tx(
-        &self,
-        tx_hash: &Byte32,
-    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>>;
+    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error>;
 
     /// Resolve header dep by block number
-    fn resolve_by_number(
-        &self,
-        number: u64,
-    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>>;
+    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error>;
 }

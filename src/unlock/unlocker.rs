@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use ckb_types::{
     bytes::Bytes,
     core::TransactionView,
@@ -34,8 +35,8 @@ pub enum UnlockError {
     #[error("there is an configuration error: `{0}`")]
     InvalidConfig(#[from] ConfigError),
 
-    #[error("other error: `{0}`")]
-    Other(#[from] Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Script unlock logic:
@@ -258,14 +259,14 @@ fn acp_is_unlocked(
     } else {
         let idx = acp_args[0];
         if idx >= 20 {
-            return Err(UnlockError::Other(format!("invalid min ckb amount config in script.args, got: {}, expected: value >=0 and value < 20", idx).into()));
+            return Err(UnlockError::Other(anyhow!("invalid min ckb amount config in script.args, got: {}, expected: value >=0 and value < 20", idx)));
         }
         POW10[idx as usize]
     };
     let min_udt_amount = if acp_args.len() > 1 {
         let idx = acp_args[1];
         if idx >= 39 {
-            return Err(UnlockError::Other(format!("invalid min udt amount config in script.args, got: {}, expected: value >=0 and value < 39", idx).into()));
+            return Err(UnlockError::Other(anyhow!("invalid min udt amount config in script.args, got: {}, expected: value >=0 and value < 39", idx)));
         }
         if idx >= 20 {
             (POW10[19] as u128) * (POW10[idx as usize - 19] as u128)
@@ -286,11 +287,10 @@ fn acp_is_unlocked(
         .input_indices
         .iter()
         .map(|idx| {
-            let input = tx.inputs().get(*idx).ok_or_else(|| {
-                UnlockError::Other(
-                    format!("input index in script group is out of bound: {}", idx).into(),
-                )
-            })?;
+            let input = tx
+                .inputs()
+                .get(*idx)
+                .ok_or_else(|| anyhow!("input index in script group is out of bound: {}", idx))?;
             let output = tx_dep_provider.get_cell(&input.previous_output())?;
             let output_data = tx_dep_provider.get_cell_data(&input.previous_output())?;
 
@@ -299,9 +299,10 @@ fn acp_is_unlocked(
                 .to_opt()
                 .map(|script| script.calc_script_hash());
             if type_hash_opt.is_some() && output_data.len() < 16 {
-                return Err(UnlockError::Other(
-                    format!("invalid udt output data in input cell: {:?}", input).into(),
-                ));
+                return Err(UnlockError::Other(anyhow!(
+                    "invalid udt output data in input cell: {:?}",
+                    input
+                )));
             }
             let udt_amount = if type_hash_opt.is_some() {
                 let mut amount_bytes = [0u8; 16];
@@ -328,12 +329,9 @@ fn acp_is_unlocked(
             .get(output_idx)
             .map(|data| data.raw_data())
             .ok_or_else(|| {
-                UnlockError::Other(
-                    format!(
-                        "output data index in script group is out of bound: {}",
-                        output_idx
-                    )
-                    .into(),
+                anyhow!(
+                    "output data index in script group is out of bound: {}",
+                    output_idx
                 )
             })?;
         let type_hash_opt = output
@@ -341,13 +339,10 @@ fn acp_is_unlocked(
             .to_opt()
             .map(|script| script.calc_script_hash());
         if type_hash_opt.is_some() && output_data.len() < 16 {
-            return Err(UnlockError::Other(
-                format!(
-                    "invalid udt output data in output cell: index={}",
-                    output_idx
-                )
-                .into(),
-            ));
+            return Err(UnlockError::Other(anyhow!(
+                "invalid udt output data in output cell: index={}",
+                output_idx
+            )));
         }
         let ckb_amount: u64 = output.capacity().unpack();
         let udt_amount = if type_hash_opt.is_some() {
@@ -488,13 +483,10 @@ impl ScriptUnlocker for ChequeUnlocker {
     ) -> Result<bool, UnlockError> {
         let args = script_group.script.args().raw_data();
         if args.len() != 40 {
-            return Err(UnlockError::Other(
-                format!(
-                    "invalid script args length, expected: 40, got: {}",
-                    args.len()
-                )
-                .into(),
-            ));
+            return Err(UnlockError::Other(anyhow!(
+                "invalid script args length, expected: 40, got: {}",
+                args.len()
+            )));
         }
         let inputs: Vec<_> = tx.inputs().into_iter().collect();
         let group_since_list: Vec<u64> = script_group
@@ -536,11 +528,9 @@ impl ScriptUnlocker for ChequeUnlocker {
                     .iter()
                     .any(|since| *since != CHEQUE_CLAIM_SINCE)
                 {
-                    return Err(UnlockError::Other(
+                    return Err(UnlockError::Other(anyhow!(
                         "claim action must have all zero since in cheque inputs"
-                            .to_string()
-                            .into(),
-                    ));
+                    )));
                 }
                 let witness_args = match WitnessArgs::from_slice(witness.as_ref()) {
                     Ok(args) => args,
@@ -558,11 +548,9 @@ impl ScriptUnlocker for ChequeUnlocker {
                 .iter()
                 .any(|since| *since != CHEQUE_WITHDRAW_SINCE)
             {
-                return Err(UnlockError::Other(
+                return Err(UnlockError::Other(anyhow!(
                     "withdraw action must have all relative 6 epochs since in cheque inputs"
-                        .to_string()
-                        .into(),
-                ));
+                )));
             }
             let witness_args = match WitnessArgs::from_slice(witness.as_ref()) {
                 Ok(args) => args,
@@ -667,13 +655,10 @@ impl ScriptUnlocker for OmniLockUnlocker {
         }
         let args = script_group.script.args().raw_data();
         if args.len() < 22 {
-            return Err(UnlockError::Other(
-                format!(
-                    "invalid script args length, expected not less than 22, got: {}",
-                    args.len()
-                )
-                .into(),
-            ));
+            return Err(UnlockError::Other(anyhow!(
+                "invalid script args length, expected not less than 22, got: {}",
+                args.len()
+            )));
         }
         // If use admin mode, should use the id in admin configuration
         let auth_content = if self.config.omni_lock_flags().contains(OmniLockFlags::ADMIN) {
@@ -688,9 +673,10 @@ impl ScriptUnlocker for OmniLockUnlocker {
 
         let inputs = tx.inputs();
         if tx.inputs().len() < 2 {
-            return Err(UnlockError::Other(
-                format!("expect more than 1 input, got: {}", inputs.len()).into(),
-            ));
+            return Err(UnlockError::Other(anyhow!(
+                "expect more than 1 input, got: {}",
+                inputs.len()
+            )));
         }
         let matched = tx
             .inputs()
@@ -707,9 +693,9 @@ impl ScriptUnlocker for OmniLockUnlocker {
                 }
             });
         if !matched {
-            return Err(UnlockError::Other(
-                "can not find according owner lock input".into(),
-            ));
+            return Err(UnlockError::Other(anyhow!(
+                "can not find according owner lock input"
+            )));
         }
         Ok(matched)
     }

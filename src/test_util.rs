@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 
+use anyhow::anyhow;
 use ckb_jsonrpc_types::Serialize;
 use rand::{thread_rng, Rng};
 use thiserror::Error;
@@ -335,9 +336,9 @@ impl TransactionDependencyProvider for Context {
         &self,
         _tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError> {
-        Err(TransactionDependencyError::Other(
-            "context get_transaction".to_string().into(),
-        ))
+        Err(TransactionDependencyError::Other(anyhow!(
+            "context get_transaction"
+        )))
     }
     // For get the output information of inputs or cell_deps, those cell should be live cell
     fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
@@ -360,10 +361,7 @@ impl TransactionDependencyProvider for Context {
 }
 
 impl HeaderDepResolver for Context {
-    fn resolve_by_tx(
-        &self,
-        tx_hash: &Byte32,
-    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>> {
+    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
         let mut header_opt = None;
         for item in &self.inputs {
             if item.input.previous_output().tx_hash() == *tx_hash {
@@ -386,10 +384,7 @@ impl HeaderDepResolver for Context {
         }
         Ok(None)
     }
-    fn resolve_by_number(
-        &self,
-        number: u64,
-    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>> {
+    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
         for mock_header in &self.header_deps {
             if number == mock_header.number() {
                 return Ok(Some(mock_header.clone()));
