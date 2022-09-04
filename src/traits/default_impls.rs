@@ -573,3 +573,13 @@ impl Drop for SecpCkbRawKeySigner {
         }
     }
 }
+#[cfg(test)]
+mod anyhow_tests {
+    use anyhow::anyhow;
+    #[test]
+    fn test_parse_genesis_info_error() {
+        let error = super::ParseGenesisInfoError::DataHashNotFound("DataHashNotFound".to_string());
+        let error = anyhow!(error);
+        assert_eq!("data not found: `DataHashNotFound`", error.to_string());
+    }
+}

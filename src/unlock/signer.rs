@@ -797,3 +797,16 @@ impl ScriptSigner for OmniLockScriptSigner {
         }
     }
 }
+
+#[cfg(test)]
+mod anyhow_tests {
+    use anyhow::anyhow;
+    #[test]
+    fn test_script_sign_error() {
+        let error = anyhow!(super::ScriptSignError::WitnessNotEnough);
+        assert_eq!(
+            "witness count in current transaction not enough to cover current script group",
+            error.to_string()
+        );
+    }
+}

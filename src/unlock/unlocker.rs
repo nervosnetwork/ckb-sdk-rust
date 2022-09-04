@@ -720,3 +720,13 @@ impl ScriptUnlocker for OmniLockUnlocker {
         fill_witness_lock(tx, script_group, lock_field)
     }
 }
+#[cfg(test)]
+mod anyhow_tests {
+    use anyhow::anyhow;
+    #[test]
+    fn test_unlock_error() {
+        let error = super::UnlockError::InvalidWitnessArgs(0);
+        let error = anyhow!(error);
+        assert_eq!("invalid witness args: witness index=`0`", error.to_string());
+    }
+}

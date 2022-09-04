@@ -521,3 +521,14 @@ impl<T: Serialize> MockRpcResult<T> {
         serde_json::to_string(&self).unwrap()
     }
 }
+
+#[cfg(test)]
+mod anyhow_tests {
+    use anyhow::anyhow;
+    #[test]
+    fn test_error() {
+        let error = super::Error::VerifyScript("VerifyScript".to_string());
+        let error = anyhow!(error);
+        assert_eq!("verify script error: VerifyScript", error.to_string())
+    }
+}

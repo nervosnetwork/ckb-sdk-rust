@@ -704,3 +704,32 @@ pub fn unlock_tx(
     }
     Ok((tx, not_unlocked))
 }
+
+#[cfg(test)]
+mod anyhow_tests {
+    use anyhow::anyhow;
+    #[test]
+    fn test_signer_error() {
+        use super::TxBuilderError;
+        let error = TxBuilderError::ResolveHeaderDepByNumberFailed(0);
+        let error = anyhow!(error);
+        assert_eq!(
+            "resolve header dep by block number failed: `0`",
+            error.to_string()
+        );
+    }
+
+    #[test]
+    fn test_transaction_fee_error() {
+        let error = super::TransactionFeeError::CapacityOverflow(0);
+        let error = anyhow!(error);
+        assert_eq!("capacity sub overflow, delta: `0`", error.to_string());
+    }
+
+    #[test]
+    fn test_balance_tx_capacity_error() {
+        let eror = super::BalanceTxCapacityError::EmptyCapacityProvider;
+        let error = anyhow!(eror);
+        assert_eq!("empty capacity provider", error.to_string())
+    }
+}

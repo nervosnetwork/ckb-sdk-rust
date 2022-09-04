@@ -752,3 +752,16 @@ mod tests {
         assert_eq!(cfg, cfg2);
     }
 }
+#[cfg(test)]
+mod anyhow_tests {
+    use anyhow::anyhow;
+    #[test]
+    fn test_config_error() {
+        let error = super::ConfigError::NoAdminConfig;
+        let error = anyhow!(error);
+        assert_eq!(
+            "there is no admin configuration in the OmniLockConfig",
+            error.to_string()
+        );
+    }
+}
