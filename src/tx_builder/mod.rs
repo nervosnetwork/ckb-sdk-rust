@@ -7,6 +7,7 @@ pub mod udt;
 
 use std::collections::{HashMap, HashSet};
 
+use anyhow::anyhow;
 use thiserror::Error;
 
 use ckb_types::{
@@ -29,7 +30,7 @@ use crate::util::calculate_dao_maximum_withdraw4;
 #[derive(Error, Debug)]
 pub enum TxBuilderError {
     #[error("invalid parameter: `{0}`")]
-    InvalidParameter(Box<dyn std::error::Error>),
+    InvalidParameter(anyhow::Error),
 
     #[error("transaction dependency provider error: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
@@ -53,7 +54,7 @@ pub enum TxBuilderError {
     Unlock(#[from] UnlockError),
 
     #[error("other error: `{0}`")]
-    Other(Box<dyn std::error::Error>),
+    Other(anyhow::Error),
 }
 
 /// Transaction Builder interface
@@ -141,7 +142,7 @@ pub enum TransactionFeeError {
     TxDep(#[from] TransactionDependencyError),
 
     #[error("header dependency provider error: `{0}`")]
-    HeaderDep(Box<dyn std::error::Error>),
+    HeaderDep(#[from] anyhow::Error),
 
     #[error("out point error: `{0}`")]
     OutPoint(#[from] OutPointError),
@@ -182,13 +183,10 @@ pub fn tx_fee(
                 .resolve_by_tx(&tx_hash)
                 .map_err(TransactionFeeError::HeaderDep)?
                 .ok_or_else(|| {
-                    TransactionFeeError::HeaderDep(
-                        format!(
-                            "resolve prepare header by transaction hash failed: {}",
-                            tx_hash
-                        )
-                        .into(),
-                    )
+                    TransactionFeeError::HeaderDep(anyhow!(
+                        "resolve prepare header by transaction hash failed: {}",
+                        tx_hash
+                    ))
                 })?;
             let data = tx_dep_provider.get_cell_data(&input.previous_output())?;
             assert_eq!(data.len(), 8);
@@ -201,13 +199,10 @@ pub fn tx_fee(
                 .resolve_by_number(deposit_number)
                 .map_err(TransactionFeeError::HeaderDep)?
                 .ok_or_else(|| {
-                    TransactionFeeError::HeaderDep(
-                        format!(
-                            "resolve deposit header by block number failed: {}",
-                            deposit_number
-                        )
-                        .into(),
-                    )
+                    TransactionFeeError::HeaderDep(anyhow!(
+                        "resolve deposit header by block number failed: {}",
+                        deposit_number
+                    ))
                 })?;
             let occupied_capacity = cell
                 .occupied_capacity(Capacity::bytes(data.len()).unwrap())
@@ -295,7 +290,7 @@ pub enum BalanceTxCapacityError {
     ResolveCellDepFailed(Script),
 
     #[error("invalid witness args: `{0}`")]
-    InvalidWitnessArgs(Box<dyn std::error::Error>),
+    InvalidWitnessArgs(anyhow::Error),
 
     #[error("Fail to parse since value from args, offset: `{0}`, args length: `{1}`")]
     InvalidSinceValue(usize, usize),

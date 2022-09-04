@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use anyhow::anyhow;
 use ckb_hash::{blake2b_256, new_blake2b};
 use ckb_types::{
     bytes::{Bytes, BytesMut},
@@ -47,8 +48,8 @@ pub enum ScriptSignError {
     #[error("there is an configuration error: `{0}`")]
     InvalidConfig(#[from] ConfigError),
 
-    #[error("other error: `{0}`")]
-    Other(#[from] Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Script signer logic:
@@ -309,14 +310,11 @@ impl ScriptSigner for SecpMultisigScriptSigner {
             .map(|data| data.raw_data().as_ref().to_vec())
             .unwrap_or(zero_lock);
         if lock_field.len() != config_data.len() + self.config.threshold() as usize * 65 {
-            return Err(ScriptSignError::Other(
-                format!(
-                    "invalid witness lock field length: {}, expected: {}",
-                    lock_field.len(),
-                    config_data.len() + self.config.threshold() as usize * 65,
-                )
-                .into(),
-            ));
+            return Err(ScriptSignError::Other(anyhow!(
+                "invalid witness lock field length: {}, expected: {}",
+                lock_field.len(),
+                config_data.len() + self.config.threshold() as usize * 65,
+            )));
         }
         for signature in signatures {
             let mut idx = config_data.len();
@@ -580,14 +578,11 @@ impl OmniLockScriptSigner {
         let lock_field = current_witness.lock().to_opt().map(|data| data.raw_data());
         let omnilock_witnesslock = if let Some(lock_field) = lock_field {
             if lock_field.len() != zero_lock_len {
-                return Err(ScriptSignError::Other(
-                    format!(
-                        "invalid witness lock field length: {}, expected: {}",
-                        lock_field.len(),
-                        zero_lock_len,
-                    )
-                    .into(),
-                ));
+                return Err(ScriptSignError::Other(anyhow!(
+                    "invalid witness lock field length: {}, expected: {}",
+                    lock_field.len(),
+                    zero_lock_len,
+                )));
             }
             OmniLockWitnessLock::from_slice(lock_field.as_ref())?
         } else {

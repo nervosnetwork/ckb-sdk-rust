@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use anyhow::anyhow;
 use ckb_crypto::secp::Pubkey;
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -215,14 +216,11 @@ impl DefaultHeaderDepResolver {
     }
 }
 impl HeaderDepResolver for DefaultHeaderDepResolver {
-    fn resolve_by_tx(
-        &self,
-        tx_hash: &Byte32,
-    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>> {
+    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
         let mut client = self.ckb_client.lock();
         if let Some(block_hash) = client
             .get_transaction(tx_hash.unpack())
-            .map_err(Box::new)?
+            .map_err(|e| anyhow!(e))?
             .and_then(|tx_with_status| tx_with_status.tx_status.block_hash)
         {
             Ok(client
@@ -233,15 +231,12 @@ impl HeaderDepResolver for DefaultHeaderDepResolver {
             Ok(None)
         }
     }
-    fn resolve_by_number(
-        &self,
-        number: u64,
-    ) -> Result<Option<HeaderView>, Box<dyn std::error::Error>> {
+    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
         Ok(self
             .ckb_client
             .lock()
             .get_header_by_number(number.into())
-            .map_err(Box::new)?
+            .map_err(|e| anyhow!(e))?
             .map(Into::into))
     }
 }
@@ -298,17 +293,15 @@ impl DefaultCellCollector {
                     }
                 }
                 None => {
-                    return Err(CellCollectorError::Other(
-                        "ckb-indexer server not synced".to_owned().into(),
-                    ));
+                    return Err(CellCollectorError::Other(anyhow!(
+                        "ckb-indexer server not synced"
+                    )));
                 }
             }
         }
-        Err(CellCollectorError::Other(
+        Err(CellCollectorError::Other(anyhow!(
             "ckb-indexer server inconsistent with currently connected ckb node or not synced!"
-                .to_owned()
-                .into(),
-        ))
+        )))
     }
 }
 
@@ -319,7 +312,7 @@ impl CellCollector for DefaultCellCollector {
         apply_changes: bool,
     ) -> Result<(Vec<LiveCell>, u64), CellCollectorError> {
         let max_mature_number = get_max_mature_number(&mut self.ckb_client)
-            .map_err(|err| CellCollectorError::Internal(err.into()))?;
+            .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?;
 
         self.offchain.max_mature_number = max_mature_number;
         let (mut cells, rest_cells, mut total_capacity) = self.offchain.collect(query);
@@ -437,9 +430,10 @@ impl DefaultTransactionDependencyProvider {
             .get_live_cell(out_point.clone().into(), true)
             .map_err(|err| TransactionDependencyError::Other(err.into()))?;
         if cell_with_status.status != "live" {
-            return Err(TransactionDependencyError::Other(
-                format!("invalid cell status: {:?}", cell_with_status.status).into(),
-            ));
+            return Err(TransactionDependencyError::Other(anyhow!(
+                "invalid cell status: {:?}",
+                cell_with_status.status
+            )));
         }
         let cell = cell_with_status.cell.unwrap();
         let output = CellOutput::from(cell.output);
@@ -467,9 +461,10 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
             .map_err(|err| TransactionDependencyError::Other(err.into()))?
             .ok_or_else(|| TransactionDependencyError::NotFound("transaction".to_string()))?;
         if tx_with_status.tx_status.status != json_types::Status::Committed {
-            return Err(TransactionDependencyError::Other(
-                format!("invalid transaction status: {:?}", tx_with_status.tx_status).into(),
-            ));
+            return Err(TransactionDependencyError::Other(anyhow!(
+                "invalid transaction status: {:?}",
+                tx_with_status.tx_status
+            )));
         }
         let tx = Transaction::from(tx_with_status.transaction.unwrap().inner).into_view();
         inner.tx_cache.put(tx_hash.clone(), tx.clone());

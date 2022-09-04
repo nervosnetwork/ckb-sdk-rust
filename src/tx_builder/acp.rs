@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use anyhow::anyhow;
 use ckb_types::{
     core::{TransactionBuilder, TransactionView},
     packed::{CellInput, Script},
@@ -53,13 +54,10 @@ impl TxBuilder for AcpTransferBuilder {
             let query = CellQueryOptions::new_lock(receiver.lock_script.clone());
             let (cells, input_capacity) = cell_collector.collect_live_cells(&query, true)?;
             if cells.is_empty() {
-                return Err(TxBuilderError::Other(
-                    format!(
-                        "can not found cell by lock script: {:?}",
-                        receiver.lock_script
-                    )
-                    .into(),
-                ));
+                return Err(TxBuilderError::Other(anyhow!(
+                    "can not found cell by lock script: {:?}",
+                    receiver.lock_script
+                )));
             }
             let input_cell = &cells[0];
             let input = CellInput::new(input_cell.out_point.clone(), 0);

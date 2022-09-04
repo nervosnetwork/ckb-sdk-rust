@@ -1,5 +1,6 @@
 mod sudt;
 
+use anyhow::anyhow;
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     core::{Capacity, TransactionBuilder, TransactionView},
@@ -110,13 +111,11 @@ impl UdtTargetReceiver {
                     if *capacity >= base_occupied_capacity {
                         *capacity
                     } else {
-                        return Err(TxBuilderError::Other(
-                            format!(
-                                "Not enough capacity to hold a receiver cell, min: {}, actual: {}",
-                                base_occupied_capacity, *capacity,
-                            )
-                            .into(),
-                        ));
+                        return Err(TxBuilderError::Other(anyhow!(
+                            "Not enough capacity to hold a receiver cell, min: {}, actual: {}",
+                            base_occupied_capacity,
+                            *capacity,
+                        )));
                     }
                 } else {
                     base_occupied_capacity
@@ -141,13 +140,10 @@ impl UdtTargetReceiver {
                 let (receiver_cells, _) =
                     cell_collector.collect_live_cells(&receiver_query, true)?;
                 if receiver_cells.is_empty() {
-                    return Err(TxBuilderError::Other(
-                        format!(
-                            "update receiver cell failed, cell not found, lock={:?}",
-                            self.lock_script
-                        )
-                        .into(),
-                    ));
+                    return Err(TxBuilderError::Other(anyhow!(
+                        "update receiver cell failed, cell not found, lock={:?}",
+                        self.lock_script
+                    )));
                 }
 
                 let receiver_cell_dep =
@@ -212,9 +208,7 @@ impl TxBuilder for UdtIssueBuilder {
 
         let (owner_cells, _) = cell_collector.collect_live_cells(&owner_query, true)?;
         if owner_cells.is_empty() {
-            return Err(TxBuilderError::Other(
-                "owner cell not found".to_string().into(),
-            ));
+            return Err(TxBuilderError::Other(anyhow!("owner cell not found")));
         }
         let mut inputs = vec![CellInput::new(owner_cells[0].out_point.clone(), 0)];
 
@@ -288,9 +282,7 @@ impl TxBuilder for UdtTransferBuilder {
         };
         let (sender_cells, _) = cell_collector.collect_live_cells(&sender_query, true)?;
         if sender_cells.is_empty() {
-            return Err(TxBuilderError::Other(
-                "sender cell not found".to_string().into(),
-            ));
+            return Err(TxBuilderError::Other(anyhow!("sender cell not found")));
         }
         let sender_cell = &sender_cells[0];
 
@@ -310,13 +302,11 @@ impl TxBuilder for UdtTransferBuilder {
         let input_total = u128::from_le_bytes(amount_bytes);
         let output_total: u128 = self.receivers.iter().map(|receiver| receiver.amount).sum();
         if input_total < output_total {
-            return Err(TxBuilderError::Other(
-                format!(
-                    "sender udt amount not enough, expected at least: {}, actual: {}",
-                    output_total, input_total
-                )
-                .into(),
-            ));
+            return Err(TxBuilderError::Other(anyhow!(
+                "sender udt amount not enough, expected at least: {}, actual: {}",
+                output_total,
+                input_total
+            )));
         }
 
         let sender_output_data = {

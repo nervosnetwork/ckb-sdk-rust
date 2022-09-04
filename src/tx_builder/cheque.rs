@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use anyhow::anyhow;
 use ckb_types::{
     bytes::Bytes,
     core::{Capacity, ScriptHashType, TransactionBuilder, TransactionView},
@@ -51,9 +52,9 @@ impl TxBuilder for ChequeClaimBuilder {
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError> {
         if self.inputs.is_empty() {
-            return Err(TxBuilderError::InvalidParameter(
-                "empty cheque inputs".to_string().into(),
-            ));
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "empty cheque inputs"
+            )));
         }
 
         #[allow(clippy::mutable_key_type)]
@@ -66,9 +67,7 @@ impl TxBuilder for ChequeClaimBuilder {
         let receiver_input_data =
             tx_dep_provider.get_cell_data(&self.receiver_input.previous_output())?;
         let receiver_type_script = receiver_input_cell.type_().to_opt().ok_or_else(|| {
-            TxBuilderError::InvalidParameter(
-                "receiver input missing type script".to_string().into(),
-            )
+            TxBuilderError::InvalidParameter(anyhow!("receiver input missing type script"))
         })?;
         let receiver_input_lock_cell_dep =
             cell_dep_resolver
@@ -77,13 +76,10 @@ impl TxBuilder for ChequeClaimBuilder {
         cell_deps.insert(receiver_input_lock_cell_dep);
 
         if receiver_input_data.len() != 16 {
-            return Err(TxBuilderError::InvalidParameter(
-                format!(
-                    "invalid receiver input cell data length, expected: 16, got: {}",
-                    receiver_input_data.len()
-                )
-                .into(),
-            ));
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "invalid receiver input cell data length, expected: 16, got: {}",
+                receiver_input_data.len()
+            )));
         }
         let receiver_input_amount = {
             let mut amount_bytes = [0u8; 16];
@@ -104,28 +100,23 @@ impl TxBuilder for ChequeClaimBuilder {
             let input_cell = tx_dep_provider.get_cell(&out_point)?;
             let input_data = tx_dep_provider.get_cell_data(&out_point)?;
             let type_script = receiver_input_cell.type_().to_opt().ok_or_else(|| {
-                TxBuilderError::InvalidParameter(
-                    format!("cheque input missing type script: {}", input).into(),
-                )
+                TxBuilderError::InvalidParameter(anyhow!(
+                    "cheque input missing type script: {}",
+                    input
+                ))
             })?;
 
             if input_data.len() != 16 {
-                return Err(TxBuilderError::InvalidParameter(
-                    format!(
-                        "invalid cheque input cell data length, expected: 16, got: {}",
-                        input_data.len()
-                    )
-                    .into(),
-                ));
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
+                    "invalid cheque input cell data length, expected: 16, got: {}",
+                    input_data.len()
+                )));
             }
             if type_script != receiver_type_script {
-                return Err(TxBuilderError::InvalidParameter(
-                    format!(
-                        "cheque input's type script not same with receiver input's type script: {}",
-                        input
-                    )
-                    .into(),
-                ));
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
+                    "cheque input's type script not same with receiver input's type script: {}",
+                    input
+                )));
             }
             let input_amount = {
                 let mut amount_bytes = [0u8; 16];
@@ -138,11 +129,9 @@ impl TxBuilder for ChequeClaimBuilder {
             if last_lock_script.is_none() {
                 last_lock_script = Some(lock_script.clone());
             } else if last_lock_script.as_ref() != Some(&lock_script) {
-                return Err(TxBuilderError::InvalidParameter(
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
                     "all cheque input lock script must be the same"
-                        .to_string()
-                        .into(),
-                ));
+                )));
             }
             let lock_cell_dep = cell_dep_resolver
                 .resolve(&lock_script)
@@ -156,21 +145,16 @@ impl TxBuilder for ChequeClaimBuilder {
         let cheque_lock_script = last_lock_script.unwrap();
         let cheque_lock_args = cheque_lock_script.args().raw_data();
         if cheque_lock_args.len() != 40 {
-            return Err(TxBuilderError::InvalidParameter(
-                format!(
-                    "invalid cheque lock args length, expected: 40, got: {}",
-                    cheque_lock_args.len()
-                )
-                .into(),
-            ));
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "invalid cheque lock args length, expected: 40, got: {}",
+                cheque_lock_args.len()
+            )));
         }
         let sender_lock_hash = self.sender_lock_script.calc_script_hash();
         if sender_lock_hash.as_slice()[0..20] != cheque_lock_args.as_ref()[20..40] {
-            return Err(TxBuilderError::InvalidParameter(
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
                 "sender lock script is not match with cheque lock script args"
-                    .to_string()
-                    .into(),
-            ));
+            )));
         }
 
         let receiver_output = receiver_input_cell;
@@ -232,9 +216,9 @@ impl TxBuilder for ChequeWithdrawBuilder {
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError> {
         if self.out_points.is_empty() {
-            return Err(TxBuilderError::InvalidParameter(
-                "empty withdraw inputs".to_string().into(),
-            ));
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "empty withdraw inputs"
+            )));
         }
 
         let mut inputs = Vec::new();
@@ -247,28 +231,25 @@ impl TxBuilder for ChequeWithdrawBuilder {
             let input_data = tx_dep_provider.get_cell_data(out_point)?;
             let lock_script = input_cell.lock();
             let type_script = input_cell.type_().to_opt().ok_or_else(|| {
-                TxBuilderError::InvalidParameter(
-                    format!("cheque input missing type script: {}", out_point).into(),
-                )
+                TxBuilderError::InvalidParameter(anyhow!(
+                    "cheque input missing type script: {}",
+                    out_point
+                ))
             })?;
 
             if last_lock_script.is_none() {
                 last_lock_script = Some(lock_script.clone());
             } else if last_lock_script.as_ref() != Some(&lock_script) {
-                return Err(TxBuilderError::InvalidParameter(
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
                     "all cheque input lock script must be the same"
-                        .to_string()
-                        .into(),
-                ));
+                )));
             }
             if last_type_script.is_none() {
                 last_type_script = Some(type_script.clone());
             } else if last_type_script.as_ref() != Some(&type_script) {
-                return Err(TxBuilderError::InvalidParameter(
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
                     "all cheque input type script must be the same"
-                        .to_string()
-                        .into(),
-                ));
+                )));
             }
 
             let input_amount = {
@@ -296,33 +277,25 @@ impl TxBuilder for ChequeWithdrawBuilder {
 
         let cheque_lock_args = cheque_lock_script.args().raw_data();
         if cheque_lock_args.len() != 40 {
-            return Err(TxBuilderError::InvalidParameter(
-                format!(
-                    "invalid cheque lock args length, expected: 40, got: {}",
-                    cheque_lock_args.len()
-                )
-                .into(),
-            ));
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "invalid cheque lock args length, expected: 40, got: {}",
+                cheque_lock_args.len()
+            )));
         }
         if self.sender_lock_script.code_hash() != SIGHASH_TYPE_HASH.pack()
             || self.sender_lock_script.hash_type() != ScriptHashType::Type.into()
             || self.sender_lock_script.args().raw_data().len() != 20
         {
-            return Err(TxBuilderError::InvalidParameter(
-                format!(
-                    "invalid sender lock script, expected: sighash address, got: {:?}",
-                    self.sender_lock_script
-                )
-                .into(),
-            ));
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "invalid sender lock script, expected: sighash address, got: {:?}",
+                self.sender_lock_script
+            )));
         }
         let sender_lock_hash = self.sender_lock_script.calc_script_hash();
         if sender_lock_hash.as_slice()[0..20] != cheque_lock_args.as_ref()[20..40] {
-            return Err(TxBuilderError::InvalidParameter(
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
                 "sender lock script is match with cheque lock script args"
-                    .to_string()
-                    .into(),
-            ));
+            )));
         }
 
         let mut cell_deps = vec![cheque_cell_dep, type_cell_dep];
@@ -338,9 +311,10 @@ impl TxBuilder for ChequeWithdrawBuilder {
                 query.data_len_range = Some(ValueRangeOption::new_min(16));
                 let (acp_cells, _) = cell_collector.collect_live_cells(&query, true)?;
                 if acp_cells.is_empty() {
-                    return Err(TxBuilderError::Other(
-                        format!("can not find acp cell by lock script: {:?}", acp_lock).into(),
-                    ));
+                    return Err(TxBuilderError::Other(anyhow!(
+                        "can not find acp cell by lock script: {:?}",
+                        acp_lock
+                    )));
                 }
                 let acp_cell = &acp_cells[0];
                 let mut amount_bytes = [0u8; 16];

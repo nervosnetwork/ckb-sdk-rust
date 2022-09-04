@@ -374,8 +374,8 @@ pub enum ConfigError {
     #[error("there is no multisig config in the OmniLockConfig")]
     NoMultiSigConfig,
 
-    #[error("other error: `{0}`")]
-    Other(#[from] Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Default)]
