@@ -371,3 +371,53 @@ pub trait HeaderDepResolver {
     /// Resolve header dep by block number
     fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error>;
 }
+
+// test cases make sure new added exception won't breadk `anyhow!(e_variable)` usage,
+#[cfg(test)]
+mod anyhow_tests {
+    use anyhow::anyhow;
+    #[test]
+    fn test_signer_error() {
+        use super::SignerError;
+        let error = anyhow!(SignerError::IdNotFound);
+        assert_eq!("the id is not found in the signer", error.to_string());
+        let error = anyhow!(SignerError::InvalidMessage("InvalidMessage".to_string()));
+        assert_eq!(
+            "invalid message, reason: `InvalidMessage`",
+            error.to_string()
+        );
+        let error = anyhow!(SignerError::InvalidTransaction(
+            "InvalidTransaction".to_string()
+        ));
+        assert_eq!(
+            "invalid transaction, reason: `InvalidTransaction`",
+            error.to_string()
+        );
+        let error = anyhow!(SignerError::Other(anyhow::anyhow!("Other")));
+        assert_eq!("Other", error.to_string());
+    }
+
+    #[test]
+    fn test_transaction_dependency_error() {
+        use super::TransactionDependencyError;
+        let error = TransactionDependencyError::NotFound("NotFound".to_string());
+        let error = anyhow!(error);
+
+        assert_eq!(
+            "the resource is not found in the provider: `NotFound`",
+            error.to_string()
+        );
+    }
+
+    #[test]
+    fn test_cell_collector_error() {
+        use super::CellCollectorError;
+        let error = CellCollectorError::Internal(anyhow!("Internel"));
+        let error = anyhow!(error);
+        assert_eq!("Internel", error.to_string());
+
+        let error = CellCollectorError::Other(anyhow!("Other"));
+        let error = anyhow!(error);
+        assert_eq!("Other", error.to_string());
+    }
+}

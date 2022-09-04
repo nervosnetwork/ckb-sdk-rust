@@ -73,3 +73,19 @@ macro_rules! serialize_parameters {
     () => ( serde_json::Value::Null );
     ($($arg_name:ident,)+) => ( serde_json::to_value(($($arg_name,)+))?)
 }
+
+#[cfg(test)]
+mod anyhow_tests {
+    use anyhow::anyhow;
+    #[test]
+    fn test_rpc_error() {
+        let json_rpc_error = jsonrpc_core::Error {
+            code: jsonrpc_core::ErrorCode::ParseError,
+            message: "parse error".to_string(),
+            data: None,
+        };
+        let error = super::RpcError::from(json_rpc_error);
+        let error = anyhow!(error);
+        println!("{}", error)
+    }
+}

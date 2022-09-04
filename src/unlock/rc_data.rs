@@ -416,3 +416,15 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod anyhow_tests {
+    // test cases make sure new added exception won't breadk `anyhow!(e_variable)` usage,
+    use anyhow::anyhow;
+    #[test]
+    fn test_rc_data_error() {
+        let error = super::RcDataError::BuildTree("BuildTree".to_string());
+        let error = anyhow!(error);
+        assert_eq!("fail to build the smt tree:`BuildTree`", error.to_string());
+    }
+}
