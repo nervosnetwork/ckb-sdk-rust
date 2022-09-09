@@ -13,6 +13,7 @@ use ckb_sdk::{
     types::NetworkType,
     unlock::{OmniLockConfig, OmniLockScriptSigner},
     unlock::{OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker},
+    util::blake160,
     Address, HumanCapacity, ScriptGroup, ScriptId, SECP256K1,
 };
 use ckb_types::{
@@ -230,7 +231,7 @@ fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdEr
     let cell =
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
     let arg = H160::from_slice(&args.receiver.payload().args()).unwrap();
-    let config = OmniLockConfig::new_pubkey_hash_with_lockarg(arg);
+    let config = OmniLockConfig::new_pubkey_hash(arg);
     let address_payload = {
         let args = config.build_args();
         ckb_sdk::AddressPayload::new_full(ScriptHashType::Type, cell.type_hash.pack(), args)
@@ -265,7 +266,9 @@ fn build_transfer_tx(
     let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let cell =
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
-    let omnilock_config = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+
+    let pubkey_hash = blake160(&pubkey.serialize());
+    let omnilock_config = OmniLockConfig::new_pubkey_hash(pubkey_hash);
     // Build CapacityBalancer
     let sender = Script::new_builder()
         .code_hash(cell.type_hash.pack())

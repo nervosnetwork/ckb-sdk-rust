@@ -23,7 +23,7 @@ use crate::{
         OmniLockScriptSigner, OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker,
         SecpSighashUnlocker,
     },
-    util::blake160,
+    util::{blake160, keccak160},
     ScriptId, Since,
 };
 
@@ -80,7 +80,7 @@ fn test_omnilock_transfer_from_sighash() {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
-    let cfg = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+    let cfg = OmniLockConfig::new_pubkey_hash(blake160(&pubkey.serialize()));
     test_omnilock_simple_hash(cfg);
 }
 
@@ -88,7 +88,7 @@ fn test_omnilock_transfer_from_sighash() {
 fn test_omnilock_transfer_from_ethereum() {
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
-    let cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
+    let cfg = OmniLockConfig::new_ethereum(keccak160(Pubkey::from(pubkey).as_ref()));
     test_omnilock_simple_hash(cfg);
 }
 
@@ -154,14 +154,13 @@ fn test_omnilock_transfer_from_sighash_wl() {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
-    let pubkey_hash = blake160(&pubkey.serialize());
-    let mut cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(pubkey_hash);
+    let mut cfg = OmniLockConfig::new_pubkey_hash(blake160(&pubkey.serialize()));
 
     let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
-    let id = Identity::new_pubkey_hash(&pubkey.into());
+    let id = Identity::new_pubkey_hash(blake160(&pubkey.serialize()));
     cfg.set_admin_config(AdminConfig::new(
         H256::default(),
         SmtProofEntryVec::default(),
@@ -179,13 +178,13 @@ fn test_omnilock_transfer_from_sighash_wl_input_admin() {
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
     let pubkey_hash = blake160(&pubkey.serialize());
-    let mut cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(pubkey_hash);
+    let mut cfg = OmniLockConfig::new_pubkey_hash(pubkey_hash);
 
     let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
-    let id = Identity::new_pubkey_hash(&pubkey.into());
+    let id = Identity::new_pubkey_hash(blake160(&pubkey.serialize()));
     cfg.set_admin_config(AdminConfig::new(
         H256::default(),
         SmtProofEntryVec::default(),
@@ -295,13 +294,13 @@ fn test_omnilock_transfer_from_ethereum_wl_input_admin() {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
-    let mut cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
+    let mut cfg = OmniLockConfig::new_ethereum(keccak160(Pubkey::from(pubkey).as_ref()));
 
     let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
-    let id = Identity::new_ethereum(&pubkey.into());
+    let id = Identity::new_ethereum(keccak160(Pubkey::from(pubkey).as_ref()));
     cfg.set_admin_config(AdminConfig::new(
         H256::default(),
         SmtProofEntryVec::default(),
@@ -318,13 +317,13 @@ fn test_omnilock_transfer_from_ethereum_wl() {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
-    let mut cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
+    let mut cfg = OmniLockConfig::new_ethereum(keccak160(Pubkey::from(pubkey).as_ref()));
 
     let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
-    let id = Identity::new_ethereum(&pubkey.into());
+    let id = Identity::new_ethereum(keccak160(Pubkey::from(pubkey).as_ref()));
     cfg.set_admin_config(AdminConfig::new(
         H256::default(),
         SmtProofEntryVec::default(),
@@ -342,13 +341,13 @@ fn test_omnilock_transfer_from_sighash_wl_admin() {
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
     let pubkey_hash = blake160(&pubkey.serialize());
-    let mut cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(pubkey_hash);
+    let mut cfg = OmniLockConfig::new_pubkey_hash(pubkey_hash);
 
     let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
-    let id = Identity::new_pubkey_hash(&pubkey.into());
+    let id = Identity::new_pubkey_hash(blake160(&pubkey.serialize()));
     cfg.set_admin_config(AdminConfig::new(
         H256::default(),
         SmtProofEntryVec::default(),
@@ -366,13 +365,13 @@ fn test_omnilock_transfer_from_ethereum_wl_admin() {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
-    let mut cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
+    let mut cfg = OmniLockConfig::new_ethereum(keccak160(Pubkey::from(pubkey).as_ref()));
 
     let account3_key = secp256k1::SecretKey::from_slice(ACCOUNT3_KEY.as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account3_key);
-    let id = Identity::new_ethereum(&pubkey.into());
+    let id = Identity::new_ethereum(keccak160(Pubkey::from(pubkey).as_ref()));
     cfg.set_admin_config(AdminConfig::new(
         H256::default(),
         SmtProofEntryVec::default(),
@@ -485,7 +484,7 @@ fn test_omnilock_transfer_from_sighash2_wl() {
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
     let pubkey_hash = blake160(&pubkey.serialize());
-    let cfg = OmniLockConfig::new_pubkey_hash_with_lockarg(pubkey_hash);
+    let cfg = OmniLockConfig::new_pubkey_hash(pubkey_hash);
     test_omnilock_simple_hash_rc2(cfg);
 }
 
@@ -974,7 +973,10 @@ fn test_omnilock_transfer_from_acp() {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
-    let mut cfg = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+
+    let pubkey_hash = blake160(&pubkey.serialize());
+    let mut cfg = OmniLockConfig::new_pubkey_hash(pubkey_hash);
+
     cfg.set_acp_config(OmniLockAcpConfig::new(0, 0));
     let unlock_mode = OmniUnlockMode::Normal;
     let sender = build_omnilock_script(&cfg);
@@ -1044,7 +1046,9 @@ fn test_omnilock_transfer_to_acp() {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &receiver_key);
-    let mut cfg = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+
+    let pubkey_hash = blake160(&pubkey.serialize());
+    let mut cfg = OmniLockConfig::new_pubkey_hash(pubkey_hash);
     cfg.set_acp_config(OmniLockAcpConfig::new(9, 5));
     let unlock_mode = OmniUnlockMode::Normal;
     let receiver = build_omnilock_script(&cfg);
@@ -1110,7 +1114,7 @@ fn build_omnilock_acp_cfg(account_key: &H256) -> OmniLockConfig {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &receiver_key);
-    let mut cfg = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+    let mut cfg = OmniLockConfig::new_pubkey_hash(blake160(&pubkey.serialize()));
     cfg.set_acp_config(OmniLockAcpConfig::new(9, 2));
     cfg
 }
@@ -1227,7 +1231,8 @@ fn test_omnilock_transfer_from_sighash_timelock() {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
-    let cfg = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+    let pubkey_hash = blake160(&pubkey.serialize());
+    let cfg = OmniLockConfig::new_pubkey_hash(pubkey_hash);
     test_omnilock_simple_hash_timelock(cfg);
 }
 
@@ -1235,7 +1240,7 @@ fn test_omnilock_transfer_from_sighash_timelock() {
 fn test_omnilock_transfer_from_ethereum_timelock() {
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
-    let cfg = OmniLockConfig::new_ethereum(&Pubkey::from(pubkey));
+    let cfg = OmniLockConfig::new_ethereum(keccak160(Pubkey::from(pubkey).as_ref()));
     test_omnilock_simple_hash_timelock(cfg);
 }
 
@@ -1342,7 +1347,8 @@ fn test_omnilock_sudt_supply() {
         .map_err(|err| format!("invalid sender secret key: {}", err))
         .unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
-    let mut cfg = OmniLockConfig::new_pubkey_hash(&pubkey.into());
+    let pubkey_hash = blake160(&pubkey.serialize());
+    let mut cfg = OmniLockConfig::new_pubkey_hash(pubkey_hash);
     let (info_cell_type_script, type_script_hash) = build_info_cell_type_script();
     cfg.set_info_cell(type_script_hash);
 
