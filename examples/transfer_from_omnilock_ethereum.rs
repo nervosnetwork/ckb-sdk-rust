@@ -236,7 +236,8 @@ fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdEr
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &privkey);
     println!("pubkey:{:?}", hex_string(&pubkey.serialize()));
     println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
-    let config = OmniLockConfig::new_ethereum(&pubkey.into());
+    let addr = keccak160(Pubkey::from(pubkey).as_ref());
+    let config = OmniLockConfig::new_ethereum(addr);
     let address_payload = {
         let args = config.build_args();
         ckb_sdk::AddressPayload::new_full(ScriptHashType::Type, cell.type_hash.pack(), args)
@@ -273,7 +274,8 @@ fn build_transfer_tx(
     let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let cell =
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
-    let omnilock_config = OmniLockConfig::new_ethereum(&pubkey.into());
+    let addr = keccak160(Pubkey::from(pubkey).as_ref());
+    let omnilock_config = OmniLockConfig::new_ethereum(addr);
     // Build CapacityBalancer
     let sender = Script::new_builder()
         .code_hash(cell.type_hash.pack())

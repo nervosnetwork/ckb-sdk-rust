@@ -7,7 +7,6 @@ use crate::{
         omni_lock::{Auth, Identity as IdentityType, IdentityOpt, OmniLockWitnessLock},
         xudt_rce_mol::SmtProofEntryVec,
     },
-    util::{blake160, keccak160},
 };
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
@@ -16,7 +15,6 @@ use ckb_types::{
     H160, H256,
 };
 
-use ckb_crypto::secp::Pubkey;
 pub use ckb_types::prelude::Pack;
 use enum_repr_derive::{FromEnumToRepr, TryFromReprToEnum};
 use serde::{de::Unexpected, Deserialize, Serialize};
@@ -91,8 +89,9 @@ impl Identity {
     }
 
     /// Create a pubkey hash algorithm Identity
-    pub fn new_pubkey_hash(pubkey: &Pubkey) -> Self {
-        let pubkey_hash = blake160(&pubkey.serialize());
+    /// # Arguments
+    /// * `pubkey_hash` blake160 hash of a public key.
+    pub fn new_pubkey_hash(pubkey_hash: H160) -> Self {
         Self::new(IdentityFlag::PubkeyHash, pubkey_hash)
     }
 
@@ -102,8 +101,9 @@ impl Identity {
         Identity::new(IdentityFlag::Multisig, blake160)
     }
     /// Create an ethereum Identity omnilock with pubkey
-    pub fn new_ethereum(pubkey: &Pubkey) -> Self {
-        let pubkey_hash = keccak160(pubkey.as_ref());
+    /// # Arguments
+    /// * `pubkey_hash` keccak160 hash of public key
+    pub fn new_ethereum(pubkey_hash: H160) -> Self {
         Self::new(IdentityFlag::Ethereum, pubkey_hash)
     }
 
@@ -424,15 +424,9 @@ pub struct OmniLockConfig {
 impl OmniLockConfig {
     /// Create a pubkey hash algorithm omnilock with proper argument
     /// # Arguments
-    /// * `lock_arg` proper 20 bytes auth content
-    pub fn new_pubkey_hash_with_lockarg(lock_arg: H160) -> Self {
+    /// * `lock_arg` blake160 hash of a public key.
+    pub fn new_pubkey_hash(lock_arg: H160) -> Self {
         Self::new(IdentityFlag::PubkeyHash, lock_arg)
-    }
-
-    /// Create a pubkey hash algorithm omnilock with pubkey
-    pub fn new_pubkey_hash(pubkey: &Pubkey) -> Self {
-        let pubkey_hash = blake160(&pubkey.serialize());
-        Self::new(IdentityFlag::PubkeyHash, pubkey_hash)
     }
 
     pub fn new_multisig(multisig_config: MultisigConfig) -> Self {
@@ -451,8 +445,22 @@ impl OmniLockConfig {
         }
     }
     /// Create an ethereum algorithm omnilock with pubkey
-    pub fn new_ethereum(pubkey: &Pubkey) -> Self {
-        let pubkey_hash = keccak160(pubkey.as_ref());
+    ///
+    /// # Arguments
+    ///
+    /// * `pubkey_hash` - a ehtereum address of an account.
+    ///
+    /// ```
+    /// // pubkey is a public ethereum address
+    /// use ckb_sdk::unlock::OmniLockConfig;
+    /// use ckb_sdk::util::keccak160;
+    /// use ckb_crypto::secp::Pubkey;
+    ///
+    /// let pubkey = Pubkey::from([0u8; 64]);
+    /// let pubkey_hash = keccak160(pubkey.as_ref());
+    /// let config = OmniLockConfig::new_ethereum(pubkey_hash);
+    /// ```
+    pub fn new_ethereum(pubkey_hash: H160) -> Self {
         Self::new(IdentityFlag::Ethereum, pubkey_hash)
     }
 
