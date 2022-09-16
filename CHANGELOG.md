@@ -1,3 +1,13 @@
+# 2.1.0
+* Support omni-lock supply mode
+* Use anyhow::Error to replace Box<dyn std::error::Error>
+* **breaking change**: Use hash instead pubkey directly when create `Identity` and `OmniLockConfig`:
+  - From `Identity::new_pubkey_hash(pubkey: &Pubkey)` to `Identity::new_pubkey_hash(pubkey_hash: H160)`
+  - From `Identity::new_ethereum(pubkey: &Pubkey)` to `Identity::new_ethereum(pubkey_hash: H160)`
+  - From `OmniLockConfig::new_pubkey_hash(pubkey: &Pubkey)` to `OmniLockConfig::new_pubkey_hash(lock_arg: H160)`
+  - Remove `OmniLockConfig::new_pubkey_hash_with_lockarg(lock_arg: H160)`
+  - From `OmniLockConfig::new_ethereum(pubkey: &Pubkey)` to `new_ethereum(pubkey_hash: H160)`
+
 
 # 2.0.0
 * Add omni-lock support
