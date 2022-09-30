@@ -1,3 +1,10 @@
+
+# 2.2.0
+* **breaking change** Use ckb-indexer from ckb rpc
+  - `DefaultCellCollector::new` API changed
+  - remove `IndexerRpcClient::get_indexer_info` rpc method
+  - rename `IndexerRpcClient::get_tip` to `IndexerRpcClient::get_indexer_tip`
+
 # 2.1.0
 * Support omni-lock supply mode
 * Use anyhow::Error to replace Box<dyn std::error::Error>

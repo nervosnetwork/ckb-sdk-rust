@@ -81,10 +81,6 @@ struct GenTxArgs {
     /// CKB rpc url
     #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
     ckb_rpc: String,
-
-    /// CKB indexer rpc url
-    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8116")]
-    ckb_indexer: String,
 }
 
 #[derive(Args)]
@@ -246,8 +242,7 @@ fn build_transfer_tx(
         DefaultCellDepResolver::from_genesis(&BlockView::from(genesis_block))?
     };
     let header_dep_resolver = DefaultHeaderDepResolver::new(args.ckb_rpc.as_str());
-    let mut cell_collector =
-        DefaultCellCollector::new(args.ckb_indexer.as_str(), args.ckb_rpc.as_str());
+    let mut cell_collector = DefaultCellCollector::new(args.ckb_rpc.as_str());
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
 
     // Build base transaction

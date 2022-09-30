@@ -23,6 +23,7 @@ lazy_static! {
     ]);
 }
 
+#[allow(clippy::upper_case_acronyms)]
 type SMT = SparseMerkleTree<CKBBlake2bHasher, SmtH256, DefaultStore<SmtH256>>;
 pub type Result<T> = ::core::result::Result<T, RcDataError>;
 
