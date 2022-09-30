@@ -110,18 +110,6 @@ impl RcRuleDataBuilder {
         *self.smt.root()
     }
 
-    /// get the proof of the proof_pairs.
-    fn proof(&self, proof_pairs: &[(SmtH256, SmtH256)]) -> Result<Vec<u8>> {
-        let proof = self
-            .smt
-            .merkle_proof(proof_pairs.iter().map(|(k, _)| *k).collect())
-            .map_err(|err| RcDataError::BuildTree(err.to_string()))?;
-        let compiled_proof = proof
-            .compile(proof_pairs.to_vec())
-            .map_err(|e| RcDataError::CompileProof(e.to_string()))?;
-        Ok(compiled_proof.into())
-    }
-
     /// Build smt with the given hashes
     /// # Arguments
     /// * `hashes` The given the hashes.
@@ -137,13 +125,14 @@ impl RcRuleDataBuilder {
     /// # Return
     /// The smt_tree root and the proofs of the proof_keys.
     pub fn proof_keys(&mut self, keys: &[SmtH256]) -> Result<Vec<u8>> {
-        let proof_v = match self.list_type {
-            ListType::White => *SMT_EXISTING,
-            ListType::Black => *SMT_NOT_EXISTING,
-        };
-        let proof_pairs: Vec<(SmtH256, SmtH256)> =
-            keys.iter().map(|hash| (*hash, proof_v)).collect();
-        self.proof(&proof_pairs)
+        let proof = self
+            .smt
+            .merkle_proof(keys.to_vec())
+            .map_err(|err| RcDataError::BuildTree(err.to_string()))?;
+        let compiled_proof = proof
+            .compile(keys.to_vec())
+            .map_err(|e| RcDataError::CompileProof(e.to_string()))?;
+        Ok(compiled_proof.into())
     }
 
     /// Build the rc_rule after key/value pairs are set.
