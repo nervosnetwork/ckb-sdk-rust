@@ -1,8 +1,10 @@
+mod ckb;
 pub mod ckb_indexer;
-mod client;
+pub mod ckb_light_client;
 
+pub use ckb::CkbRpcClient;
 pub use ckb_indexer::IndexerRpcClient;
-pub use client::CkbRpcClient;
+pub use ckb_light_client::LightClientRpcClient;
 
 use thiserror::Error;
 
