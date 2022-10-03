@@ -7,6 +7,7 @@ use ckb_jsonrpc_types::{
 use ckb_types::H256;
 
 pub use crate::rpc::ckb_indexer::{Cell, Order, Pagination, ScriptType, SearchKeyFilter, Tx};
+use crate::traits::{CellQueryOptions, ValueRangeOption};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ScriptStatus {
@@ -20,6 +21,33 @@ pub struct SearchKey {
     pub script_type: ScriptType,
     pub filter: Option<SearchKeyFilter>,
     pub group_by_transaction: Option<bool>,
+}
+
+impl From<CellQueryOptions> for SearchKey {
+    fn from(opts: CellQueryOptions) -> SearchKey {
+        let convert_range =
+            |range: ValueRangeOption| [Uint64::from(range.start), Uint64::from(range.end)];
+        let filter = if opts.secondary_script.is_none()
+            && opts.data_len_range.is_none()
+            && opts.capacity_range.is_none()
+            && opts.block_range.is_none()
+        {
+            None
+        } else {
+            Some(SearchKeyFilter {
+                script: opts.secondary_script.map(|v| v.into()),
+                output_data_len_range: opts.data_len_range.map(convert_range),
+                output_capacity_range: opts.capacity_range.map(convert_range),
+                block_range: opts.block_range.map(convert_range),
+            })
+        };
+        SearchKey {
+            script: opts.primary_script.into(),
+            script_type: opts.primary_type.into(),
+            filter,
+            group_by_transaction: None,
+        }
+    }
 }
 
 #[derive(Deserialize, Eq, PartialEq, Debug)]

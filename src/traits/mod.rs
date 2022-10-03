@@ -3,6 +3,7 @@
 
 pub mod default_impls;
 pub mod dummy_impls;
+pub mod light_client_impls;
 pub mod offchain_impls;
 
 pub use default_impls::{
@@ -85,16 +86,16 @@ pub enum TransactionDependencyError {
 ///   * cell_deps
 ///   * header_deps
 pub trait TransactionDependencyProvider {
-    // For verify certain cell belong to certain transaction
+    /// For verify certain cell belong to certain transaction
     fn get_transaction(
         &self,
         tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError>;
-    // For get the output information of inputs or cell_deps, those cell should be live cell
+    /// For get the output information of inputs or cell_deps, those cell should be live cell
     fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError>;
-    // For get the output data information of inputs or cell_deps
+    /// For get the output data information of inputs or cell_deps
     fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError>;
-    // For get the header information of header_deps
+    /// For get the header information of header_deps
     fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError>;
 }
 
