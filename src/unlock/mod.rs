@@ -1,4 +1,5 @@
 pub(crate) mod omni_lock;
+pub mod opentx;
 pub mod rc_data;
 mod signer;
 mod unlocker;

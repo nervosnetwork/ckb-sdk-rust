@@ -2,6 +2,7 @@ use core::hash;
 use std::fmt::Display;
 
 use crate::{
+    constants::SECP_SIGNATURE_SIZE,
     tx_builder::SinceSource,
     types::{
         omni_lock::{Auth, Identity as IdentityType, IdentityOpt, OmniLockWitnessLock},
@@ -22,7 +23,7 @@ use std::convert::TryFrom;
 
 use bitflags::bitflags;
 
-use super::{MultisigConfig, OmniUnlockMode};
+use super::{opentx::OpentxWitness, MultisigConfig, OmniUnlockMode};
 use thiserror::Error;
 
 #[derive(
@@ -196,6 +197,8 @@ bitflags! {
         const TIME_LOCK = 1<<2;
         /// supply mode, flag is 1<<3, affected args: type script hash for supply
         const SUPPLY = 1<<3;
+        /// open transaction mode.
+        const OPENTX = 1<<4;
     }
 }
 
@@ -419,6 +422,9 @@ pub struct OmniLockConfig {
     time_lock_config: Option<u64>,
     // 32 bytes type script hash
     info_cell: Option<H256>,
+
+    /// open tx config
+    opentx_input: Option<OpentxWitness>,
 }
 
 impl OmniLockConfig {
@@ -442,6 +448,7 @@ impl OmniLockConfig {
             acp_config: None,
             time_lock_config: None,
             info_cell: None,
+            opentx_input: None,
         }
     }
     /// Create an ethereum algorithm omnilock with pubkey
@@ -488,6 +495,7 @@ impl OmniLockConfig {
             acp_config: None,
             time_lock_config: None,
             info_cell: None,
+            opentx_input: None,
         }
     }
 
@@ -537,6 +545,22 @@ impl OmniLockConfig {
     pub fn clear_info_cell(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::SUPPLY, false);
         self.info_cell = None;
+    }
+
+    /// Set the open transaction input data, and set the OmniLockFlags::OPENTX to omni_lock_flags.
+    pub fn set_opentx_input(&mut self, opentx_input: OpentxWitness) {
+        self.omni_lock_flags.set(OmniLockFlags::OPENTX, true);
+        self.opentx_input = Some(opentx_input);
+    }
+
+    /// Clear the open transaction input data, and clear OmniLockFlags::OPENTX from omni_lock_flags.
+    pub fn clear_opentx_input(&mut self) {
+        self.omni_lock_flags.set(OmniLockFlags::OPENTX, false);
+        self.opentx_input = None;
+    }
+
+    pub fn get_opentx_input(&self) -> Option<&OpentxWitness> {
+        self.opentx_input.as_ref()
     }
 
     pub fn id(&self) -> &Identity {
@@ -650,9 +674,15 @@ impl OmniLockConfig {
         &self,
         unlock_mode: OmniUnlockMode,
     ) -> Result<Bytes, ConfigError> {
+        let mut buf = BytesMut::new();
+        if let Some(optx) = self.opentx_input.as_ref() {
+            buf.extend_from_slice(&optx.to_witness_data());
+        }
         let mut builder = match self.id.flag {
-            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => OmniLockWitnessLock::new_builder()
-                .signature(Some(Bytes::from(vec![0u8; 65])).pack()),
+            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => {
+                buf.extend_from_slice(&[0u8; SECP_SIGNATURE_SIZE]);
+                OmniLockWitnessLock::new_builder().signature(Some(buf.freeze()).pack())
+            }
             IdentityFlag::Multisig => {
                 let multisig_config = match unlock_mode {
                     OmniUnlockMode::Admin => self
@@ -668,10 +698,15 @@ impl OmniLockConfig {
                         .ok_or(ConfigError::NoMultiSigConfig)?,
                 };
                 let config_data = multisig_config.to_witness_data();
-                let multisig_len = config_data.len() + multisig_config.threshold() as usize * 65;
-                let mut omni_sig = vec![0u8; multisig_len];
-                omni_sig[..config_data.len()].copy_from_slice(&config_data);
-                OmniLockWitnessLock::new_builder().signature(Some(Bytes::from(omni_sig)).pack())
+                let multisig_len =
+                    config_data.len() + multisig_config.threshold() as usize * SECP_SIGNATURE_SIZE;
+                // let mut omni_sig = vec![0u8; multisig_len];
+                // omni_sig[..config_data.len()].copy_from_slice(&config_data);
+                // buf.extend_from_slice(&omni_sig);
+                let offset = buf.len();
+                buf.extend_from_slice(&config_data);
+                buf.resize(offset + multisig_len, 0u8);
+                OmniLockWitnessLock::new_builder().signature(Some(buf.freeze()).pack())
             }
             IdentityFlag::OwnerLock => OmniLockWitnessLock::new_builder(),
             _ => todo!("to support other placeholder_witness_lock implementions"),
