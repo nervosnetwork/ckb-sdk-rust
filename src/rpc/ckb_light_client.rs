@@ -9,13 +9,13 @@ use ckb_types::H256;
 pub use crate::rpc::ckb_indexer::{Cell, Order, Pagination, ScriptType, SearchKeyFilter, Tx};
 use crate::traits::{CellQueryOptions, ValueRangeOption};
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ScriptStatus {
     pub script: Script,
     pub block_number: BlockNumber,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SearchKey {
     pub script: Script,
     pub script_type: ScriptType,
@@ -50,7 +50,7 @@ impl From<CellQueryOptions> for SearchKey {
     }
 }
 
-#[derive(Deserialize, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug)]
 #[serde(tag = "status")]
 #[serde(rename_all = "lowercase")]
 pub enum FetchStatus<T> {
@@ -59,13 +59,13 @@ pub enum FetchStatus<T> {
     Fetched { data: T },
 }
 
-#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct TransactionWithHeader {
     pub transaction: TransactionView,
     pub header: HeaderView,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RemoteNode {
     /// The remote node version.
     pub version: String,
@@ -84,7 +84,7 @@ pub struct RemoteNode {
     pub protocols: Vec<RemoteNodeProtocol>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerSyncState {
     /// Requested best known header of remote peer.
     ///

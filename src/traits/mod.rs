@@ -10,6 +10,10 @@ pub use default_impls::{
     DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
     DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
 };
+pub use light_client_impls::{
+    LightClientCellCollector, LightClientCellDepResolver, LightClientHeaderDepResolver,
+    LightClientTransactionDependencyProvider,
+};
 pub use offchain_impls::{
     OffchainCellCollector, OffchainCellDepResolver, OffchainHeaderDepResolver,
     OffchainTransactionDependencyProvider,

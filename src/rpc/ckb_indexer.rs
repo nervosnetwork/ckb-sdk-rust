@@ -8,14 +8,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::traits::{CellQueryOptions, LiveCell, PrimaryScriptType, ValueRangeOption};
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SearchKey {
     pub script: Script,
     pub script_type: ScriptType,
     pub filter: Option<SearchKeyFilter>,
 }
 
-#[derive(Serialize, Default, Clone, Debug)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct SearchKeyFilter {
     pub script: Option<Script>,
     pub output_data_len_range: Option<[Uint64; 2]>,
@@ -48,7 +48,7 @@ impl From<CellQueryOptions> for SearchKey {
     }
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptType {
     Lock,
@@ -63,27 +63,27 @@ impl From<PrimaryScriptType> for ScriptType {
     }
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum Order {
     Desc,
     Asc,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Tip {
     pub block_hash: H256,
     pub block_number: BlockNumber,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CellsCapacity {
     pub capacity: Capacity,
     pub block_hash: H256,
     pub block_number: BlockNumber,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cell {
     pub output: CellOutput,
     pub output_data: JsonBytes,
@@ -103,7 +103,7 @@ impl From<Cell> for LiveCell {
     }
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Tx {
     pub tx_hash: H256,
     pub block_number: BlockNumber,
@@ -112,14 +112,14 @@ pub struct Tx {
     pub io_type: IOType,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum IOType {
     Input,
     Output,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Pagination<T> {
     pub objects: Vec<T>,
     pub last_cursor: JsonBytes,
