@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use ckb_jsonrpc_types::{
-    BlockNumber, Capacity, HeaderView, JsonBytes, NodeAddress, RemoteNodeProtocol, Script,
-    Transaction, TransactionView, Uint32, Uint64,
+    BlockNumber, BlockView, Capacity, HeaderView, JsonBytes, NodeAddress, RemoteNodeProtocol,
+    Script, Transaction, TransactionView, Uint32, Uint64,
 };
 use ckb_types::H256;
 
@@ -107,6 +107,7 @@ crate::jsonrpc!(pub struct LightClientRpcClient {
 
     // Chain
     pub fn get_tip_header(&mut self) -> HeaderView;
+    pub fn get_genesis_block(&mut self) -> BlockView;
     pub fn get_header(&mut self, block_hash: H256) -> Option<HeaderView>;
     pub fn get_transaction(&mut self, tx_hash: H256) -> Option<TransactionWithHeader>;
     /// Fetch a header from remote node.

@@ -11,7 +11,7 @@ pub use default_impls::{
     DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
 };
 pub use light_client_impls::{
-    LightClientCellCollector, LightClientCellDepResolver, LightClientHeaderDepResolver,
+    LightClientCellCollector, LightClientHeaderDepResolver,
     LightClientTransactionDependencyProvider,
 };
 pub use offchain_impls::{
