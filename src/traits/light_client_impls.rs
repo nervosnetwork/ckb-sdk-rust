@@ -24,7 +24,7 @@ use ckb_types::{
 use super::OffchainCellCollector;
 use crate::rpc::{
     ckb_light_client::{Cell, FetchStatus, Order, ScriptType, SearchKey},
-    CkbRpcClient, LightClientRpcClient, RpcError,
+    LightClientRpcClient, RpcError,
 };
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
@@ -32,7 +32,6 @@ use crate::traits::{
     TransactionDependencyProvider,
 };
 use crate::types::ScriptId;
-use crate::util::get_max_mature_number;
 
 /// Query Genesis Info errors
 #[derive(Error, Debug)]
@@ -368,17 +367,14 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
 }
 
 pub struct LightClientCellCollector {
-    ckb_client: CkbRpcClient,
     light_client: LightClientRpcClient,
     offchain: OffchainCellCollector,
 }
 
 impl LightClientCellCollector {
-    pub fn new(ckb_client: &str, light_client: &str) -> LightClientCellCollector {
-        let ckb_client = CkbRpcClient::new(ckb_client);
-        let light_client = LightClientRpcClient::new(light_client);
+    pub fn new(url: &str) -> LightClientCellCollector {
+        let light_client = LightClientRpcClient::new(url);
         LightClientCellCollector {
-            ckb_client,
             light_client,
             offchain: OffchainCellCollector::default(),
         }
@@ -391,9 +387,7 @@ impl CellCollector for LightClientCellCollector {
         query: &CellQueryOptions,
         apply_changes: bool,
     ) -> Result<(Vec<LiveCell>, u64), CellCollectorError> {
-        let max_mature_number = get_max_mature_number(&mut self.ckb_client)
-            .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?;
-
+        let max_mature_number = 0;
         self.offchain.max_mature_number = max_mature_number;
         let (mut cells, rest_cells, mut total_capacity) = self.offchain.collect(query);
 
