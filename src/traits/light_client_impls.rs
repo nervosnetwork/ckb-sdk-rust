@@ -59,9 +59,16 @@ impl HeaderDepResolver for LightClientHeaderDepResolver {
         }
     }
 
-    fn resolve_by_number(&self, _number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
+    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
+        for pair in self.headers.iter() {
+            if let Some(header) = pair.value() {
+                if header.number() == number {
+                    return Ok(Some(header.clone()));
+                }
+            }
+        }
         Err(anyhow!(
-            "unable to resolver header by number when use light client as backend"
+            "unable to resolver header by number directly when use light client as backend, you can call resolve_by_tx(tx_hash) to load the header first."
         ))
     }
 }
