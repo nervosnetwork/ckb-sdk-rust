@@ -37,7 +37,7 @@ impl LightClientHeaderDepResolver {
 
     /// Check if headers all fetched
     pub fn is_ready(&self) -> bool {
-        self.headers.iter().all(|pair| pair.value().is_some())
+        self.headers.is_empty() || self.headers.iter().all(|pair| pair.value().is_some())
     }
 }
 
@@ -85,8 +85,9 @@ impl LightClientTransactionDependencyProvider {
 
     /// Check if headers and transactions all fetched
     pub fn is_ready(&self) -> bool {
-        self.headers.iter().all(|pair| pair.value().is_some())
-            && self.txs.iter().all(|pair| pair.value().is_some())
+        (self.headers.is_empty() && self.txs.is_empty())
+            || (self.headers.iter().all(|pair| pair.value().is_some())
+                && self.txs.iter().all(|pair| pair.value().is_some()))
     }
 }
 
