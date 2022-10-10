@@ -22,7 +22,7 @@ use crate::{
 
 use super::{
     omni_lock::{ConfigError, Identity},
-    opentx::reader::OpenTxReaderError,
+    opentx::OpenTxError,
     IdentityFlag, OmniLockConfig,
 };
 
@@ -50,7 +50,7 @@ pub enum ScriptSignError {
     InvalidConfig(#[from] ConfigError),
 
     #[error("open transaction read error: `{0}`")]
-    OpenTxError(#[from] OpenTxReaderError),
+    OpenTxError(#[from] OpenTxError),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

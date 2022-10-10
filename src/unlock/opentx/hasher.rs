@@ -1,26 +1,19 @@
+use anyhow::anyhow;
 use bitflags::bitflags;
 use bytes::Bytes;
 use ckb_hash::Blake2b;
-use ckb_types::{bytes::BytesMut, prelude::*};
+use ckb_types::{bytes::BytesMut, core::TransactionView, prelude::*};
 use serde::{Deserialize, Serialize};
+use std::convert::TryFrom;
 
 use enum_repr_derive::{FromEnumToRepr, TryFromReprToEnum};
 
-use crate::unlock::ScriptSignError;
+use super::reader::{OpenTxCellField, OpenTxReader, OpenTxSource};
+use super::OpenTxError;
 
-use super::reader::{OpenTxCellField, OpenTxReader, OpenTxReaderError, OpenTxSource};
-
-use thiserror::Error;
 const ARG1_MASK: u16 = 0xFFF;
 const ARG2_MASK: u16 = 0xFFF;
 
-#[derive(Error, Debug)]
-pub enum OpenTxHashError {
-    #[error("arg1(`{0}`) out of range")]
-    Arg1OutOfRange(u16),
-    #[error("arg2(`{0}`) out of range")]
-    Arg2OutOfRange(u16),
-}
 /// Open transaction signature input command.
 #[derive(
     Clone,
@@ -59,6 +52,15 @@ pub enum OpentxCommand {
     End = 0xF0,
 }
 
+impl OpentxCommand {
+    pub fn is_index(&self) -> bool {
+        matches!(
+            self,
+            OpentxCommand::IndexOutput | OpentxCommand::IndexInput | OpentxCommand::CellInputIndex
+        )
+    }
+}
+
 bitflags! {
     /// The bits control the data to generate from a cell.
     #[derive(Serialize, Deserialize)]
@@ -87,6 +89,7 @@ bitflags! {
         const WHOLE_CELL = 0x400;
     }
 }
+
 bitflags! {
     /// The bits control the data to generate from a CellInput structure.
     #[derive(Serialize, Deserialize)]
@@ -135,19 +138,19 @@ impl OpenTxSigInput {
         }
     }
     /// new OpentxCommand::IndexOutput OpenTxSigInput, command 0x11
-    pub fn new_index_output(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxHashError> {
+    pub fn new_index_output(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_cell_command(OpentxCommand::IndexOutput, arg1, arg2)
     }
     /// new OpentxCommand::OffsetOutput OpenTxSigInput, command 0x12
-    pub fn new_offset_output(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxHashError> {
+    pub fn new_offset_output(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_cell_command(OpentxCommand::OffsetOutput, arg1, arg2)
     }
     /// new OpentxCommand::IndexInput OpenTxSigInput, command 0x13
-    pub fn new_index_input(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxHashError> {
+    pub fn new_index_input(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_cell_command(OpentxCommand::IndexInput, arg1, arg2)
     }
     /// new OpentxCommand::OffsetInput OpenTxSigInput, command 0x14
-    pub fn new_offset_input(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxHashError> {
+    pub fn new_offset_input(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_cell_command(OpentxCommand::OffsetInput, arg1, arg2)
     }
     /// new OpenTxSigInput to handle part or the whole input/output cell
@@ -155,9 +158,9 @@ impl OpenTxSigInput {
         cmd: OpentxCommand,
         arg1: u16,
         arg2: CellMask,
-    ) -> Result<OpenTxSigInput, OpenTxHashError> {
+    ) -> Result<OpenTxSigInput, OpenTxError> {
         if arg1 > ARG1_MASK {
-            return Err(OpenTxHashError::Arg1OutOfRange(arg1));
+            return Err(OpenTxError::Arg1OutOfRange(arg1));
         }
 
         Ok(OpenTxSigInput {
@@ -167,17 +170,14 @@ impl OpenTxSigInput {
         })
     }
     /// new OpentxCommand::ConcatArg1Arg2 OpenTxSigInput, command 0x15
-    pub fn new_cell_input_index(
-        arg1: u16,
-        arg2: InputMask,
-    ) -> Result<OpenTxSigInput, OpenTxHashError> {
+    pub fn new_cell_input_index(arg1: u16, arg2: InputMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_input_command(OpentxCommand::CellInputIndex, arg1, arg2)
     }
     //// new OpentxCommand::CellInputOffset OpenTxSigInput, command 0x16
     pub fn new_cell_input_offset(
         arg1: u16,
         arg2: InputMask,
-    ) -> Result<OpenTxSigInput, OpenTxHashError> {
+    ) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_input_command(OpentxCommand::CellInputOffset, arg1, arg2)
     }
     /// new OpenTxSigInput to hash  part or the whole cell input structure
@@ -185,9 +185,9 @@ impl OpenTxSigInput {
         cmd: OpentxCommand,
         arg1: u16,
         arg2: InputMask,
-    ) -> Result<OpenTxSigInput, OpenTxHashError> {
+    ) -> Result<OpenTxSigInput, OpenTxError> {
         if arg1 > ARG1_MASK {
-            return Err(OpenTxHashError::Arg1OutOfRange(arg1));
+            return Err(OpenTxError::Arg1OutOfRange(arg1));
         }
 
         Ok(OpenTxSigInput {
@@ -220,7 +220,7 @@ impl OpenTxSigInput {
         is_input: bool,
         with_offset: bool,
         base_index: u32,
-    ) -> Result<(), OpenTxReaderError> {
+    ) -> Result<(), OpenTxError> {
         let mut index = self.arg1 as usize;
         if with_offset {
             index += base_index as usize;
@@ -298,43 +298,46 @@ impl OpenTxSigInput {
     fn hash_input(
         &self,
         cache: &mut OpentxCache,
-        ckb_sys_call: &OpenTxReader,
+        reader: &OpenTxReader,
         with_offset: bool,
         base_index: u32,
-    ) -> Result<(), OpenTxReaderError> {
+    ) -> Result<(), OpenTxError> {
         let index = if with_offset {
-            self.arg1 as usize + base_index as usize
+            usize::try_from(base_index)
+                .map_err(|e| anyhow!(e))?
+                .checked_add(self.arg1 as usize)
+                .ok_or_else(|| anyhow!("add {} and {} overflow", base_index, self.arg1))?
         } else {
             self.arg1 as usize
         };
 
         let input_mask = InputMask::from_bits_truncate(self.arg2);
         if input_mask.contains(InputMask::TX_HASH) {
-            let cell = ckb_sys_call.input(index)?;
+            let cell = reader.input(index)?;
             let data = cell.previous_output().tx_hash();
             cache.update(data.as_slice());
         }
 
         if input_mask.contains(InputMask::INDEX) {
-            let cell = ckb_sys_call.input(index)?;
+            let cell = reader.input(index)?;
             let data = cell.previous_output().index();
             cache.update(data.as_slice());
         }
 
         if input_mask.contains(InputMask::SINCE) {
-            let data = ckb_sys_call.load_input_field_since(index)?;
+            let data = reader.load_input_field_since(index)?;
 
             cache.update(&data);
         }
 
         if input_mask.contains(InputMask::PREVIOUS_OUTPUT) {
-            let data = ckb_sys_call.load_input_field_out_point(index)?;
+            let data = reader.load_input_field_out_point(index)?;
 
             cache.update(&data);
         }
 
         if input_mask.contains(InputMask::WHOLE) {
-            let data = ckb_sys_call.load_input(index)?;
+            let data = reader.load_input(index)?;
             cache.update(&data);
         }
         Ok(())
@@ -355,16 +358,189 @@ impl OpentxWitness {
             inputs: vec![],
         }
     }
-    pub fn new(input_index: u32, output_index: u32, input: Vec<OpenTxSigInput>) -> Self {
+    pub fn new(base_input_index: u32, base_output_index: u32, inputs: Vec<OpenTxSigInput>) -> Self {
         OpentxWitness {
-            base_input_index: input_index,
-            base_output_index: output_index,
-            inputs: input,
+            base_input_index,
+            base_output_index,
+            inputs,
         }
     }
 
-    pub fn get_opentx_sig_len(&self) -> usize {
-        4 + 4 + 4 * self.inputs.len()
+    /// Build new OpentxWitness which will sign all data.
+    ///
+    /// It will first generate the TxHash(0x00), GroupInputOutputLen(0x01),
+    /// then iterate the inputs to generate the relative index OpenTxSigInput with all CellMask on, and InputMask on,
+    /// then iterate each output to generate the relative index OpenTxSigInput with all CellMask on.
+    ///
+    /// If salt provided, it will add low 24 bits with ConcatArg1Arg2(0x20),
+    /// if high 8 bits not all 0, it will add another ConcatArg1Arg2 OpenTxSigInput.
+    ///
+    /// Then it will add an End(0xF0) OpenTxSigInput.
+    ///
+    /// The range of inputs/outputs are [base_input_index, end_input_index), [base_output_index, end_output_index).
+    /// If end_input_index bigger than the transaction inputs length, the inputs length will be used, same thing to end_output_index.
+    ///
+    pub fn new_sig_range_relative(
+        transaction: &TransactionView,
+        salt: Option<u32>,
+        base_input_index: usize,
+        end_input_index: usize,
+        base_output_index: usize,
+        end_output_index: usize,
+    ) -> Result<Self, OpenTxError> {
+        let mut inputs = vec![
+            OpenTxSigInput::new_tx_hash(),
+            OpenTxSigInput::new_group_input_output_len(),
+        ];
+
+        let start_input_idx = base_input_index;
+        let end_input_idx = end_input_index.min(transaction.inputs().len());
+        if start_input_idx >= end_input_idx {
+            return Err(OpenTxError::BaseIndexOverFlow(
+                start_input_idx,
+                end_input_idx,
+            ));
+        }
+
+        let start_output_idx = base_output_index;
+        let out_put_idx = end_output_index.min(transaction.outputs().len());
+        if start_output_idx >= out_put_idx {
+            return Err(OpenTxError::BaseIndexOverFlow(
+                start_output_idx,
+                out_put_idx,
+            ));
+        }
+        let base_input_index = u32::try_from(base_input_index).map_err(|e| anyhow!(e))?;
+        let base_output_index = u32::try_from(base_output_index).map_err(|e| anyhow!(e))?;
+        for input_idx in start_input_idx..end_input_idx {
+            let idx = u16::try_from(input_idx - start_input_idx).map_err(|e| anyhow!(e))?;
+            inputs.push(OpenTxSigInput::new_offset_input(
+                idx as u16,
+                CellMask::all(),
+            )?);
+            inputs.push(OpenTxSigInput::new_cell_input_offset(
+                idx as u16,
+                InputMask::all(),
+            )?);
+        }
+        for output_idx in start_output_idx..out_put_idx {
+            let idx = u16::try_from(output_idx - start_output_idx).map_err(|e| anyhow!(e))?;
+            inputs.push(OpenTxSigInput::new_offset_output(
+                idx as u16,
+                CellMask::all(),
+            )?);
+        }
+        if let Some(mut salt) = salt {
+            while salt > 0 {
+                inputs.push(OpenTxSigInput::new_concat_arg1_arg2(
+                    salt as u16 & ARG1_MASK,
+                    (salt >> 12) as u16 & ARG2_MASK,
+                ));
+                salt >>= 24;
+            }
+        }
+
+        inputs.push(OpenTxSigInput::new_end());
+        Ok(OpentxWitness::new(
+            base_input_index,
+            base_output_index,
+            inputs,
+        ))
+    }
+    /// Same to `new_sig_range_relative`, except end_input_index and end_output_index are all usize::MAX,
+    /// which will be changed to the length of inputs/outputs list.
+    pub fn new_sig_to_end_relative(
+        transaction: &TransactionView,
+        salt: Option<u32>,
+        base_input_index: usize,
+        base_output_index: usize,
+    ) -> Result<Self, OpenTxError> {
+        Self::new_sig_range_relative(
+            transaction,
+            salt,
+            base_input_index,
+            usize::MAX,
+            base_output_index,
+            usize::MAX,
+        )
+    }
+
+    /// Same to `new_sig_to_end_relative`, except base_input_index and base_output_index are all 0
+    pub fn new_sig_all_relative(
+        transaction: &TransactionView,
+        salt: Option<u32>,
+    ) -> Result<Self, OpenTxError> {
+        Self::new_sig_range_relative(transaction, salt, 0, usize::MAX, 0, usize::MAX)
+    }
+
+    /// Same to new_sig_to_end_relative, but the will use the index commands.
+    /// The length will be limit to 0x1000, index range:[0, 4095].
+    pub fn new_sig_range_absolute(
+        transaction: &TransactionView,
+        salt: Option<u32>,
+        base_input_index: usize,
+        end_input_index: usize,
+        base_output_index: usize,
+        end_output_index: usize,
+    ) -> Result<Self, OpenTxError> {
+        let mut inputs = vec![
+            OpenTxSigInput::new_tx_hash(),
+            OpenTxSigInput::new_group_input_output_len(),
+        ];
+
+        let start_input_idx = base_input_index;
+        let end_input_idx =
+            ((ARG1_MASK + 1) as usize).min(end_input_index.min(transaction.inputs().len()));
+        if start_input_idx >= end_input_idx {
+            return Err(OpenTxError::BaseIndexOverFlow(
+                start_input_idx,
+                end_input_idx,
+            ));
+        }
+
+        let start_output_idx = base_output_index;
+        let out_put_idx =
+            ((ARG1_MASK + 1) as usize).min(end_output_index.min(transaction.outputs().len()));
+        if start_output_idx >= out_put_idx {
+            return Err(OpenTxError::BaseIndexOverFlow(
+                start_output_idx,
+                out_put_idx,
+            ));
+        }
+        let base_input_index = u32::try_from(base_input_index).map_err(|e| anyhow!(e))?;
+        let base_output_index = u32::try_from(base_output_index).map_err(|e| anyhow!(e))?;
+        for input_idx in start_input_idx..end_input_idx {
+            inputs.push(OpenTxSigInput::new_index_input(
+                input_idx as u16,
+                CellMask::all(),
+            )?);
+            inputs.push(OpenTxSigInput::new_cell_input_index(
+                input_idx as u16,
+                InputMask::all(),
+            )?);
+        }
+        for output_idx in start_output_idx..out_put_idx {
+            inputs.push(OpenTxSigInput::new_index_output(
+                output_idx as u16,
+                CellMask::all(),
+            )?);
+        }
+        if let Some(mut salt) = salt {
+            while salt > 0 {
+                inputs.push(OpenTxSigInput::new_concat_arg1_arg2(
+                    salt as u16 & ARG1_MASK,
+                    (salt >> 12) as u16 & ARG2_MASK,
+                ));
+                salt >>= 24;
+            }
+        }
+
+        inputs.push(OpenTxSigInput::new_end());
+        Ok(OpentxWitness::new(
+            base_input_index,
+            base_output_index,
+            inputs,
+        ))
     }
 
     pub fn set_base_input_index(&mut self, index: u32) {
@@ -376,7 +552,7 @@ impl OpentxWitness {
     }
 
     pub fn to_witness_data(&self) -> Vec<u8> {
-        let capacity = self.get_opentx_sig_len();
+        let capacity = 4 + 4 + 4 * self.inputs.len();
         let mut witness_data = Vec::with_capacity(capacity);
         witness_data.extend_from_slice(&self.base_input_index.to_le_bytes());
         witness_data.extend_from_slice(&self.base_output_index.to_le_bytes());
@@ -389,7 +565,7 @@ impl OpentxWitness {
     pub fn generate_message(
         &self,
         reader: &OpenTxReader,
-    ) -> Result<([u8; 32], Bytes), ScriptSignError> {
+    ) -> Result<([u8; 32], Bytes), OpenTxError> {
         let (is_input, is_output) = (true, false);
         let (relative_idx, absolute_idx) = (true, false);
 
