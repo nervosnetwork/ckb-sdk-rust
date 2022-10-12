@@ -12,6 +12,7 @@ use crate::traits::{CellQueryOptions, ValueRangeOption};
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ScriptStatus {
     pub script: Script,
+    pub script_type: ScriptType,
     pub block_number: BlockNumber,
 }
 
@@ -52,11 +53,12 @@ impl From<CellQueryOptions> for SearchKey {
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug)]
 #[serde(tag = "status")]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum FetchStatus<T> {
     Added { timestamp: u64 },
     Fetching { first_sent: u64 },
     Fetched { data: T },
+    NotFound,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -119,18 +121,6 @@ crate::jsonrpc!(pub struct LightClientRpcClient {
     ///
     /// Returns: FetchStatus<TransactionWithHeader>
     pub fn fetch_transaction(&mut self, tx_hash: H256) -> FetchStatus<TransactionWithHeader>;
-
-    /// Remove fetched headers. (if `block_hashes` is None remove all headers)
-    ///
-    /// Returns:
-    ///   * The removed block hashes
-    pub fn remove_headers(&mut self, block_hashes: Option<Vec<H256>>) -> Vec<H256>;
-
-    /// Remove fetched transactions. (if `tx_hashes` is None remove all transactions)
-    ///
-    /// Returns:
-    ///   * The removed transaction hashes
-    pub fn remove_transactions(&mut self, tx_hashes: Option<Vec<H256>>) -> Vec<H256>;
 
     // Net
     pub fn get_peers(&mut self) -> Vec<RemoteNode>;
