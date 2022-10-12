@@ -250,8 +250,8 @@ pub struct DefaultCellCollector {
 }
 
 impl DefaultCellCollector {
-    pub fn new(indexer_client: &str, ckb_client: &str) -> DefaultCellCollector {
-        let indexer_client = IndexerRpcClient::new(indexer_client);
+    pub fn new(ckb_client: &str) -> DefaultCellCollector {
+        let indexer_client = IndexerRpcClient::new(ckb_client);
         let ckb_client = CkbRpcClient::new(ckb_client);
         DefaultCellCollector {
             indexer_client,
@@ -280,7 +280,7 @@ impl DefaultCellCollector {
         for _ in 0..100 {
             match self
                 .indexer_client
-                .get_tip()
+                .get_indexer_tip()
                 .map_err(|err| CellCollectorError::Internal(err.into()))?
             {
                 Some(Tip { block_number, .. }) => {

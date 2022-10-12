@@ -84,11 +84,6 @@ pub struct CellsCapacity {
 }
 
 #[derive(Deserialize, Clone, Debug)]
-pub struct IndexerInfo {
-    pub version: String,
-}
-
-#[derive(Deserialize, Clone, Debug)]
 pub struct Cell {
     pub output: CellOutput,
     pub output_data: JsonBytes,
@@ -131,9 +126,8 @@ pub struct Pagination<T> {
 }
 
 crate::jsonrpc!(pub struct IndexerRpcClient {
-    pub fn get_tip(&mut self) -> Option<Tip>;
+    pub fn get_indexer_tip(&mut self) -> Option<Tip>;
     pub fn get_cells(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
     pub fn get_transactions(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
     pub fn get_cells_capacity(&mut self, search_key: SearchKey) -> Option<CellsCapacity>;
-    pub fn get_indexer_info(&mut self) -> IndexerInfo;
 });
