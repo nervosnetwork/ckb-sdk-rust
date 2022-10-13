@@ -553,6 +553,11 @@ impl OmniLockConfig {
         self.opentx_input = Some(opentx_input);
     }
 
+    /// Set the opentx mode, without knowing the open transaction input data yet, can be used to generate lock script args to search avaiable live cells.
+    pub fn set_opentx_mode(&mut self) {
+        self.omni_lock_flags.set(OmniLockFlags::OPENTX, true);
+    }
+
     /// Clear the open transaction input data, and clear OmniLockFlags::OPENTX from omni_lock_flags.
     pub fn clear_opentx_input(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::OPENTX, false);

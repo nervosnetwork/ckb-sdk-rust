@@ -580,7 +580,7 @@ impl OpentxWitness {
                 OpentxCommand::GroupInputOutputLen => {
                     let input_len = reader.group_input_len()?;
                     cache.update(&input_len.to_le_bytes());
-                    let output_len = reader.group_output_len()?;
+                    let output_len = 0u64;
                     cache.update(&output_len.to_le_bytes());
                 }
                 OpentxCommand::IndexOutput => {

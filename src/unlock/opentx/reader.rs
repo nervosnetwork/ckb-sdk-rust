@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::convert::TryFrom;
 
 use ckb_hash::blake2b_256;
@@ -9,14 +8,13 @@ use ckb_types::{
 };
 
 use super::OpenTxError;
-use crate::traits::TransactionDependencyProvider;
+use crate::{traits::TransactionDependencyProvider, ScriptGroup};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum OpenTxSource {
     Input,
     GroupInput,
     Outpout,
-    GroupOutpout,
     CellDep,
 }
 
@@ -37,60 +35,30 @@ pub enum OpenTxInputField {
     Since,
 }
 
-pub struct OpenTxReader {
+/// This reader can only read for only one input group, if you have multiple input group, multiple reader will be needed.
+pub struct OpenTxReader<'r>  {
     pub transaction: TransactionView,
-    pub provider: Box<dyn TransactionDependencyProvider>,
+    pub provider: &'r dyn TransactionDependencyProvider,
     /// map group input index to input index
     group_input_index: Vec<usize>,
-    /// map group output index to output index
-    group_output_index: Vec<usize>,
-    /// open tx lock hash
-    script_hash: Byte32,
 }
 
-impl OpenTxReader {
-    pub fn new(
+impl<'r> OpenTxReader<'r> {
+    pub fn new (
         transaction: &TransactionView,
-        provider: Box<dyn TransactionDependencyProvider>,
-        script_hash: Byte32,
+        provider: &'r dyn TransactionDependencyProvider,
+        script_group: &ScriptGroup,
     ) -> Result<Self, OpenTxError> {
-        let mut group_input_index = Vec::new();
-        // all lock
-        for index in 0..transaction.inputs().len() {
-            let lock_hash = provider
-                .get_cell(&transaction.inputs().get(index).unwrap().previous_output())?
-                .lock()
-                .calc_script_hash();
-            if lock_hash.cmp(&script_hash) == Ordering::Equal {
-                group_input_index.push(index);
-            }
-        }
-        let mut group_output_index = Vec::new();
-        for index in 0..transaction.outputs().len() {
-            let lock_hash = transaction.output(index).unwrap().lock().calc_script_hash();
-            if lock_hash.cmp(&script_hash) == Ordering::Equal {
-                group_output_index.push(index);
-            }
-        }
         Ok(OpenTxReader {
             transaction: transaction.clone(),
             provider,
-            group_input_index,
-            group_output_index,
-            script_hash,
+            group_input_index: script_group.input_indices.clone(),
         })
     }
 
     /// get the group input length.
     pub fn group_input_len(&self) -> Result<u64, OpenTxError> {
         let len = self.group_input_index.len();
-        let len = u64::try_from(len).map_err(|_e| OpenTxError::LenOverflow(len))?;
-        Ok(len)
-    }
-
-    /// get the group output length
-    pub fn group_output_len(&self) -> Result<u64, OpenTxError> {
-        let len = self.group_output_index.len();
         let len = u64::try_from(len).map_err(|_e| OpenTxError::LenOverflow(len))?;
         Ok(len)
     }
@@ -115,7 +83,7 @@ impl OpenTxReader {
     /// * `index` absolute index of inputs.
     fn input_cell(&self, index: usize) -> Result<CellOutput, OpenTxError> {
         let previous_output = self.input_previous_output(index)?;
-        let cell_output = self.provider.get_cell(&previous_output).unwrap();
+        let cell_output = self.provider.get_cell(&previous_output)?;
         Ok(cell_output)
     }
 
@@ -144,16 +112,6 @@ impl OpenTxReader {
         self.transaction
             .output(index)
             .ok_or(OpenTxError::OutOfBound)
-    }
-    /// Get cell data of input's cell
-    /// # Arguments
-    /// * `index` absolute index of output group.
-    fn group_output_cell(&self, index: usize) -> Result<CellOutput, OpenTxError> {
-        if self.group_output_index.len() <= index {
-            return Result::Err(OpenTxError::OutOfBound);
-        }
-        let index = self.group_output_index[index];
-        self.output_cell(index)
     }
     /// Get cell raw data of output's cell
     /// # Arguments
@@ -198,10 +156,6 @@ impl OpenTxReader {
         self.transaction.data().as_slice().to_vec()
     }
 
-    pub fn load_script_hash(&self) -> Byte32 {
-        self.script_hash.clone()
-    }
-
     pub fn load_cell(&self, index: usize, source: OpenTxSource) -> Result<Vec<u8>, OpenTxError> {
         let cell = match source {
             OpenTxSource::Input => self.input_cell(index),
@@ -240,7 +194,6 @@ impl OpenTxReader {
             OpenTxSource::Input => self.input_cell(index)?,
             OpenTxSource::Outpout => self.output_cell(index)?,
             OpenTxSource::GroupInput => self.group_input_cell(index)?,
-            OpenTxSource::GroupOutpout => self.group_output_cell(index)?,
             OpenTxSource::CellDep => self.cell_dep_cell(index)?,
         };
         Ok(cell.capacity().raw_data().to_vec())
