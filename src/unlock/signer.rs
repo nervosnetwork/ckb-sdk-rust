@@ -13,8 +13,11 @@ use ckb_types::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::types::{AddressPayload, CodeHashIndex, ScriptGroup, Since};
 use crate::{constants::MULTISIG_TYPE_HASH, types::omni_lock::OmniLockWitnessLock};
+use crate::{
+    traits::TransactionDependencyProvider,
+    types::{AddressPayload, CodeHashIndex, ScriptGroup, Since},
+};
 use crate::{
     traits::{Signer, SignerError},
     util::convert_keccak256_hash,
@@ -22,7 +25,7 @@ use crate::{
 
 use super::{
     omni_lock::{ConfigError, Identity},
-    opentx::OpenTxError,
+    opentx::{reader::OpenTxReader, OpenTxError},
     IdentityFlag, OmniLockConfig,
 };
 
@@ -67,6 +70,7 @@ pub trait ScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError>;
 }
 
@@ -131,6 +135,7 @@ impl ScriptSigner for SecpSighashScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let args = script_group.script.args().raw_data();
         self.sign_tx_with_owner_id(args.as_ref(), tx, script_group)
@@ -276,6 +281,7 @@ impl ScriptSigner for SecpMultisigScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let witness_idx = script_group.input_indices[0];
         let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
@@ -368,6 +374,7 @@ impl ScriptSigner for AcpScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let args = script_group.script.args().raw_data();
         let id = &args[0..20];
@@ -417,6 +424,7 @@ impl ScriptSigner for ChequeScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let args = script_group.script.args().raw_data();
         let id = self.owner_id(args.as_ref());
@@ -745,6 +753,7 @@ impl ScriptSigner for OmniLockScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let id = match self.unlock_mode {
             OmniUnlockMode::Admin => self
@@ -768,7 +777,16 @@ impl ScriptSigner for OmniLockScriptSigner {
                     .build();
 
                 let zero_lock = self.config.zero_lock(self.unlock_mode)?;
-                let message = generate_message(&tx_new, script_group, zero_lock)?;
+                let (message, open_sig_data) =
+                    if let Some(opentx_wit) = self.config.get_opentx_input() {
+                        let reader = OpenTxReader::new(&tx_new, tx_dep_provider, script_group)?;
+                        opentx_wit.generate_message(&reader)?
+                    } else {
+                        (
+                            generate_message(&tx_new, script_group, zero_lock)?,
+                            Bytes::new(),
+                        )
+                    };
 
                 let signature =
                     self.signer
@@ -782,7 +800,11 @@ impl ScriptSigner for OmniLockScriptSigner {
                     WitnessArgs::from_slice(witness_data.as_ref())?
                 };
 
-                let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
+                let lock = if let Some(opentx_wit) = self.config.get_opentx_input() {
+                    opentx_wit.build_opentx_sig(open_sig_data, signature)
+                } else {
+                    Self::build_witness_lock(current_witness.lock(), signature)?
+                };
 
                 current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
                 witnesses[witness_idx] = current_witness.as_bytes().pack();

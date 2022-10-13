@@ -155,9 +155,9 @@ impl ScriptUnlocker for SecpSighashUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        _tx_dep_provider: &dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        Ok(self.signer.sign_tx(tx, script_group)?)
+        Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
     }
 
     fn fill_placeholder_witness(
@@ -192,9 +192,9 @@ impl ScriptUnlocker for SecpMultisigUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        _tx_dep_provider: &dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        Ok(self.signer.sign_tx(tx, script_group)?)
+        Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
     }
 
     fn fill_placeholder_witness(
@@ -429,7 +429,7 @@ impl ScriptUnlocker for AcpUnlocker {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             self.clear_placeholder_witness(tx, script_group)
         } else {
-            Ok(self.signer.sign_tx(tx, script_group)?)
+            Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
         }
     }
 
@@ -575,7 +575,7 @@ impl ScriptUnlocker for ChequeUnlocker {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             self.clear_placeholder_witness(tx, script_group)
         } else {
-            Ok(self.signer.sign_tx(tx, script_group)?)
+            Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
         }
     }
 
@@ -704,9 +704,9 @@ impl ScriptUnlocker for OmniLockUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        _tx_dep_provider: &dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        Ok(self.signer.sign_tx(tx, script_group)?)
+        Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
     }
 
     fn fill_placeholder_witness(

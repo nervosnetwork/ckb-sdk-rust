@@ -36,7 +36,7 @@ pub enum OpenTxInputField {
 }
 
 /// This reader can only read for only one input group, if you have multiple input group, multiple reader will be needed.
-pub struct OpenTxReader<'r>  {
+pub struct OpenTxReader<'r> {
     pub transaction: TransactionView,
     pub provider: &'r dyn TransactionDependencyProvider,
     /// map group input index to input index
@@ -44,7 +44,7 @@ pub struct OpenTxReader<'r>  {
 }
 
 impl<'r> OpenTxReader<'r> {
-    pub fn new (
+    pub fn new(
         transaction: &TransactionView,
         provider: &'r dyn TransactionDependencyProvider,
         script_group: &ScriptGroup,

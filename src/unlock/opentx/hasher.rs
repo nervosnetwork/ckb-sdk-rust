@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use bitflags::bitflags;
-use bytes::Bytes;
+use bytes::{BufMut, Bytes};
 use ckb_hash::Blake2b;
 use ckb_types::{bytes::BytesMut, core::TransactionView, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -552,7 +552,7 @@ impl OpentxWitness {
     }
 
     pub fn to_witness_data(&self) -> Vec<u8> {
-        let capacity = 4 + 4 + 4 * self.inputs.len();
+        let capacity = self.opentx_sig_data_len();
         let mut witness_data = Vec::with_capacity(capacity);
         witness_data.extend_from_slice(&self.base_input_index.to_le_bytes());
         witness_data.extend_from_slice(&self.base_output_index.to_le_bytes());
@@ -562,15 +562,13 @@ impl OpentxWitness {
         witness_data
     }
 
-    pub fn generate_message(
-        &self,
-        reader: &OpenTxReader,
-    ) -> Result<([u8; 32], Bytes), OpenTxError> {
+    pub fn generate_message(&self, reader: &OpenTxReader) -> Result<(Bytes, Bytes), OpenTxError> {
         let (is_input, is_output) = (true, false);
         let (relative_idx, absolute_idx) = (true, false);
 
         let mut cache = OpentxCache::new();
         let mut s_data = BytesMut::with_capacity(self.inputs.len() * 4);
+        let mut has_last = false;
         for si in &self.inputs {
             match si.cmd {
                 OpentxCommand::TxHash => {
@@ -619,9 +617,16 @@ impl OpentxWitness {
                     cache.update(&data[0..3]);
                 }
                 OpentxCommand::End => {
+                    has_last = true;
+                    s_data.extend_from_slice(&si.compose().to_le_bytes());
                     break;
                 }
             }
+            s_data.extend_from_slice(&si.compose().to_le_bytes());
+        }
+        // append last end command
+        if !has_last {
+            let si = OpenTxSigInput::new_end();
             s_data.extend_from_slice(&si.compose().to_le_bytes());
         }
         let s_data = s_data.freeze();
@@ -629,6 +634,20 @@ impl OpentxWitness {
 
         let msg = cache.finalize();
         Ok((msg, s_data))
+    }
+
+    pub fn opentx_sig_data_len(&self) -> usize {
+        4 + 4 + 4 * self.inputs.len()
+    }
+
+    pub fn build_opentx_sig(&self, sil_data: Bytes, sig_bytes: Bytes) -> Bytes {
+        let mut data = BytesMut::with_capacity(self.opentx_sig_data_len() + sig_bytes.len());
+        data.put_u32_le(self.base_input_index as u32);
+        data.put_u32_le(self.base_output_index as u32);
+
+        data.put(sil_data);
+        data.put(sig_bytes);
+        data.freeze()
     }
 }
 
@@ -647,9 +666,9 @@ impl OpentxCache {
         self.blake2b.update(data);
     }
 
-    pub fn finalize(self) -> [u8; 32] {
-        let mut msg = [0u8; 32];
+    pub fn finalize(self) -> Bytes {
+        let mut msg = vec![0u8; 32];
         self.blake2b.finalize(&mut msg);
-        msg
+        Bytes::from(msg)
     }
 }

@@ -11,7 +11,7 @@ use ckb_sdk::{
         unlock_tx, CapacityBalancer, TxBuilder,
     },
     types::NetworkType,
-    unlock::{OmniLockConfig, OmniLockScriptSigner, opentx::OpentxWitness},
+    unlock::{opentx::OpentxWitness, OmniLockConfig, OmniLockScriptSigner},
     unlock::{OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker},
     util::blake160,
     Address, HumanCapacity, ScriptGroup, ScriptId, SECP256K1,
@@ -297,7 +297,7 @@ fn build_transfer_tx(
     // Build base transaction
     let unlockers = build_omnilock_unlockers(Vec::new(), omnilock_config.clone(), cell.type_hash);
     let output = CellOutput::new_builder()
-        .lock(sender.clone())
+        .lock(sender)
         .capacity(args.capacity.0.pack())
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
@@ -320,8 +320,7 @@ fn build_transfer_tx(
         .as_advanced_builder()
         .cell_dep(secp256k1_data_dep)
         .build();
-    let (tx, _) =
-        fill_placeholder_witnesses(base_tx, &tx_dep_provider, &unlockers)?;
+    let (tx, _) = fill_placeholder_witnesses(base_tx, &tx_dep_provider, &unlockers)?;
 
     let tx = balance_tx_capacity(
         &tx,
