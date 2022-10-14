@@ -18,7 +18,7 @@ use ckb_sdk::{
 };
 use ckb_types::{
     bytes::Bytes,
-    core::{BlockView, ScriptHashType, TransactionView},
+    core::{BlockView, Capacity, ScriptHashType, TransactionView},
     packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction, WitnessArgs},
     prelude::*,
     H160, H256,
@@ -54,7 +54,27 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
 ./target/debug/examples/transfer_from_opentx sign --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
             --omnilock-tx-hash 34e39e16a285d951b587e88f74286cbdb09c27a5c7e86aa1b1c92058a3cbcc52 --omnilock-index 0  \
             --tx-file tx.json
-# 5. send transaction
+
+# now try to use the transaction
+# 5. get receive account
+ckb-cli account extended-address --lock-arg 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d7 --path "m/44'/309'/0'/1/0"
+address:
+  mainnet: ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqgz2rhxauhe4q0f8xedhhmd4cl2r77dwtqfm4sz0
+  testnet: ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqgz2rhxauhe4q0f8xedhhmd4cl2r77dwtq8f7lgh
+address(deprecated):
+  mainnet: ckb1qyqqy58wdme0n2q7jwdjm00kmt3758au6ukqrdh5ct
+  testnet: ckt1qyqqy58wdme0n2q7jwdjm00kmt3758au6ukq7gft5h
+lock_arg: 0x0250ee6ef2f9a81e939b2dbdf6dae3ea1fbcd72c
+# 6. transfer ckb to the new account
+ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d7 \
+  --to-address ckt1qyqqy58wdme0n2q7jwdjm00kmt3758au6ukq7gft5h \
+  --capacity 100 --skip-check-to-address
+  # 0x9e80b30af11c5f142ad706b65d4a291492fcb045a169bca01c1b5d5d7b230e91
+# 7. add input
+./target/debug/examples/transfer_from_opentx add-input --tx-hash 9e80b30af11c5f142ad706b65d4a291492fcb045a169bca01c1b5d5d7b230e91 --index 0 --tx-file tx.json
+# 8. add output
+./target/debug/examples/transfer_from_opentx add-output --to-address ckt1qyqvsv5240xeh85wvnau2eky8pwrhh4jr8ts8vyj37 --capacity 100.99  --tx-file tx.json
+# 5. sign the transaction
 ./target/debug/examples/transfer_from_opentx send --tx-file tx.json
 */
 const OPENTX_TX_HASH: &str = "d7697f6b3684d1451c42cc538b3789f13b01430007f65afe74834b6a28714a18";
@@ -138,14 +158,58 @@ struct SignTxArgs {
     #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
     ckb_rpc: String,
 }
+
+#[derive(Args)]
+struct AddInputArgs {
+    /// omnilock script deploy transaction hash
+    #[clap(long, value_name = "H256")]
+    tx_hash: H256,
+
+    /// cell index of omnilock script deploy transaction's outputs
+    #[clap(long, value_name = "NUMBER")]
+    index: usize,
+
+    /// The output transaction info file (.json)
+    #[clap(long, value_name = "PATH")]
+    tx_file: PathBuf,
+
+    /// omnilock script deploy transaction hash
+    #[clap(long, value_name = "H256", default_value = OPENTX_TX_HASH)]
+    omnilock_tx_hash: H256,
+
+    /// cell index of omnilock script deploy transaction's outputs
+    #[clap(long, value_name = "NUMBER", default_value = OPENTX_TX_IDX)]
+    omnilock_index: usize,
+
+    /// CKB rpc url
+    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+    ckb_rpc: String,
+}
+
+#[derive(Args)]
+struct AddOutputArgs {
+    /// --to-sighash-address ckt1qyqg7zchpds6lv3v0nr36z2msu2x9a5lkhrq7kvyww --capacity 19999.9999 --tx-file tx.json
+    #[clap(long, value_name = "ADDRESS")]
+    to_address: Address,
+    /// The capacity to transfer (unit: CKB, example: 102.43)
+    #[clap(long, value_name = "CKB")]
+    capacity: HumanCapacity,
+
+    /// The output transaction info file (.json)
+    #[clap(long, value_name = "PATH")]
+    tx_file: PathBuf,
+}
 #[derive(Subcommand)]
 enum Commands {
     /// build omni lock address
     Build(BuildOmniLockAddrArgs),
     /// Generate the transaction
-    Gen(GenOpenTxArgs),
-    /// Sign the transaction
-    Sign(SignTxArgs),
+    GenOpenTx(GenOpenTxArgs),
+    /// Sign the open transaction
+    SignOpenTx(SignTxArgs),
+    /// Add input
+    AddInput(AddInputArgs),
+    AddOutput(AddOutputArgs),
     /// Send the transaction
     Send {
         /// The transaction info file (.json)
@@ -182,10 +246,10 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Build(build_args) => build_omnilock_addr(&build_args)?,
-        Commands::Gen(gen_args) => {
+        Commands::GenOpenTx(gen_args) => {
             gen_omnilock_tx(&gen_args)?;
         }
-        Commands::Sign(args) => {
+        Commands::SignOpenTx(args) => {
             let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
             let tx = Transaction::from(tx_info.tx.inner).into_view();
             let key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
@@ -204,6 +268,33 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             } else {
                 println!("failed to sign tx");
             }
+            let tx_info = TxInfo {
+                tx: json_types::TransactionView::from(tx),
+                omnilock_config: tx_info.omnilock_config,
+            };
+            fs::write(&args.tx_file, serde_json::to_string_pretty(&tx_info)?)?;
+        }
+        Commands::AddInput(args) => {
+            let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
+            println!("> tx: {}", serde_json::to_string_pretty(&tx_info.tx)?);
+            let tx = Transaction::from(tx_info.tx.inner).into_view();
+            let tx = add_live_cell(&args, tx)?;
+            let tx_info = TxInfo {
+                tx: json_types::TransactionView::from(tx),
+                omnilock_config: tx_info.omnilock_config,
+            };
+            fs::write(&args.tx_file, serde_json::to_string_pretty(&tx_info)?)?;
+        }
+        Commands::AddOutput(args) => {
+            let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
+            println!("> tx: {}", serde_json::to_string_pretty(&tx_info.tx)?);
+            let tx = Transaction::from(tx_info.tx.inner).into_view();
+            let lock_script = Script::from(args.to_address.payload());
+            let output = CellOutput::new_builder()
+                .capacity(Capacity::shannons(args.capacity.0).pack())
+                .lock(lock_script)
+                .build();
+            let tx = tx.as_advanced_builder().output(output).build();
             let tx_info = TxInfo {
                 tx: json_types::TransactionView::from(tx),
                 omnilock_config: tx_info.omnilock_config,
@@ -367,6 +458,25 @@ fn build_omnilock_cell_dep(
         script_id: ScriptId::new_type(type_hash.unpack()),
         cell_dep,
     })
+}
+
+fn add_live_cell(
+    args: &AddInputArgs,
+    tx: TransactionView,
+) -> Result<TransactionView, Box<dyn StdErr>> {
+    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let out_point_json = ckb_jsonrpc_types::OutPoint {
+        tx_hash: args.tx_hash.clone(),
+        index: ckb_jsonrpc_types::Uint32::from(args.index as u32),
+    };
+    ckb_client.get_live_cell(out_point_json, false)?;
+    let input_outpoint = OutPoint::new(
+        Byte32::from_slice(args.tx_hash.as_bytes())?,
+        args.index as u32,
+    );
+    // since value should be provided in args
+    let input = ckb_types::packed::CellInput::new(input_outpoint, 0);
+    Ok(tx.as_advanced_builder().input(input).build())
 }
 
 fn build_omnilock_unlockers(
