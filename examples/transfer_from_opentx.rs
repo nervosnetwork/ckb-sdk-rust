@@ -527,14 +527,27 @@ fn add_live_cell(
         tx_hash: args.tx_hash.clone(),
         index: ckb_jsonrpc_types::Uint32::from(args.index as u32),
     };
-    ckb_client.get_live_cell(out_point_json, false)?;
+    let cell_with_status = ckb_client.get_live_cell(out_point_json, false)?;
     let input_outpoint = OutPoint::new(
         Byte32::from_slice(args.tx_hash.as_bytes())?,
         args.index as u32,
     );
     // since value should be provided in args
     let input = ckb_types::packed::CellInput::new(input_outpoint, 0);
-    Ok(tx.as_advanced_builder().input(input).build())
+    let cell_dep_resolver = {
+        let genesis_block = ckb_client.get_block_by_number(0.into())?.unwrap();
+        DefaultCellDepResolver::from_genesis(&BlockView::from(genesis_block))?
+    };
+    let code_hash = cell_with_status.cell.unwrap().output.lock.code_hash;
+    let script_id = ScriptId::new_type(code_hash);
+    let dep = cell_dep_resolver
+        .get(&script_id)
+        .as_ref()
+        .unwrap()
+        .0
+        .clone();
+
+    Ok(tx.as_advanced_builder().input(input).cell_dep(dep).build())
 }
 
 fn build_omnilock_unlockers(
@@ -606,6 +619,6 @@ fn sighash_sign(
     // )?;
 
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
-    let (new_tx, new_still_locked_groups) = unlock_tx(tx.clone(), &tx_dep_provider, &unlockers)?;
+    let (new_tx, new_still_locked_groups) = unlock_tx(tx, &tx_dep_provider, &unlockers)?;
     Ok((new_tx, new_still_locked_groups))
 }
