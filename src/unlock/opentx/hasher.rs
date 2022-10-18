@@ -389,7 +389,9 @@ impl OpentxWitness {
         end_output_index: usize,
     ) -> Result<Self, OpenTxError> {
         let mut inputs = vec![
-            OpenTxSigInput::new_tx_hash(),
+            // If the opentx will add other input/output, when sign, it can not get the correct transaction hash,
+            // so OpentxCommand::TxHash should not be included in an opentx will add more input(s)/output(s)
+            // OpenTxSigInput::new_tx_hash(),
             OpenTxSigInput::new_group_input_output_len(),
         ];
 
@@ -612,7 +614,7 @@ impl OpentxWitness {
                     si.hash_input(&mut cache, reader, is_input, self.base_input_index)?;
                 }
                 OpentxCommand::ConcatArg1Arg2 => {
-                    let data = (si.arg1 & 0xfff) as u32 | ((si.arg2 & 0xfff) << 12) as u32;
+                    let data = (si.arg1 as u32 & 0xfff) | ((si.arg2 as u32 & 0xfff) << 12);
                     let data = data.to_le_bytes();
                     cache.update(&data[0..3]);
                 }

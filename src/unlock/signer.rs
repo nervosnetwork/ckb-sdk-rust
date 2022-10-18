@@ -788,7 +788,7 @@ impl ScriptSigner for OmniLockScriptSigner {
                         )
                     };
 
-                let signature =
+                let mut signature =
                     self.signer
                         .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
 
@@ -800,11 +800,10 @@ impl ScriptSigner for OmniLockScriptSigner {
                     WitnessArgs::from_slice(witness_data.as_ref())?
                 };
 
-                let lock = if let Some(opentx_wit) = self.config.get_opentx_input() {
-                    opentx_wit.build_opentx_sig(open_sig_data, signature)
-                } else {
-                    Self::build_witness_lock(current_witness.lock(), signature)?
-                };
+                if let Some(opentx_wit) = self.config.get_opentx_input() {
+                    signature = opentx_wit.build_opentx_sig(open_sig_data, signature);
+                }
+                let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
 
                 current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
                 witnesses[witness_idx] = current_witness.as_bytes().pack();

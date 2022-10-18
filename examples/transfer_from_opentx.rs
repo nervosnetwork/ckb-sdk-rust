@@ -1,6 +1,7 @@
 use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types as json_types;
 use ckb_sdk::{
+    constants::SIGHASH_TYPE_HASH,
     rpc::CkbRpcClient,
     traits::{
         DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
@@ -11,7 +12,7 @@ use ckb_sdk::{
         unlock_tx, CapacityBalancer, TxBuilder,
     },
     types::NetworkType,
-    unlock::{opentx::OpentxWitness, OmniLockConfig, OmniLockScriptSigner},
+    unlock::{opentx::OpentxWitness, OmniLockConfig, OmniLockScriptSigner, SecpSighashUnlocker},
     unlock::{OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker},
     util::blake160,
     Address, HumanCapacity, ScriptGroup, ScriptId, SECP256K1,
@@ -25,9 +26,9 @@ use ckb_types::{
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::PathBuf;
 use std::{collections::HashMap, error::Error as StdErr};
+use std::{collections::HashSet, fs};
 
 /*
 # examples for the developer local node
@@ -46,35 +47,20 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
   --capacity 99 --skip-check-to-address
     # 0x937deeb989bbd7f4bd0273bf2049d7614615dd58a32090b0093f23a692715871
 # 3. generate the transaction
-./target/debug/examples/transfer_from_opentx gen --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
+./target/debug/examples/transfer_from_opentx gen-open-tx --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
             --receiver ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgqkwvrdz5w6w2y372508q30rlnl30rzccczqhsaju7 \
-            --capacity 98.0 \
+            --capacity 98.0 --open-capacity 1.0\
             --tx-file tx.json
 # 4. sign the transaction
-./target/debug/examples/transfer_from_opentx sign --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
-            --omnilock-tx-hash 34e39e16a285d951b587e88f74286cbdb09c27a5c7e86aa1b1c92058a3cbcc52 --omnilock-index 0  \
+./target/debug/examples/transfer_from_opentx sign-open-tx --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
             --tx-file tx.json
-
-# now try to use the transaction
-# 5. get receive account
-ckb-cli account extended-address --lock-arg 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d7 --path "m/44'/309'/0'/1/0"
-address:
-  mainnet: ckb1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqgz2rhxauhe4q0f8xedhhmd4cl2r77dwtqfm4sz0
-  testnet: ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqgz2rhxauhe4q0f8xedhhmd4cl2r77dwtq8f7lgh
-address(deprecated):
-  mainnet: ckb1qyqqy58wdme0n2q7jwdjm00kmt3758au6ukqrdh5ct
-  testnet: ckt1qyqqy58wdme0n2q7jwdjm00kmt3758au6ukq7gft5h
-lock_arg: 0x0250ee6ef2f9a81e939b2dbdf6dae3ea1fbcd72c
-# 6. transfer ckb to the new account
-ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d7 \
-  --to-address ckt1qyqqy58wdme0n2q7jwdjm00kmt3758au6ukq7gft5h \
-  --capacity 100 --skip-check-to-address
-  # 0x9e80b30af11c5f142ad706b65d4a291492fcb045a169bca01c1b5d5d7b230e91
-# 7. add input
-./target/debug/examples/transfer_from_opentx add-input --tx-hash 9e80b30af11c5f142ad706b65d4a291492fcb045a169bca01c1b5d5d7b230e91 --index 0 --tx-file tx.json
-# 8. add output
-./target/debug/examples/transfer_from_opentx add-output --to-address ckt1qyqvsv5240xeh85wvnau2eky8pwrhh4jr8ts8vyj37 --capacity 100.99  --tx-file tx.json
-# 5. sign the transaction
+# add input, with capacity 98.99999588
+./target/debug/examples/transfer_from_opentx add-input --tx-hash df85d2aaa44d50b1db286bdb2fbd8682cad12d6858b269d2531403ba5e63a2eb --index 0 --tx-file tx.json
+# add output, capacity is 98.99999588(original) + 1(open capacity) - 0.001(fee)
+./target/debug/examples/transfer_from_opentx add-output --to-address ckt1qyqy68e02pll7qd9m603pqkdr29vw396h6dq50reug --capacity 99.99899588  --tx-file tx.json
+# sighash sign the new input
+./target/debug/examples/transfer_from_opentx sighash-sign-tx --sender-key 7068b4dc5289353c688e2e67b75207eb5574ba4938091cf5626a4d0f5cc91668 --tx-file tx.json
+# send the tx
 ./target/debug/examples/transfer_from_opentx send --tx-file tx.json
 */
 const OPENTX_TX_HASH: &str = "d7697f6b3684d1451c42cc538b3789f13b01430007f65afe74834b6a28714a18";
@@ -122,7 +108,11 @@ struct GenOpenTxArgs {
     /// The capacity to transfer (unit: CKB, example: 102.43)
     #[clap(long, value_name = "CKB")]
     capacity: HumanCapacity,
-
+    /// The open transaction capacity not decided to whom (unit: CKB, example: 102.43)
+    #[clap(long, value_name = "CKB")]
+    open_capacity: HumanCapacity,
+    #[clap(long, value_name = "NUMBER", default_value = "0")]
+    fee_rate: u64,
     /// The output transaction info file (.json)
     #[clap(long, value_name = "PATH")]
     tx_file: PathBuf,
@@ -207,8 +197,11 @@ enum Commands {
     GenOpenTx(GenOpenTxArgs),
     /// Sign the open transaction
     SignOpenTx(SignTxArgs),
+    /// sign sighash input
+    SighashSignTx(SignTxArgs),
     /// Add input
     AddInput(AddInputArgs),
+    /// Add output
     AddOutput(AddOutputArgs),
     /// Send the transaction
     Send {
@@ -247,7 +240,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     match cli.command {
         Commands::Build(build_args) => build_omnilock_addr(&build_args)?,
         Commands::GenOpenTx(gen_args) => {
-            gen_omnilock_tx(&gen_args)?;
+            gen_open_tx(&gen_args)?;
         }
         Commands::SignOpenTx(args) => {
             let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
@@ -264,6 +257,24 @@ fn main() -> Result<(), Box<dyn StdErr>> {
                 WitnessArgs::from_slice(tx.witnesses().get(0).unwrap().raw_data().as_ref())?;
             let lock_field = witness_args.lock().to_opt().unwrap().raw_data();
             if lock_field != tx_info.omnilock_config.zero_lock(OmniUnlockMode::Normal)? {
+                println!("> transaction has been signed!");
+            } else {
+                println!("failed to sign tx");
+            }
+            let tx_info = TxInfo {
+                tx: json_types::TransactionView::from(tx),
+                omnilock_config: tx_info.omnilock_config,
+            };
+            fs::write(&args.tx_file, serde_json::to_string_pretty(&tx_info)?)?;
+        }
+        Commands::SighashSignTx(args) => {
+            let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
+            let tx = Transaction::from(tx_info.tx.inner).into_view();
+            let (tx, _) = sighash_sign(&args, tx)?;
+            let witness_args =
+                WitnessArgs::from_slice(tx.witnesses().get(0).unwrap().raw_data().as_ref())?;
+            let lock_field = witness_args.lock().to_opt().unwrap().raw_data();
+            if lock_field != tx_info.omnilock_config.zero_lock(OmniUnlockMode::Normal)? {
                 println!("> transaction ready to send!");
             } else {
                 println!("failed to sign tx");
@@ -276,7 +287,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         }
         Commands::AddInput(args) => {
             let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
-            println!("> tx: {}", serde_json::to_string_pretty(&tx_info.tx)?);
+            // println!("> tx: {}", serde_json::to_string_pretty(&tx_info.tx)?);
             let tx = Transaction::from(tx_info.tx.inner).into_view();
             let tx = add_live_cell(&args, tx)?;
             let tx_info = TxInfo {
@@ -287,14 +298,18 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         }
         Commands::AddOutput(args) => {
             let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
-            println!("> tx: {}", serde_json::to_string_pretty(&tx_info.tx)?);
+            // println!("> tx: {}", serde_json::to_string_pretty(&tx_info.tx)?);
             let tx = Transaction::from(tx_info.tx.inner).into_view();
             let lock_script = Script::from(args.to_address.payload());
             let output = CellOutput::new_builder()
                 .capacity(Capacity::shannons(args.capacity.0).pack())
                 .lock(lock_script)
                 .build();
-            let tx = tx.as_advanced_builder().output(output).build();
+            let tx = tx
+                .as_advanced_builder()
+                .output(output)
+                .output_data(Bytes::default().pack())
+                .build();
             let tx_info = TxInfo {
                 tx: json_types::TransactionView::from(tx),
                 omnilock_config: tx_info.omnilock_config,
@@ -338,8 +353,8 @@ fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdEr
     Ok(())
 }
 
-fn gen_omnilock_tx(args: &GenOpenTxArgs) -> Result<(), Box<dyn StdErr>> {
-    let (tx, omnilock_config) = build_transfer_tx(args)?;
+fn gen_open_tx(args: &GenOpenTxArgs) -> Result<(), Box<dyn StdErr>> {
+    let (tx, omnilock_config) = build_open_tx(args)?;
     let tx_info = TxInfo {
         tx: json_types::TransactionView::from(tx),
         omnilock_config,
@@ -348,7 +363,24 @@ fn gen_omnilock_tx(args: &GenOpenTxArgs) -> Result<(), Box<dyn StdErr>> {
     Ok(())
 }
 
-fn build_transfer_tx(
+fn get_opentx_placeholder_hash() -> H256 {
+    let mut ret = H256::default();
+    let opentx = "opentx";
+    let offset = ret.0.len() - opentx.len();
+    ret.0[offset..].copy_from_slice(opentx.as_bytes());
+    ret
+}
+
+fn get_opentx_tmp_script() -> Script {
+    let tmp_locker = get_opentx_placeholder_hash();
+    Script::new_builder()
+        .code_hash(tmp_locker.pack())
+        .hash_type(ScriptHashType::Type.into())
+        .args([0u8; 65].pack())
+        .build()
+}
+
+fn build_open_tx(
     args: &GenOpenTxArgs,
 ) -> Result<(TransactionView, OmniLockConfig), Box<dyn StdErr>> {
     let sender_key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
@@ -368,7 +400,7 @@ fn build_transfer_tx(
         .args(omnilock_config.build_args().pack())
         .build();
     let placeholder_witness = omnilock_config.placeholder_witness(OmniUnlockMode::Normal)?;
-    let balancer = CapacityBalancer::new_simple(sender.clone(), placeholder_witness, 0);
+    let balancer = CapacityBalancer::new_simple(sender.clone(), placeholder_witness, args.fee_rate);
 
     // Build:
     //   * CellDepResolver
@@ -391,7 +423,16 @@ fn build_transfer_tx(
         .lock(sender)
         .capacity(args.capacity.0.pack())
         .build();
-    let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
+
+    let tmp_locker = get_opentx_tmp_script();
+    let output_tmp = CellOutput::new_builder()
+        .lock(tmp_locker.clone())
+        .capacity(args.open_capacity.0.pack())
+        .build();
+    let builder = CapacityTransferBuilder::new(vec![
+        (output, Bytes::default()),
+        (output_tmp, Bytes::default()),
+    ]);
 
     let base_tx = builder.build_base(
         &mut cell_collector,
@@ -422,10 +463,27 @@ fn build_transfer_tx(
         &header_dep_resolver,
     )?;
 
-    let outputs: Vec<CellOutput> = tx.outputs().into_iter().skip(1).collect();
-    let outputs_data: Vec<ckb_types::packed::Bytes> =
-        tx.outputs_data().into_iter().skip(1).collect();
-
+    let tmp_idxes: HashSet<usize> = tx
+        .outputs()
+        .into_iter()
+        .enumerate()
+        .filter(|(_, out)| out.lock() == tmp_locker)
+        .map(|(idx, _)| idx)
+        .collect();
+    let outputs: Vec<CellOutput> = tx
+        .outputs()
+        .into_iter()
+        .enumerate()
+        .filter(|(idx, _)| !tmp_idxes.contains(idx))
+        .map(|(_, out)| out)
+        .collect();
+    let outputs_data: Vec<ckb_types::packed::Bytes> = tx
+        .outputs_data()
+        .into_iter()
+        .enumerate()
+        .filter(|(idx, _)| !tmp_idxes.contains(idx))
+        .map(|(_, out)| out)
+        .collect();
     let tx = tx
         .as_advanced_builder()
         .set_outputs(outputs)
@@ -514,4 +572,40 @@ fn sign_tx(
     tx = new_tx;
     _still_locked_groups = Some(new_still_locked_groups);
     Ok((tx, _still_locked_groups.unwrap_or_default()))
+}
+
+fn sighash_sign(
+    args: &SignTxArgs,
+    tx: TransactionView,
+) -> Result<(TransactionView, Vec<ScriptGroup>), Box<dyn StdErr>> {
+    let sender_key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
+        .map_err(|err| format!("invalid sender secret key: {}", err))?;
+    // Build ScriptUnlocker
+    let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_key]);
+    let sighash_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+    let sighash_script_id = ScriptId::new_type(SIGHASH_TYPE_HASH.clone());
+    let mut unlockers = HashMap::default();
+    unlockers.insert(
+        sighash_script_id,
+        Box::new(sighash_unlocker) as Box<dyn ScriptUnlocker>,
+    );
+
+    // Build the transaction
+    // let output = CellOutput::new_builder()
+    //     .lock(Script::from(&args.receiver))
+    //     .capacity(args.capacity.0.pack())
+    //     .build();
+    // let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
+    // let (tx, still_locked_groups) = builder.build_unlocked(
+    //     &mut cell_collector,
+    //     &cell_dep_resolver,
+    //     &header_dep_resolver,
+    //     &tx_dep_provider,
+    //     &balancer,
+    //     &unlockers,
+    // )?;
+
+    let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
+    let (new_tx, new_still_locked_groups) = unlock_tx(tx.clone(), &tx_dep_provider, &unlockers)?;
+    Ok((new_tx, new_still_locked_groups))
 }
