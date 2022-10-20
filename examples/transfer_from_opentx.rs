@@ -1,3 +1,4 @@
+use ckb_crypto::secp::Pubkey;
 use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types as json_types;
 use ckb_sdk::{
@@ -12,9 +13,12 @@ use ckb_sdk::{
         unlock_tx, CapacityBalancer, TxBuilder,
     },
     types::NetworkType,
-    unlock::{opentx::OpentxWitness, OmniLockConfig, OmniLockScriptSigner, SecpSighashUnlocker},
+    unlock::{
+        opentx::OpentxWitness, IdentityFlag, OmniLockConfig, OmniLockScriptSigner,
+        SecpSighashUnlocker,
+    },
     unlock::{OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker},
-    util::blake160,
+    util::{blake160, keccak160},
     Address, HumanCapacity, ScriptGroup, ScriptId, SECP256K1,
 };
 use ckb_types::{
@@ -62,6 +66,42 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
 ./target/debug/examples/transfer_from_opentx sighash-sign-tx --sender-key 7068b4dc5289353c688e2e67b75207eb5574ba4938091cf5626a4d0f5cc91668 --tx-file tx.json
 # send the tx
 ./target/debug/examples/transfer_from_opentx send --tx-file tx.json
+# 0xebb9d9ff39efbee5957d6f7d19a4a17f1ac2e69dbc9289e4931cef6b832f4d57
+
+########################### ethereum omnilock example #################################
+# 1. build a omnilock address
+./target/debug/examples/transfer_from_opentx build --ethereum-receiver 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d                                                                                                                                                                                             14:03:11
+pubkey:"038d3cfceea4f9c2e76c5c4f5e99aec74c26d6ac894648b5700a0b71f91f9b5c2a"
+pubkey:"048d3cfceea4f9c2e76c5c4f5e99aec74c26d6ac894648b5700a0b71f91f9b5c2a26b16aac1d5753e56849ea83bf795eb8b06f0b6f4e5ed7b8caca720595458039"
+{
+  "lock-arg": "0x01cf2485c76aff1f2b4464edf04a1c8045068cf7e010",
+  "lock-hash": "0x057dcd204f26621ef49346ed77d2bdbf3069b83a5ef0a2b52be5299a93507cf6",
+  "mainnet": "ckb1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgpeujgt3m2lu0jk3ryahcy58yqg5rgealqzqjzc5z5",
+  "testnet": "ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgpeujgt3m2lu0jk3ryahcy58yqg5rgealqzqf4vcru"
+}
+# 2. transfer capacity to the address
+ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d7 \
+  --to-address ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgpeujgt3m2lu0jk3ryahcy58yqg5rgealqzqf4vcru \
+  --capacity 99 --skip-check-to-address
+    # 0xbd696b87629dfe38136c52e579800a432622baf5893b61365c7a18902a9ccd60
+# 3. generate the transaction
+./target/debug/examples/transfer_from_opentx gen-open-tx --ethereum-sender-key 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d \
+            --receiver ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgqkwvrdz5w6w2y372508q30rlnl30rzccczqhsaju7 \
+            --capacity 98.0 --open-capacity 1.0\
+            --tx-file tx.json
+# 4. sign the transaction
+./target/debug/examples/transfer_from_opentx sign-open-tx --sender-key 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d \
+            --mode ethereum \
+            --tx-file tx.json
+# add input, with capacity 99.99899588
+./target/debug/examples/transfer_from_opentx add-input --tx-hash ebb9d9ff39efbee5957d6f7d19a4a17f1ac2e69dbc9289e4931cef6b832f4d57 --index 1 --tx-file tx.json
+# add output, capacity is 99.99899588(original) + 1(open capacity) - 0.001(fee)
+./target/debug/examples/transfer_from_opentx add-output --to-address ckt1qyqy68e02pll7qd9m603pqkdr29vw396h6dq50reug --capacity 100.99799588  --tx-file tx.json
+# sighash sign the new input
+./target/debug/examples/transfer_from_opentx sighash-sign-tx --sender-key 7068b4dc5289353c688e2e67b75207eb5574ba4938091cf5626a4d0f5cc91668 --tx-file tx.json
+# send the tx
+./target/debug/examples/transfer_from_opentx send --tx-file tx.json
+# 0x621077216f3bf7861beacd3cdda44f7a5854454fcd133922b89f0addd0330e6b
 */
 const OPENTX_TX_HASH: &str = "d7697f6b3684d1451c42cc538b3789f13b01430007f65afe74834b6a28714a18";
 const OPENTX_TX_IDX: &str = "0";
@@ -70,7 +110,11 @@ const OPENTX_TX_IDX: &str = "0";
 struct BuildOmniLockAddrArgs {
     /// The receiver address
     #[clap(long, value_name = "ADDRESS")]
-    receiver: Address,
+    receiver: Option<Address>,
+
+    /// The receiver's private key (hex string)
+    #[clap(long, value_name = "KEY")]
+    ethereum_receiver: Option<H256>,
 
     /// omnilock script deploy transaction hash
     #[clap(
@@ -92,7 +136,10 @@ struct BuildOmniLockAddrArgs {
 struct GenOpenTxArgs {
     /// The sender private key (hex string)
     #[clap(long, value_name = "KEY")]
-    sender_key: H256,
+    sender_key: Option<H256>,
+    /// The sender private key (hex string)
+    #[clap(long, value_name = "KEY")]
+    ethereum_sender_key: Option<H256>,
     /// The receiver address
     #[clap(long, value_name = "ADDRESS")]
     receiver: Address,
@@ -131,6 +178,10 @@ struct SignTxArgs {
     /// The sender private key (hex string)
     #[clap(long, value_name = "KEY")]
     sender_key: H256,
+
+    /// The sender private key (hex string), possible values are: pubkeyhash, ethereum, multisig
+    #[clap(long, value_name = "KEY", default_value = "pubkeyhash")]
+    mode: String,
 
     /// The output transaction info file (.json)
     #[clap(long, value_name = "PATH")]
@@ -248,9 +299,15 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             let key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
                 .map_err(|err| format!("invalid sender secret key: {}", err))?;
             let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
-            let hash160 = &blake2b_256(&pubkey.serialize()[..])[0..20];
+            let hash160 = match args.mode.as_str() {
+                "pubkeyhash" => blake2b_256(&pubkey.serialize()[..])[0..20].to_vec(),
+                "ethereum" => keccak160(Pubkey::from(pubkey).as_ref()).as_bytes().to_vec(),
+                _ => {
+                    return Err(format!("not supported mod {}", args.mode).into());
+                }
+            };
             if tx_info.omnilock_config.id().auth_content().as_bytes() != hash160 {
-                return Err(format!("key {:#x} is not in omnilock config", args.sender_key).into());
+                return Err(format!("key {:#x} is not in omnilock config", key).into());
             }
             let (tx, _) = sign_tx(&args, tx, &tx_info.omnilock_config, key)?;
             let witness_args =
@@ -335,8 +392,19 @@ fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdEr
     let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let cell =
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
-    let arg = H160::from_slice(&args.receiver.payload().args()).unwrap();
-    let mut config = OmniLockConfig::new_pubkey_hash(arg);
+    let mut config = if let Some(receiver) = args.receiver.as_ref() {
+        let arg = H160::from_slice(&receiver.payload().args()).unwrap();
+        OmniLockConfig::new_pubkey_hash(arg)
+    } else if let Some(ethereum_receiver) = args.ethereum_receiver.as_ref() {
+        let privkey = secp256k1::SecretKey::from_slice(ethereum_receiver.as_bytes()).unwrap();
+        let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &privkey);
+        println!("pubkey:{:?}", hex_string(&pubkey.serialize()));
+        println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
+        let addr = keccak160(Pubkey::from(pubkey).as_ref());
+        OmniLockConfig::new_ethereum(addr)
+    } else {
+        return Err("must provide a receiver or an ethereum_receiver".into());
+    };
     config.set_opentx_mode();
     let address_payload = {
         let args = config.build_args();
@@ -383,15 +451,27 @@ fn get_opentx_tmp_script() -> Script {
 fn build_open_tx(
     args: &GenOpenTxArgs,
 ) -> Result<(TransactionView, OmniLockConfig), Box<dyn StdErr>> {
-    let sender_key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
-        .map_err(|err| format!("invalid sender secret key: {}", err))?;
-    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
     let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let cell =
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
 
-    let pubkey_hash = blake160(&pubkey.serialize());
-    let mut omnilock_config = OmniLockConfig::new_pubkey_hash(pubkey_hash);
+    let mut omnilock_config = if let Some(sender_key) = args.sender_key.as_ref() {
+        let sender_key = secp256k1::SecretKey::from_slice(sender_key.as_bytes())
+            .map_err(|err| format!("invalid sender secret key: {}", err))?;
+        let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+        let pubkey_hash = blake160(&pubkey.serialize());
+        OmniLockConfig::new_pubkey_hash(pubkey_hash)
+    } else if let Some(sender_key) = args.ethereum_sender_key.as_ref() {
+        let sender_key = secp256k1::SecretKey::from_slice(sender_key.as_bytes())
+            .map_err(|err| format!("invalid sender secret key: {}", err))?;
+        let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
+        println!("pubkey:{:?}", hex_string(&pubkey.serialize()));
+        println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
+        let addr = keccak160(Pubkey::from(pubkey).as_ref());
+        OmniLockConfig::new_ethereum(addr)
+    } else {
+        return Err("must provide a sender-key or an ethereum-sender-key".into());
+    };
     omnilock_config.set_opentx_mode();
     // Build CapacityBalancer
     let sender = Script::new_builder()
@@ -555,7 +635,12 @@ fn build_omnilock_unlockers(
     config: OmniLockConfig,
     omni_lock_type_hash: H256,
 ) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
-    let signer = SecpCkbRawKeySigner::new_with_secret_keys(keys);
+    let signer = match config.id().flag() {
+        IdentityFlag::PubkeyHash => SecpCkbRawKeySigner::new_with_secret_keys(keys),
+        IdentityFlag::Ethereum => SecpCkbRawKeySigner::new_with_ethereum_secret_keys(keys),
+        IdentityFlag::Multisig => todo!(),
+        _ => unreachable!("should not reach here!"),
+    };
     let omnilock_signer =
         OmniLockScriptSigner::new(Box::new(signer), config.clone(), OmniUnlockMode::Normal);
     let omnilock_unlocker = OmniLockUnlocker::new(omnilock_signer, config);
