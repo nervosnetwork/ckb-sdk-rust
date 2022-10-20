@@ -55,8 +55,8 @@ impl From<CellQueryOptions> for SearchKey {
 #[serde(tag = "status")]
 #[serde(rename_all = "snake_case")]
 pub enum FetchStatus<T> {
-    Added { timestamp: u64 },
-    Fetching { first_sent: u64 },
+    Added { timestamp: Uint64 },
+    Fetching { first_sent: Uint64 },
     Fetched { data: T },
     NotFound,
 }
@@ -112,12 +112,12 @@ crate::jsonrpc!(pub struct LightClientRpcClient {
     pub fn get_genesis_block(&mut self) -> BlockView;
     pub fn get_header(&mut self, block_hash: H256) -> Option<HeaderView>;
     pub fn get_transaction(&mut self, tx_hash: H256) -> Option<TransactionWithHeader>;
-    /// Fetch a header from remote node.
+    /// Fetch a header from remote node. If return status is `not_found` will re-sent fetching request immediately.
     ///
     /// Returns: FetchStatus<HeaderView>
     pub fn fetch_header(&mut self, block_hash: H256) -> FetchStatus<HeaderView>;
 
-    /// Fetch a transaction from remote node.
+    /// Fetch a transaction from remote node. If return status is `not_found` will re-sent fetching request immediately.
     ///
     /// Returns: FetchStatus<TransactionWithHeader>
     pub fn fetch_transaction(&mut self, tx_hash: H256) -> FetchStatus<TransactionWithHeader>;
