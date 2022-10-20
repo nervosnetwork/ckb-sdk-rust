@@ -232,6 +232,7 @@ pub struct CellQueryOptions {
     pub primary_script: Script,
     pub primary_type: PrimaryScriptType,
     pub secondary_script: Option<Script>,
+    pub script_len_range: Option<ValueRangeOption>,
     pub data_len_range: Option<ValueRangeOption>,
     pub capacity_range: Option<ValueRangeOption>,
     pub block_range: Option<ValueRangeOption>,
@@ -251,6 +252,7 @@ impl CellQueryOptions {
             primary_script,
             primary_type,
             secondary_script: None,
+            script_len_range: None,
             data_len_range: None,
             capacity_range: None,
             block_range: None,
@@ -317,6 +319,27 @@ impl CellQueryOptions {
                 // if primary is `type`, secondary is `lock`
                 if let Some(prefix) = filter_prefix {
                     if !extract_raw_data(&cell.output.lock()).starts_with(&prefix) {
+                        return false;
+                    }
+                }
+            }
+        }
+        if let Some(range) = self.script_len_range {
+            match self.primary_type {
+                PrimaryScriptType::Lock => {
+                    let script_len = extract_raw_data(&cell.output.lock()).len();
+                    if !range.match_value(script_len as u64) {
+                        return false;
+                    }
+                }
+                PrimaryScriptType::Type => {
+                    let script_len = cell
+                        .output
+                        .type_()
+                        .to_opt()
+                        .map(|script| extract_raw_data(&script).len())
+                        .unwrap_or_default();
+                    if !range.match_value(script_len as u64) {
                         return false;
                     }
                 }

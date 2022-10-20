@@ -29,6 +29,7 @@ impl From<CellQueryOptions> for SearchKey {
         let convert_range =
             |range: ValueRangeOption| [Uint64::from(range.start), Uint64::from(range.end)];
         let filter = if opts.secondary_script.is_none()
+            && opts.script_len_range.is_none()
             && opts.data_len_range.is_none()
             && opts.capacity_range.is_none()
             && opts.block_range.is_none()
@@ -37,6 +38,7 @@ impl From<CellQueryOptions> for SearchKey {
         } else {
             Some(SearchKeyFilter {
                 script: opts.secondary_script.map(|v| v.into()),
+                script_len_range: opts.script_len_range.map(convert_range),
                 output_data_len_range: opts.data_len_range.map(convert_range),
                 output_capacity_range: opts.capacity_range.map(convert_range),
                 block_range: opts.block_range.map(convert_range),
