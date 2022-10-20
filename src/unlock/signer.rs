@@ -548,6 +548,7 @@ impl OmniLockScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let witness_idx = script_group.input_indices[0];
         let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
@@ -561,7 +562,15 @@ impl OmniLockScriptSigner {
 
         let zero_lock = self.config.zero_lock(self.unlock_mode)?;
         let zero_lock_len = zero_lock.len();
-        let message = generate_message(&tx_new, script_group, zero_lock)?;
+        let (message, open_sig_data) = if let Some(opentx_wit) = self.config.get_opentx_input() {
+            let reader = OpenTxReader::new(&tx_new, tx_dep_provider, script_group)?;
+            opentx_wit.generate_message(&reader)?
+        } else {
+            (
+                generate_message(&tx_new, script_group, zero_lock)?,
+                Bytes::new(),
+            )
+        };
 
         let multisig_config = match self.unlock_mode {
             OmniUnlockMode::Admin => self
@@ -600,23 +609,29 @@ impl OmniLockScriptSigner {
             OmniLockWitnessLock::default()
         };
         let config_data = multisig_config.to_witness_data();
+        let osdl = open_sig_data.len();
         let mut omni_sig = omnilock_witnesslock
             .signature()
             .to_opt()
             .map(|data| data.raw_data().as_ref().to_vec())
             .unwrap_or_else(|| {
                 let mut omni_sig =
-                    vec![0u8; config_data.len() + multisig_config.threshold() as usize * 65];
-                omni_sig[..config_data.len()].copy_from_slice(&config_data);
+                    vec![0u8; osdl + config_data.len() + multisig_config.threshold() as usize * 65];
+                if osdl > 0 {
+                    omni_sig[..osdl].copy_from_slice(&open_sig_data);
+                }
+                omni_sig[osdl..config_data.len()].copy_from_slice(&config_data);
                 omni_sig
             });
         for signature in signatures {
-            let mut idx = config_data.len();
+            // every signature should start from begin in case one already exist.
+            let mut idx = osdl + config_data.len();
             while idx < omni_sig.len() {
-                // Put signature into an empty place.
+                // signautrue already exist
                 if omni_sig[idx..idx + 65] == signature {
                     break;
                 } else if omni_sig[idx..idx + 65] == [0u8; 65] {
+                    // Put signature into an empty place.
                     omni_sig[idx..idx + 65].copy_from_slice(signature.as_ref());
                     break;
                 }
@@ -642,6 +657,7 @@ impl OmniLockScriptSigner {
         tx: &TransactionView,
         script_group: &ScriptGroup,
         id: &Identity,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let witness_idx = script_group.input_indices[0];
         let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
@@ -654,12 +670,20 @@ impl OmniLockScriptSigner {
             .build();
 
         let zero_lock = self.config.zero_lock(self.unlock_mode())?;
-        let message = generate_message(&tx_new, script_group, zero_lock)?;
+        let (message, open_sig_data) = if let Some(opentx_wit) = self.config.get_opentx_input() {
+            let reader = OpenTxReader::new(&tx_new, tx_dep_provider, script_group)?;
+            opentx_wit.generate_message(&reader)?
+        } else {
+            (
+                generate_message(&tx_new, script_group, zero_lock)?,
+                Bytes::new(),
+            )
+        };
         let message = convert_keccak256_hash(message.as_ref());
 
-        let signature = self
-            .signer
-            .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
+        let mut signature =
+            self.signer
+                .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
 
         // Put signature into witness
         let witness_data = witnesses[witness_idx].raw_data();
@@ -669,6 +693,9 @@ impl OmniLockScriptSigner {
             WitnessArgs::from_slice(witness_data.as_ref())?
         };
 
+        if let Some(opentx_wit) = self.config.get_opentx_input() {
+            signature = opentx_wit.build_opentx_sig(open_sig_data, signature);
+        }
         let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
         current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
         witnesses[witness_idx] = current_witness.as_bytes().pack();
@@ -809,8 +836,8 @@ impl ScriptSigner for OmniLockScriptSigner {
                 witnesses[witness_idx] = current_witness.as_bytes().pack();
                 Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
             }
-            IdentityFlag::Ethereum => self.sign_ethereum_tx(tx, script_group, &id),
-            IdentityFlag::Multisig => self.sign_multisig_tx(tx, script_group),
+            IdentityFlag::Ethereum => self.sign_ethereum_tx(tx, script_group, &id, tx_dep_provider),
+            IdentityFlag::Multisig => self.sign_multisig_tx(tx, script_group, tx_dep_provider),
             IdentityFlag::OwnerLock => {
                 // should not reach here, just return a clone for compatible reason.
                 Ok(tx.clone())
