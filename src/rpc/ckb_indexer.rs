@@ -13,6 +13,8 @@ pub struct SearchKey {
     pub script: Script,
     pub script_type: ScriptType,
     pub filter: Option<SearchKeyFilter>,
+    pub with_data: Option<bool>,
+    pub group_by_transaction: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -47,6 +49,8 @@ impl From<CellQueryOptions> for SearchKey {
             script: opts.primary_script.into(),
             script_type: opts.primary_type.into(),
             filter,
+            with_data: opts.with_data,
+            group_by_transaction: None,
         }
     }
 }
@@ -110,12 +114,43 @@ impl From<Cell> for LiveCell {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Tx {
+#[serde(untagged)]
+pub enum Tx {
+    Ungrouped(TxWithCell),
+    Grouped(TxWithCells),
+}
+
+impl Tx {
+    pub fn tx_hash(&self) -> H256 {
+        match self {
+            Tx::Ungrouped(tx) => tx.tx_hash.clone(),
+            Tx::Grouped(tx) => tx.tx_hash.clone(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TxWithCell {
     pub tx_hash: H256,
     pub block_number: BlockNumber,
     pub tx_index: Uint32,
     pub io_index: Uint32,
-    pub io_type: IOType,
+    pub io_type: CellType,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TxWithCells {
+    pub tx_hash: H256,
+    pub block_number: BlockNumber,
+    pub tx_index: Uint32,
+    pub cells: Vec<(CellType, Uint32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum CellType {
+    Input,
+    Output,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
