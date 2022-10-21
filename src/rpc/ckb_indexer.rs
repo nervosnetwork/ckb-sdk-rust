@@ -89,7 +89,7 @@ pub struct CellsCapacity {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cell {
     pub output: CellOutput,
-    pub output_data: JsonBytes,
+    pub output_data: Option<JsonBytes>,
     pub out_point: OutPoint,
     pub block_number: BlockNumber,
     pub tx_index: Uint32,
@@ -98,7 +98,10 @@ impl From<Cell> for LiveCell {
     fn from(cell: Cell) -> LiveCell {
         LiveCell {
             output: cell.output.into(),
-            output_data: cell.output_data.into_bytes(),
+            output_data: cell
+                .output_data
+                .map(|data| data.into_bytes())
+                .unwrap_or_default(),
             out_point: cell.out_point.into(),
             block_number: cell.block_number.value(),
             tx_index: cell.tx_index.value(),

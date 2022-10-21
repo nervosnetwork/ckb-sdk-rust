@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 use ckb_jsonrpc_types::{
-    BlockNumber, BlockView, Capacity, HeaderView, JsonBytes, NodeAddress, RemoteNodeProtocol,
-    Script, Transaction, TransactionView, Uint32, Uint64,
+    BlockNumber, BlockView, HeaderView, JsonBytes, NodeAddress, RemoteNodeProtocol, Script,
+    Transaction, TransactionView, Uint32, Uint64,
 };
 use ckb_types::H256;
 
-pub use crate::rpc::ckb_indexer::{Cell, Order, Pagination, ScriptType, SearchKeyFilter, Tx};
+pub use crate::rpc::ckb_indexer::{
+    Cell, CellsCapacity, Order, Pagination, ScriptType, SearchKeyFilter,
+};
 use crate::traits::{CellQueryOptions, ValueRangeOption};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -21,6 +23,7 @@ pub struct SearchKey {
     pub script: Script,
     pub script_type: ScriptType,
     pub filter: Option<SearchKeyFilter>,
+    pub with_data: Option<bool>,
     pub group_by_transaction: Option<bool>,
 }
 
@@ -47,6 +50,7 @@ impl From<CellQueryOptions> for SearchKey {
         SearchKey {
             script: opts.primary_script.into(),
             script_type: opts.primary_type.into(),
+            with_data: opts.with_data,
             filter,
             group_by_transaction: None,
         }
@@ -67,6 +71,37 @@ pub enum FetchStatus<T> {
 pub struct TransactionWithHeader {
     pub transaction: TransactionView,
     pub header: HeaderView,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum Tx {
+    Ungrouped(TxWithCell),
+    Grouped(TxWithCells),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TxWithCell {
+    transaction: TransactionView,
+    block_number: BlockNumber,
+    tx_index: Uint32,
+    io_index: Uint32,
+    io_type: CellType,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TxWithCells {
+    transaction: TransactionView,
+    block_number: BlockNumber,
+    tx_index: Uint32,
+    cells: Vec<(CellType, Uint32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum CellType {
+    Input,
+    Output,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -104,7 +139,7 @@ crate::jsonrpc!(pub struct LightClientRpcClient {
     pub fn get_scripts(&mut self) -> Vec<ScriptStatus>;
     pub fn get_cells(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
     pub fn get_transactions(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
-    pub fn get_cells_capacity(&mut self, search_key: SearchKey) -> Capacity;
+    pub fn get_cells_capacity(&mut self, search_key: SearchKey) -> CellsCapacity;
 
     // Transaction
     pub fn send_transaction(&mut self, tx: Transaction) -> H256;

@@ -236,6 +236,7 @@ pub struct CellQueryOptions {
     pub data_len_range: Option<ValueRangeOption>,
     pub capacity_range: Option<ValueRangeOption>,
     pub block_range: Option<ValueRangeOption>,
+    pub with_data: Option<bool>,
 
     pub order: QueryOrder,
     pub limit: Option<u32>,
@@ -256,8 +257,9 @@ impl CellQueryOptions {
             data_len_range: None,
             capacity_range: None,
             block_range: None,
-            limit: None,
+            with_data: None,
             order: QueryOrder::Asc,
+            limit: None,
             maturity: MaturityOption::Mature,
             min_total_capacity: 1,
         }
