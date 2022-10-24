@@ -231,12 +231,14 @@ pub enum QueryOrder {
 pub struct CellQueryOptions {
     pub primary_script: Script,
     pub primary_type: PrimaryScriptType,
+    pub with_data: Option<bool>,
+
+    // Options for SearchKeyFilter
     pub secondary_script: Option<Script>,
-    pub script_len_range: Option<ValueRangeOption>,
+    pub secondary_script_len_range: Option<ValueRangeOption>,
     pub data_len_range: Option<ValueRangeOption>,
     pub capacity_range: Option<ValueRangeOption>,
     pub block_range: Option<ValueRangeOption>,
-    pub with_data: Option<bool>,
 
     pub order: QueryOrder,
     pub limit: Option<u32>,
@@ -253,7 +255,7 @@ impl CellQueryOptions {
             primary_script,
             primary_type,
             secondary_script: None,
-            script_len_range: None,
+            secondary_script_len_range: None,
             data_len_range: None,
             capacity_range: None,
             block_range: None,
@@ -326,21 +328,21 @@ impl CellQueryOptions {
                 }
             }
         }
-        if let Some(range) = self.script_len_range {
+        if let Some(range) = self.secondary_script_len_range {
             match self.primary_type {
                 PrimaryScriptType::Lock => {
-                    let script_len = extract_raw_data(&cell.output.lock()).len();
-                    if !range.match_value(script_len as u64) {
-                        return false;
-                    }
-                }
-                PrimaryScriptType::Type => {
                     let script_len = cell
                         .output
                         .type_()
                         .to_opt()
                         .map(|script| extract_raw_data(&script).len())
                         .unwrap_or_default();
+                    if !range.match_value(script_len as u64) {
+                        return false;
+                    }
+                }
+                PrimaryScriptType::Type => {
+                    let script_len = extract_raw_data(&cell.output.lock()).len();
                     if !range.match_value(script_len as u64) {
                         return false;
                     }

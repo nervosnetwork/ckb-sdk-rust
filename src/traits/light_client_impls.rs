@@ -214,7 +214,7 @@ impl CellCollector for LightClientCellCollector {
             let locked_cells = self.offchain.locked_cells.clone();
             let search_key = SearchKey::from(query.clone());
             const MAX_LIMIT: u32 = 4096;
-            let mut limit: u32 = query.limit.unwrap_or(128);
+            let mut limit: u32 = query.limit.unwrap_or(16);
             let mut last_cursor: Option<json_types::JsonBytes> = None;
             while total_capacity < query.min_total_capacity {
                 let page = self
