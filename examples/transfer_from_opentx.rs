@@ -6,7 +6,7 @@ use ckb_sdk::{
     rpc::CkbRpcClient,
     traits::{
         DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
-        DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
+        DefaultTransactionDependencyProvider, SecpCkbRawKeySigner, TransactionDependencyProvider,
     },
     tx_builder::{
         balance_tx_capacity, fill_placeholder_witnesses, transfer::CapacityTransferBuilder,
@@ -14,7 +14,7 @@ use ckb_sdk::{
     },
     types::NetworkType,
     unlock::{
-        opentx::OpentxWitness, IdentityFlag, OmniLockConfig, OmniLockScriptSigner,
+        opentx::OpentxWitness, IdentityFlag, MultisigConfig, OmniLockConfig, OmniLockScriptSigner,
         SecpSighashUnlocker,
     },
     unlock::{OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker},
@@ -36,8 +36,8 @@ use std::{collections::HashSet, fs};
 
 /*
 # examples for the developer local node
-########################### sighash omnilock example #################################
-# 1. build a omnilock address
+########################### sighash opentx example #################################
+# 1. build an opentx address
  ./target/debug/examples/transfer_from_opentx build --receiver ckt1qyqt8xpk328d89zgl928nsgh3lelch33vvvq5u3024
 {
   "lock-arg": "0x00b398368a8ed39448f95479c1178ff3fc5e31631810",
@@ -68,8 +68,8 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
 ./target/debug/examples/transfer_from_opentx send --tx-file tx.json
 # 0xebb9d9ff39efbee5957d6f7d19a4a17f1ac2e69dbc9289e4931cef6b832f4d57
 
-########################### ethereum omnilock example #################################
-# 1. build a omnilock address
+########################### ethereum opentx example #################################
+# 1. build an opentx address
 ./target/debug/examples/transfer_from_opentx build --ethereum-receiver 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d                                                                                                                                                                                             14:03:11
 pubkey:"038d3cfceea4f9c2e76c5c4f5e99aec74c26d6ac894648b5700a0b71f91f9b5c2a"
 pubkey:"048d3cfceea4f9c2e76c5c4f5e99aec74c26d6ac894648b5700a0b71f91f9b5c2a26b16aac1d5753e56849ea83bf795eb8b06f0b6f4e5ed7b8caca720595458039"
@@ -91,8 +91,50 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
             --tx-file tx.json
 # 4. sign the transaction
 ./target/debug/examples/transfer_from_opentx sign-open-tx --sender-key 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d \
-            --mode ethereum \
             --tx-file tx.json
+# add input, with capacity 99.99899588
+./target/debug/examples/transfer_from_opentx add-input --tx-hash ebb9d9ff39efbee5957d6f7d19a4a17f1ac2e69dbc9289e4931cef6b832f4d57 --index 1 --tx-file tx.json
+# add output, capacity is 99.99899588(original) + 1(open capacity) - 0.001(fee)
+./target/debug/examples/transfer_from_opentx add-output --to-address ckt1qyqy68e02pll7qd9m603pqkdr29vw396h6dq50reug --capacity 100.99799588  --tx-file tx.json
+# sighash sign the new input
+./target/debug/examples/transfer_from_opentx sighash-sign-tx --sender-key 7068b4dc5289353c688e2e67b75207eb5574ba4938091cf5626a4d0f5cc91668 --tx-file tx.json
+# send the tx
+./target/debug/examples/transfer_from_opentx send --tx-file tx.json
+# 0x621077216f3bf7861beacd3cdda44f7a5854454fcd133922b89f0addd0330e6b
+
+########################### multisig opentx example #################################
+# 1. build an opentx address
+./target/debug/examples/transfer_from_opentx build --require-first-n 0 \
+  --threshold 2 \
+  --sighash-address ckt1qyqt8xpk328d89zgl928nsgh3lelch33vvvq5u3024 \
+  --sighash-address ckt1qyqvsv5240xeh85wvnau2eky8pwrhh4jr8ts8vyj37 \
+  --sighash-address ckt1qyqywrwdchjyqeysjegpzw38fvandtktdhrs0zaxl4                                                                                                                                                                                    14:03:11
+{
+  "lock-arg": "0x065d7d0128eeaa6f9656a229b42aadd0b177d387eb10",
+  "lock-hash": "0xf5202949800af0b454b2e4806c57da1d0f3ae87f7b9f4b698d9f3b71162ec196",
+  "mainnet": "ckb1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgxt47sz28w4fhev44z9x6z4twsk9ma8pltzqmtamce",
+  "testnet": "ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgxt47sz28w4fhev44z9x6z4twsk9ma8pltzqqufhe3"
+}
+# 2. transfer capacity to the address
+ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d7 \
+  --to-address ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgxt47sz28w4fhev44z9x6z4twsk9ma8pltzqqufhe3 \
+  --capacity 99 --skip-check-to-address
+    # 0xf993b27a0129f72ec0a889cb016987c3cef00f7819461e51d5755464da6adf1b
+# 3. generate the transaction
+./target/debug/examples/transfer_from_opentx gen-open-tx \
+    --require-first-n 0 \
+    --threshold 2 \
+    --sighash-address ckt1qyqt8xpk328d89zgl928nsgh3lelch33vvvq5u3024 \
+    --sighash-address ckt1qyqvsv5240xeh85wvnau2eky8pwrhh4jr8ts8vyj37 \
+    --sighash-address ckt1qyqywrwdchjyqeysjegpzw38fvandtktdhrs0zaxl4 \
+    --receiver ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgqkwvrdz5w6w2y372508q30rlnl30rzccczqhsaju7 \
+    --capacity 98.0 --open-capacity 1.0 \
+    --tx-file tx.json
+# 4. sign the transaction
+./target/debug/examples/transfer_from_opentx sign-open-tx \
+    --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
+    --sender-key d00c06bfd800d27397002dca6fb0993d5ba6399b4238b2f29ee9deb97593d2bc \
+    --tx-file tx.json
 # add input, with capacity 99.99899588
 ./target/debug/examples/transfer_from_opentx add-input --tx-hash ebb9d9ff39efbee5957d6f7d19a4a17f1ac2e69dbc9289e4931cef6b832f4d57 --index 1 --tx-file tx.json
 # add output, capacity is 99.99899588(original) + 1(open capacity) - 0.001(fee)
@@ -107,14 +149,31 @@ const OPENTX_TX_HASH: &str = "d7697f6b3684d1451c42cc538b3789f13b01430007f65afe74
 const OPENTX_TX_IDX: &str = "0";
 
 #[derive(Args)]
+struct MultiSigArgs {
+    /// Require first n signatures of corresponding pubkey
+    #[clap(long, value_name = "NUM", default_value = "1")]
+    require_first_n: u8,
+
+    /// Multisig threshold
+    #[clap(long, value_name = "NUM", default_value = "1")]
+    threshold: u8,
+
+    /// Normal sighash address
+    #[clap(long, value_name = "ADDRESS")]
+    sighash_address: Vec<Address>,
+}
+#[derive(Args)]
 struct BuildOmniLockAddrArgs {
     /// The receiver address
-    #[clap(long, value_name = "ADDRESS")]
+    #[clap(long, value_name = "ADDRESS", group = "algorithm")]
     receiver: Option<Address>,
 
     /// The receiver's private key (hex string)
-    #[clap(long, value_name = "KEY")]
+    #[clap(long, value_name = "KEY", group = "algorithm")]
     ethereum_receiver: Option<H256>,
+
+    #[clap(flatten)]
+    multis_args: MultiSigArgs,
 
     /// omnilock script deploy transaction hash
     #[clap(
@@ -140,6 +199,10 @@ struct GenOpenTxArgs {
     /// The sender private key (hex string)
     #[clap(long, value_name = "KEY")]
     ethereum_sender_key: Option<H256>,
+
+    #[clap(flatten)]
+    multis_args: MultiSigArgs,
+
     /// The receiver address
     #[clap(long, value_name = "ADDRESS")]
     receiver: Address,
@@ -177,11 +240,7 @@ struct GenOpenTxArgs {
 struct SignTxArgs {
     /// The sender private key (hex string)
     #[clap(long, value_name = "KEY")]
-    sender_key: H256,
-
-    /// The sender private key (hex string), possible values are: pubkeyhash, ethereum, multisig
-    #[clap(long, value_name = "KEY", default_value = "pubkeyhash")]
-    mode: String,
+    sender_key: Vec<H256>,
 
     /// The output transaction info file (.json)
     #[clap(long, value_name = "PATH")]
@@ -296,20 +355,33 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         Commands::SignOpenTx(args) => {
             let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
             let tx = Transaction::from(tx_info.tx.inner).into_view();
-            let key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
-                .map_err(|err| format!("invalid sender secret key: {}", err))?;
-            let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
-            let hash160 = match args.mode.as_str() {
-                "pubkeyhash" => blake2b_256(&pubkey.serialize()[..])[0..20].to_vec(),
-                "ethereum" => keccak160(Pubkey::from(pubkey).as_ref()).as_bytes().to_vec(),
-                _ => {
-                    return Err(format!("not supported mod {}", args.mode).into());
+            let keys = args
+                .sender_key
+                .iter()
+                .map(|sender_key| {
+                    secp256k1::SecretKey::from_slice(sender_key.as_bytes())
+                        .map_err(|err| format!("invalid sender secret key: {}", err))
+                        .unwrap()
+                })
+                .collect();
+            if tx_info.omnilock_config.is_pubkey_hash() || tx_info.omnilock_config.is_ethereum() {
+                for key in &keys {
+                    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, key);
+                    let hash160 = match tx_info.omnilock_config.id().flag() {
+                        IdentityFlag::PubkeyHash => {
+                            blake2b_256(&pubkey.serialize()[..])[0..20].to_vec()
+                        }
+                        IdentityFlag::Ethereum => {
+                            keccak160(Pubkey::from(pubkey).as_ref()).as_bytes().to_vec()
+                        }
+                        _ => unreachable!(),
+                    };
+                    if tx_info.omnilock_config.id().auth_content().as_bytes() != hash160 {
+                        return Err(format!("key {:#x} is not in omnilock config", key).into());
+                    }
                 }
-            };
-            if tx_info.omnilock_config.id().auth_content().as_bytes() != hash160 {
-                return Err(format!("key {:#x} is not in omnilock config", key).into());
             }
-            let (tx, _) = sign_tx(&args, tx, &tx_info.omnilock_config, key)?;
+            let (tx, _) = sign_tx(&args, tx, &tx_info.omnilock_config, keys)?;
             let witness_args =
                 WitnessArgs::from_slice(tx.witnesses().get(0).unwrap().raw_data().as_ref())?;
             let lock_field = witness_args.lock().to_opt().unwrap().raw_data();
@@ -388,6 +460,32 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     Ok(())
 }
 
+fn build_multisig_config(
+    sighash_address: &[Address],
+    require_first_n: u8,
+    threshold: u8,
+) -> Result<MultisigConfig, Box<dyn StdErr>> {
+    if sighash_address.is_empty() {
+        return Err("Must have at least one sighash_address".to_string().into());
+    }
+    let mut sighash_addresses = Vec::with_capacity(sighash_address.len());
+    for addr in sighash_address {
+        let lock_args = addr.payload().args();
+        if addr.payload().code_hash(None).as_slice() != SIGHASH_TYPE_HASH.as_bytes()
+            || addr.payload().hash_type() != ScriptHashType::Type
+            || lock_args.len() != 20
+        {
+            return Err(format!("sighash_address {} is not sighash address", addr).into());
+        }
+        sighash_addresses.push(H160::from_slice(lock_args.as_ref()).unwrap());
+    }
+    Ok(MultisigConfig::new_with(
+        sighash_addresses,
+        require_first_n,
+        threshold,
+    )?)
+}
+
 fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdErr>> {
     let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let cell =
@@ -402,6 +500,11 @@ fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdEr
         println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
         let addr = keccak160(Pubkey::from(pubkey).as_ref());
         OmniLockConfig::new_ethereum(addr)
+    } else if !args.multis_args.sighash_address.is_empty() {
+        let args = &args.multis_args;
+        let multisig_config =
+            build_multisig_config(&args.sighash_address, args.require_first_n, args.threshold)?;
+        OmniLockConfig::new_multisig(multisig_config)
     } else {
         return Err("must provide a receiver or an ethereum_receiver".into());
     };
@@ -469,6 +572,11 @@ fn build_open_tx(
         println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
         let addr = keccak160(Pubkey::from(pubkey).as_ref());
         OmniLockConfig::new_ethereum(addr)
+    } else if !args.multis_args.sighash_address.is_empty() {
+        let args = &args.multis_args;
+        let multisig_config =
+            build_multisig_config(&args.sighash_address, args.require_first_n, args.threshold)?;
+        OmniLockConfig::new_multisig(multisig_config)
     } else {
         return Err("must provide a sender-key or an ethereum-sender-key".into());
     };
@@ -500,7 +608,7 @@ fn build_open_tx(
     // Build base transaction
     let unlockers = build_omnilock_unlockers(Vec::new(), omnilock_config.clone(), cell.type_hash);
     let output = CellOutput::new_builder()
-        .lock(sender)
+        .lock(sender.clone())
         .capacity(args.capacity.0.pack())
         .build();
 
@@ -572,6 +680,27 @@ fn build_open_tx(
 
     let wit = OpentxWitness::new_sig_all_relative(&tx, Some(0xdeadbeef)).unwrap();
     omnilock_config.set_opentx_input(wit);
+    // after set opentx config, need to update the witness field
+    let placeholder_witness = omnilock_config.placeholder_witness(OmniUnlockMode::Normal)?;
+    let tmp_idxes: Vec<_> = tx
+        .input_pts_iter()
+        .enumerate()
+        .filter(|(_, output)| tx_dep_provider.get_cell(output).unwrap().lock() == sender)
+        .map(|(idx, _)| idx)
+        .collect();
+    let witnesses: Vec<_> = tx
+        .witnesses()
+        .into_iter()
+        .enumerate()
+        .map(|(i, w)| {
+            if tmp_idxes.contains(&i) {
+                placeholder_witness.as_bytes().pack()
+            } else {
+                w
+            }
+        })
+        .collect();
+    let tx = tx.as_advanced_builder().set_witnesses(witnesses).build();
     Ok((tx, omnilock_config))
 }
 
@@ -638,7 +767,7 @@ fn build_omnilock_unlockers(
     let signer = match config.id().flag() {
         IdentityFlag::PubkeyHash => SecpCkbRawKeySigner::new_with_secret_keys(keys),
         IdentityFlag::Ethereum => SecpCkbRawKeySigner::new_with_ethereum_secret_keys(keys),
-        IdentityFlag::Multisig => todo!(),
+        IdentityFlag::Multisig => SecpCkbRawKeySigner::new_with_secret_keys(keys),
         _ => unreachable!("should not reach here!"),
     };
     let omnilock_signer =
@@ -655,7 +784,7 @@ fn sign_tx(
     args: &SignTxArgs,
     mut tx: TransactionView,
     omnilock_config: &OmniLockConfig,
-    key: secp256k1::SecretKey,
+    keys: Vec<secp256k1::SecretKey>,
 ) -> Result<(TransactionView, Vec<ScriptGroup>), Box<dyn StdErr>> {
     // Unlock transaction
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
@@ -665,7 +794,7 @@ fn sign_tx(
         build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
 
     let mut _still_locked_groups = None;
-    let unlockers = build_omnilock_unlockers(vec![key], omnilock_config.clone(), cell.type_hash);
+    let unlockers = build_omnilock_unlockers(keys, omnilock_config.clone(), cell.type_hash);
     let (new_tx, new_still_locked_groups) = unlock_tx(tx.clone(), &tx_dep_provider, &unlockers)?;
     tx = new_tx;
     _still_locked_groups = Some(new_still_locked_groups);
@@ -676,7 +805,10 @@ fn sighash_sign(
     args: &SignTxArgs,
     tx: TransactionView,
 ) -> Result<(TransactionView, Vec<ScriptGroup>), Box<dyn StdErr>> {
-    let sender_key = secp256k1::SecretKey::from_slice(args.sender_key.as_bytes())
+    if args.sender_key.is_empty() {
+        return Err("must provide sender-key to sign".into());
+    }
+    let sender_key = secp256k1::SecretKey::from_slice(args.sender_key[0].as_bytes())
         .map_err(|err| format!("invalid sender secret key: {}", err))?;
     // Build ScriptUnlocker
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_key]);

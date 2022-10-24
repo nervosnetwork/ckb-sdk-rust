@@ -569,7 +569,9 @@ impl OpentxWitness {
         let (relative_idx, absolute_idx) = (true, false);
 
         let mut cache = OpentxCache::new();
-        let mut s_data = BytesMut::with_capacity(self.inputs.len() * 4);
+        let mut s_data = BytesMut::with_capacity(self.opentx_sig_data_len());
+        s_data.put_u32_le(self.base_input_index as u32);
+        s_data.put_u32_le(self.base_output_index as u32);
         let mut has_last = false;
         for si in &self.inputs {
             match si.cmd {
@@ -632,7 +634,7 @@ impl OpentxWitness {
             s_data.extend_from_slice(&si.compose().to_le_bytes());
         }
         let s_data = s_data.freeze();
-        cache.update(s_data.to_vec().as_slice());
+        cache.update(s_data[8..].to_vec().as_slice());
 
         let msg = cache.finalize();
         Ok((msg, s_data))
@@ -644,8 +646,6 @@ impl OpentxWitness {
 
     pub fn build_opentx_sig(&self, sil_data: Bytes, sig_bytes: Bytes) -> Bytes {
         let mut data = BytesMut::with_capacity(self.opentx_sig_data_len() + sig_bytes.len());
-        data.put_u32_le(self.base_input_index as u32);
-        data.put_u32_le(self.base_output_index as u32);
 
         data.put(sil_data);
         data.put(sig_bytes);
