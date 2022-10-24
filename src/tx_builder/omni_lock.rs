@@ -2,17 +2,18 @@ use std::collections::HashSet;
 
 use ckb_types::{
     bytes::Bytes,
-    core::{DepType, TransactionBuilder, TransactionView},
-    packed::{CellDep, CellInput, CellOutput, OutPoint},
+    core::{DepType, ScriptHashType, TransactionBuilder, TransactionView},
+    packed::{CellDep, CellInput, CellOutput, OutPoint, Script},
     prelude::*,
+    H256,
 };
 
 use super::{TxBuilder, TxBuilderError};
-use crate::types::ScriptId;
 use crate::{
     traits::{CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider},
-    unlock::OmniLockConfig,
+    unlock::{omni_lock::ConfigError, OmniLockConfig, OmniUnlockMode},
 };
+use crate::{types::ScriptId, HumanCapacity};
 
 /// A builder to build an omnilock transfer transaction.
 pub struct OmniLockTransferBuilder {
@@ -32,6 +33,110 @@ impl OmniLockTransferBuilder {
             cfg,
             rce_cells,
         }
+    }
+
+    /// Create an OmniLockTransferBuilder with open out in the output list.
+    /// After the transaction built, the open out should be removed.
+    pub fn new_open(
+        open_capacity: HumanCapacity,
+        mut outputs: Vec<(CellOutput, Bytes)>,
+        cfg: OmniLockConfig,
+        rce_cells: Option<Vec<OutPoint>>,
+    ) -> OmniLockTransferBuilder {
+        let tmp_out = OmniLockTransferBuilder::build_tmp_open_out(open_capacity);
+        outputs.push((tmp_out, Bytes::default()));
+        OmniLockTransferBuilder {
+            outputs,
+            cfg,
+            rce_cells,
+        }
+    }
+
+    fn build_opentx_placeholder_hash() -> H256 {
+        let mut ret = H256::default();
+        let opentx = "opentx";
+        let offset = ret.0.len() - opentx.len();
+        ret.0[offset..].copy_from_slice(opentx.as_bytes());
+        ret
+    }
+
+    fn build_opentx_tmp_script() -> Script {
+        let tmp_locker = Self::build_opentx_placeholder_hash();
+        Script::new_builder()
+            .code_hash(tmp_locker.pack())
+            .hash_type(ScriptHashType::Type.into())
+            .args([0xffu8; 65].pack())
+            .build()
+    }
+
+    pub fn build_tmp_open_out(open_capacity: HumanCapacity) -> CellOutput {
+        let tmp_locker = Self::build_opentx_tmp_script();
+        CellOutput::new_builder()
+            .lock(tmp_locker)
+            .capacity(open_capacity.0.pack())
+            .build()
+    }
+
+    /// remove the open output
+    pub fn remove_open_out(tx: TransactionView) -> TransactionView {
+        let tmp_locker = Self::build_opentx_tmp_script();
+        let tmp_idxes: HashSet<usize> = tx
+            .outputs()
+            .into_iter()
+            .enumerate()
+            .filter(|(_, out)| out.lock() == tmp_locker)
+            .map(|(idx, _)| idx)
+            .collect();
+        let outputs: Vec<CellOutput> = tx
+            .outputs()
+            .into_iter()
+            .enumerate()
+            .filter(|(idx, _)| !tmp_idxes.contains(idx))
+            .map(|(_, out)| out)
+            .collect();
+        let outputs_data: Vec<ckb_types::packed::Bytes> = tx
+            .outputs_data()
+            .into_iter()
+            .enumerate()
+            .filter(|(idx, _)| !tmp_idxes.contains(idx))
+            .map(|(_, out)| out)
+            .collect();
+        tx.as_advanced_builder()
+            .set_outputs(outputs)
+            .set_outputs_data(outputs_data)
+            .build()
+    }
+
+    /// after the open transaction input list updated(exclude base input/output), the witness should be updated
+    pub fn update_opentx_witness(
+        tx: TransactionView,
+        omnilock_config: &OmniLockConfig,
+        unlock_mode: OmniUnlockMode,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        sender: &Script,
+    ) -> Result<TransactionView, ConfigError> {
+        // after set opentx config, need to update the witness field
+        let placeholder_witness = omnilock_config.placeholder_witness(unlock_mode)?;
+        let tmp_idxes: Vec<_> = tx
+            .input_pts_iter()
+            .enumerate()
+            .filter(|(_, output)| tx_dep_provider.get_cell(output).unwrap().lock() == *sender)
+            .map(|(idx, _)| idx)
+            .collect();
+        let witnesses: Vec<_> = tx
+            .witnesses()
+            .into_iter()
+            .enumerate()
+            .map(|(i, w)| {
+                if tmp_idxes.contains(&i) {
+                    placeholder_witness.as_bytes().pack()
+                } else {
+                    w
+                }
+            })
+            .collect();
+        let tx = tx.as_advanced_builder().set_witnesses(witnesses).build();
+        Ok(tx)
     }
 }
 

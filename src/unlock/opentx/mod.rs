@@ -2,6 +2,7 @@ pub mod assembler;
 pub mod hasher;
 pub mod reader;
 
+use ckb_types::error::VerificationError;
 pub use hasher::OpentxWitness;
 
 use crate::traits::TransactionDependencyError;
@@ -27,6 +28,14 @@ pub enum OpenTxError {
     #[error("base index(`{0}) bigger than end index(`{1}`)")]
     BaseIndexOverFlow(usize, usize),
 
+    #[error(transparent)]
+    VerificationError(#[from]VerificationError),
+    #[error("witness field not exist")]
+    WitnessMissing,
+    #[error("lock field of witness not exist")]
+    WitnessLockMissing,
+    #[error("signature not exist")]
+    SignatureMissing,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

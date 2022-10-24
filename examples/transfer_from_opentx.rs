@@ -6,16 +6,16 @@ use ckb_sdk::{
     rpc::CkbRpcClient,
     traits::{
         DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
-        DefaultTransactionDependencyProvider, SecpCkbRawKeySigner, TransactionDependencyProvider,
+        DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
     },
     tx_builder::{
-        balance_tx_capacity, fill_placeholder_witnesses, transfer::CapacityTransferBuilder,
+        balance_tx_capacity, fill_placeholder_witnesses, omni_lock::OmniLockTransferBuilder,
         unlock_tx, CapacityBalancer, TxBuilder,
     },
     types::NetworkType,
     unlock::{
-        opentx::OpentxWitness, IdentityFlag, MultisigConfig, OmniLockConfig, OmniLockScriptSigner,
-        SecpSighashUnlocker,
+        opentx::{assembler::assemble_new_tx, OpentxWitness},
+        IdentityFlag, MultisigConfig, OmniLockConfig, OmniLockScriptSigner, SecpSighashUnlocker,
     },
     unlock::{OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker},
     util::{blake160, keccak160},
@@ -30,9 +30,7 @@ use ckb_types::{
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::{collections::HashMap, error::Error as StdErr};
-use std::{collections::HashSet, fs};
+use std::{collections::HashMap, error::Error as StdErr, fs, path::PathBuf};
 
 /*
 # examples for the developer local node
@@ -130,7 +128,7 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
     --receiver ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgqkwvrdz5w6w2y372508q30rlnl30rzccczqhsaju7 \
     --capacity 98.0 --open-capacity 1.0 \
     --tx-file tx.json
-# 4. sign the transaction
+# 4. sign the transaction, this step can sign seperately with each sender-key
 ./target/debug/examples/transfer_from_opentx sign-open-tx \
     --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
     --sender-key d00c06bfd800d27397002dca6fb0993d5ba6399b4238b2f29ee9deb97593d2bc \
@@ -144,6 +142,74 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
 # send the tx
 ./target/debug/examples/transfer_from_opentx send --tx-file tx.json
 # 0x577101b031d709992af99bd0715172bdb4d2eb7be9f11e84d6fb24ac3e1ac675
+
+########################### multiple opentxes put together #################################
+# 1. build/sign sighash opentx
+./target/debug/examples/transfer_from_opentx gen-open-tx --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
+            --receiver ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgqkwvrdz5w6w2y372508q30rlnl30rzccczqhsaju7 \
+            --capacity 97 --open-capacity 1\
+            --tx-file tx-sighash.json
+./target/debug/examples/transfer_from_opentx sign-open-tx --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
+            --tx-file tx-sighash.json
+
+# 2. build/sign sighash opentx
+./target/debug/examples/transfer_from_opentx gen-open-tx --ethereum-sender-key 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d \
+            --receiver ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgqkwvrdz5w6w2y372508q30rlnl30rzccczqhsaju7 \
+            --capacity 97 --open-capacity 1\
+            --tx-file tx-ethereum.json
+./target/debug/examples/transfer_from_opentx sign-open-tx --sender-key 63d86723e08f0f813a36ce6aa123bb2289d90680ae1e99d4de8cdb334553f24d \
+            --tx-file tx-ethereum.json
+
+# 3. build/sign multisig opentx
+./target/debug/examples/transfer_from_opentx gen-open-tx \
+    --require-first-n 0 \
+    --threshold 2 \
+    --sighash-address ckt1qyqt8xpk328d89zgl928nsgh3lelch33vvvq5u3024 \
+    --sighash-address ckt1qyqvsv5240xeh85wvnau2eky8pwrhh4jr8ts8vyj37 \
+    --sighash-address ckt1qyqywrwdchjyqeysjegpzw38fvandtktdhrs0zaxl4 \
+    --receiver ckt1qqwmhmsv9cmqhag4qxguaqux05rc4qlyq393vu45dhxrrycyutcl6qgqkwvrdz5w6w2y372508q30rlnl30rzccczqhsaju7 \
+    --capacity 97 --open-capacity 1.0 \
+    --tx-file tx-multisig.json
+./target/debug/examples/transfer_from_opentx sign-open-tx \
+    --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
+    --sender-key d00c06bfd800d27397002dca6fb0993d5ba6399b4238b2f29ee9deb97593d2bc \
+    --tx-file tx-multisig.json
+
+# 4. merge into one transaction
+./target/debug/examples/transfer_from_opentx merge-open-tx \
+    --in-tx-file tx-sighash.json \
+    --in-tx-file tx-ethereum.json \
+    --in-tx-file tx-multisig.json \
+    --tx-file tx.json
+# the other way get the same merge result:
+# merge first 2, then merge the last
+./target/debug/examples/transfer_from_opentx merge-open-tx \
+    --in-tx-file tx-sighash.json \
+    --in-tx-file tx-ethereum.json \
+    --tx-file tx.json
+./target/debug/examples/transfer_from_opentx merge-open-tx \
+    --in-tx-file tx.json \
+    --in-tx-file tx-multisig.json \
+    --tx-file tx.json
+# merge last 2, then merge the first
+./target/debug/examples/transfer_from_opentx merge-open-tx \
+    --in-tx-file tx-ethereum.json \
+    --in-tx-file tx-multisig.json \
+    --tx-file tx.json
+./target/debug/examples/transfer_from_opentx merge-open-tx \
+    --in-tx-file tx-sighash.json \
+    --in-tx-file tx.json \
+    --tx-file tx.json
+
+# add input, with capacity 101.99699588
+./target/debug/examples/transfer_from_opentx add-input --tx-hash 577101b031d709992af99bd0715172bdb4d2eb7be9f11e84d6fb24ac3e1ac675 --index 1 --tx-file tx.json
+# add output, capacity is 101.99699588(original) + 3(1 open capacity each) - 0.001(fee)
+./target/debug/examples/transfer_from_opentx add-output --to-address ckt1qyqy68e02pll7qd9m603pqkdr29vw396h6dq50reug --capacity 104.99599588  --tx-file tx.json
+# sighash sign the new input
+./target/debug/examples/transfer_from_opentx sighash-sign-tx --sender-key 7068b4dc5289353c688e2e67b75207eb5574ba4938091cf5626a4d0f5cc91668 --tx-file tx.json
+# send the tx
+./target/debug/examples/transfer_from_opentx send --tx-file tx.json
+# 0x4fd5d4adfb009a6e342a9e8442ac54989e28ef887b1fec60c3703e4c4d223b39
 */
 const OPENTX_TX_HASH: &str = "d7697f6b3684d1451c42cc538b3789f13b01430007f65afe74834b6a28714a18";
 const OPENTX_TX_IDX: &str = "0";
@@ -299,6 +365,29 @@ struct AddOutputArgs {
     #[clap(long, value_name = "PATH")]
     tx_file: PathBuf,
 }
+
+#[derive(Args)]
+struct MergeOpenTxArgs {
+    /// The output transaction info file (.json)
+    #[clap(long, value_name = "PATH")]
+    in_tx_file: Vec<PathBuf>,
+
+    /// The output transaction info file (.json)
+    #[clap(long, value_name = "PATH")]
+    tx_file: PathBuf,
+    /// omnilock script deploy transaction hash
+    #[clap(long, value_name = "H256", default_value = OPENTX_TX_HASH)]
+    omnilock_tx_hash: H256,
+
+    /// cell index of omnilock script deploy transaction's outputs
+    #[clap(long, value_name = "NUMBER", default_value = OPENTX_TX_IDX)]
+    omnilock_index: usize,
+
+    /// CKB rpc url
+    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
+    ckb_rpc: String,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// build omni lock address
@@ -309,6 +398,8 @@ enum Commands {
     SignOpenTx(SignTxArgs),
     /// sign sighash input
     SighashSignTx(SignTxArgs),
+    /// merge opentx together
+    MergeOpenTx(MergeOpenTxArgs),
     /// Add input
     AddInput(AddInputArgs),
     /// Add output
@@ -455,6 +546,33 @@ fn main() -> Result<(), Box<dyn StdErr>> {
                 .expect("send transaction");
             println!(">>> tx sent! <<<");
         }
+        Commands::MergeOpenTx(args) => {
+            let mut txes = vec![];
+            let mut omnilock_config = None;
+            for in_tx in &args.in_tx_file {
+                let tx_info: TxInfo = serde_json::from_slice(&fs::read(in_tx)?)?;
+                // println!("> tx: {}", serde_json::to_string_pretty(&tx_info.tx)?);
+                let tx = Transaction::from(tx_info.tx.inner).into_view();
+                txes.push(tx);
+                omnilock_config = Some(tx_info.omnilock_config);
+            }
+            if !txes.is_empty() {
+                let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+                let cell = build_omnilock_cell_dep(
+                    &mut ckb_client,
+                    &args.omnilock_tx_hash,
+                    args.omnilock_index,
+                )?;
+                let tx_dep_provider =
+                    DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
+                let tx = assemble_new_tx(txes, &tx_dep_provider, cell.type_hash.pack())?;
+                let tx_info = TxInfo {
+                    tx: json_types::TransactionView::from(tx),
+                    omnilock_config: omnilock_config.unwrap(),
+                };
+                fs::write(&args.tx_file, serde_json::to_string_pretty(&tx_info)?)?;
+            }
+        }
     }
 
     Ok(())
@@ -534,23 +652,6 @@ fn gen_open_tx(args: &GenOpenTxArgs) -> Result<(), Box<dyn StdErr>> {
     Ok(())
 }
 
-fn get_opentx_placeholder_hash() -> H256 {
-    let mut ret = H256::default();
-    let opentx = "opentx";
-    let offset = ret.0.len() - opentx.len();
-    ret.0[offset..].copy_from_slice(opentx.as_bytes());
-    ret
-}
-
-fn get_opentx_tmp_script() -> Script {
-    let tmp_locker = get_opentx_placeholder_hash();
-    Script::new_builder()
-        .code_hash(tmp_locker.pack())
-        .hash_type(ScriptHashType::Type.into())
-        .args([0u8; 65].pack())
-        .build()
-}
-
 fn build_open_tx(
     args: &GenOpenTxArgs,
 ) -> Result<(TransactionView, OmniLockConfig), Box<dyn StdErr>> {
@@ -612,15 +713,12 @@ fn build_open_tx(
         .capacity(args.capacity.0.pack())
         .build();
 
-    let tmp_locker = get_opentx_tmp_script();
-    let output_tmp = CellOutput::new_builder()
-        .lock(tmp_locker.clone())
-        .capacity(args.open_capacity.0.pack())
-        .build();
-    let builder = CapacityTransferBuilder::new(vec![
-        (output, Bytes::default()),
-        (output_tmp, Bytes::default()),
-    ]);
+    let builder = OmniLockTransferBuilder::new_open(
+        args.open_capacity,
+        vec![(output, Bytes::default())],
+        omnilock_config.clone(),
+        None,
+    );
 
     let base_tx = builder.build_base(
         &mut cell_collector,
@@ -651,56 +749,16 @@ fn build_open_tx(
         &header_dep_resolver,
     )?;
 
-    let tmp_idxes: HashSet<usize> = tx
-        .outputs()
-        .into_iter()
-        .enumerate()
-        .filter(|(_, out)| out.lock() == tmp_locker)
-        .map(|(idx, _)| idx)
-        .collect();
-    let outputs: Vec<CellOutput> = tx
-        .outputs()
-        .into_iter()
-        .enumerate()
-        .filter(|(idx, _)| !tmp_idxes.contains(idx))
-        .map(|(_, out)| out)
-        .collect();
-    let outputs_data: Vec<ckb_types::packed::Bytes> = tx
-        .outputs_data()
-        .into_iter()
-        .enumerate()
-        .filter(|(idx, _)| !tmp_idxes.contains(idx))
-        .map(|(_, out)| out)
-        .collect();
-    let tx = tx
-        .as_advanced_builder()
-        .set_outputs(outputs)
-        .set_outputs_data(outputs_data)
-        .build();
-
+    let tx = OmniLockTransferBuilder::remove_open_out(tx);
     let wit = OpentxWitness::new_sig_all_relative(&tx, Some(0xdeadbeef)).unwrap();
     omnilock_config.set_opentx_input(wit);
-    // after set opentx config, need to update the witness field
-    let placeholder_witness = omnilock_config.placeholder_witness(OmniUnlockMode::Normal)?;
-    let tmp_idxes: Vec<_> = tx
-        .input_pts_iter()
-        .enumerate()
-        .filter(|(_, output)| tx_dep_provider.get_cell(output).unwrap().lock() == sender)
-        .map(|(idx, _)| idx)
-        .collect();
-    let witnesses: Vec<_> = tx
-        .witnesses()
-        .into_iter()
-        .enumerate()
-        .map(|(i, w)| {
-            if tmp_idxes.contains(&i) {
-                placeholder_witness.as_bytes().pack()
-            } else {
-                w
-            }
-        })
-        .collect();
-    let tx = tx.as_advanced_builder().set_witnesses(witnesses).build();
+    let tx = OmniLockTransferBuilder::update_opentx_witness(
+        tx,
+        &omnilock_config,
+        OmniUnlockMode::Normal,
+        &tx_dep_provider,
+        &sender,
+    )?;
     Ok((tx, omnilock_config))
 }
 
