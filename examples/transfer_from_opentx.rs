@@ -135,15 +135,15 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
     --sender-key 8dadf1939b89919ca74b58fef41c0d4ec70cd6a7b093a0c8ca5b268f93b8181f \
     --sender-key d00c06bfd800d27397002dca6fb0993d5ba6399b4238b2f29ee9deb97593d2bc \
     --tx-file tx.json
-# add input, with capacity 99.99899588
-./target/debug/examples/transfer_from_opentx add-input --tx-hash ebb9d9ff39efbee5957d6f7d19a4a17f1ac2e69dbc9289e4931cef6b832f4d57 --index 1 --tx-file tx.json
-# add output, capacity is 99.99899588(original) + 1(open capacity) - 0.001(fee)
-./target/debug/examples/transfer_from_opentx add-output --to-address ckt1qyqy68e02pll7qd9m603pqkdr29vw396h6dq50reug --capacity 100.99799588  --tx-file tx.json
+# add input, with capacity 100.99799588
+./target/debug/examples/transfer_from_opentx add-input --tx-hash 621077216f3bf7861beacd3cdda44f7a5854454fcd133922b89f0addd0330e6b --index 1 --tx-file tx.json
+# add output, capacity is 100.99799588(original) + 1(open capacity) - 0.001(fee)
+./target/debug/examples/transfer_from_opentx add-output --to-address ckt1qyqy68e02pll7qd9m603pqkdr29vw396h6dq50reug --capacity 101.99699588  --tx-file tx.json
 # sighash sign the new input
 ./target/debug/examples/transfer_from_opentx sighash-sign-tx --sender-key 7068b4dc5289353c688e2e67b75207eb5574ba4938091cf5626a4d0f5cc91668 --tx-file tx.json
 # send the tx
 ./target/debug/examples/transfer_from_opentx send --tx-file tx.json
-# 0x621077216f3bf7861beacd3cdda44f7a5854454fcd133922b89f0addd0330e6b
+# 0x577101b031d709992af99bd0715172bdb4d2eb7be9f11e84d6fb24ac3e1ac675
 */
 const OPENTX_TX_HASH: &str = "d7697f6b3684d1451c42cc538b3789f13b01430007f65afe74834b6a28714a18";
 const OPENTX_TX_IDX: &str = "0";
