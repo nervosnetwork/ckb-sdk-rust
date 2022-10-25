@@ -296,10 +296,6 @@ struct GenOpenTxArgs {
     /// CKB rpc url
     #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8114")]
     ckb_rpc: String,
-
-    /// CKB indexer rpc url
-    #[clap(long, value_name = "URL", default_value = "http://127.0.0.1:8116")]
-    ckb_indexer: String,
 }
 
 #[derive(Args)]
@@ -702,8 +698,7 @@ fn build_open_tx(
     let mut cell_dep_resolver = DefaultCellDepResolver::from_genesis(&genesis_block)?;
     cell_dep_resolver.insert(cell.script_id, cell.cell_dep, "Omni Lock".to_string());
     let header_dep_resolver = DefaultHeaderDepResolver::new(args.ckb_rpc.as_str());
-    let mut cell_collector =
-        DefaultCellCollector::new(args.ckb_indexer.as_str(), args.ckb_rpc.as_str());
+    let mut cell_collector = DefaultCellCollector::new(args.ckb_rpc.as_str());
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
 
     // Build base transaction

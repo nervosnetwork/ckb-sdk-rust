@@ -29,7 +29,7 @@ pub enum OpenTxError {
     BaseIndexOverFlow(usize, usize),
 
     #[error(transparent)]
-    VerificationError(#[from]VerificationError),
+    VerificationError(#[from] VerificationError),
     #[error("witness field not exist")]
     WitnessMissing,
     #[error("lock field of witness not exist")]
