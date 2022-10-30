@@ -123,7 +123,7 @@ pub fn calculate_dao_maximum_withdraw4(
     occupied_capacity + withdraw_counted_capacity as u64
 }
 
-pub fn serialize_signature(signature: &secp256k1::recovery::RecoverableSignature) -> [u8; 65] {
+pub fn serialize_signature(signature: &secp256k1::ecdsa::RecoverableSignature) -> [u8; 65] {
     let (recov_id, data) = signature.serialize_compact();
     let mut signature_bytes = [0u8; 65];
     signature_bytes[0..64].copy_from_slice(&data[0..64]);
@@ -216,8 +216,17 @@ mod tests {
         let output = CellOutput::new_builder()
             .capacity(capacity_bytes!(1000000).pack())
             .build();
+
+        let (deposit_point, prepare_point) = ((5, 5, 1000), (184, 4, 1000));
+        let deposit_number = deposit_point.0 * deposit_point.2 + deposit_point.1;
+        let prepare_number = prepare_point.0 * prepare_point.2 + prepare_point.1;
+        let deposit_point =
+            EpochNumberWithFraction::new(deposit_point.0, deposit_point.1, deposit_point.2);
+        let prepare_point =
+            EpochNumberWithFraction::new(prepare_point.0, prepare_point.1, prepare_point.2);
         let deposit_header = HeaderBuilder::default()
-            .number(100.pack())
+            .epoch(deposit_point.full_value().pack())
+            .number(deposit_number.pack())
             .dao(pack_dao_data(
                 10_000_000_000_123_456,
                 Default::default(),
@@ -226,7 +235,8 @@ mod tests {
             ))
             .build();
         let prepare_header = HeaderBuilder::default()
-            .number(200.pack())
+            .epoch(prepare_point.full_value().pack())
+            .number(prepare_number.pack())
             .dao(pack_dao_data(
                 10_000_000_001_123_456,
                 Default::default(),

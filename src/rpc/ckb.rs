@@ -2,8 +2,8 @@ use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockTemplate, BlockView,
     CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, ExtraLoggerConfig, HeaderView,
     JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode,
-    Script, SyncState, Timestamp, Transaction, TransactionProof, TransactionWithStatus, TxPoolInfo,
-    Uint64, Version,
+    Script, SyncState, Timestamp, Transaction, TransactionProof, TransactionWithStatusResponse,
+    TxPoolInfo, Uint64, Version,
 };
 use ckb_types::H256;
 
@@ -19,7 +19,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_live_cell(&mut self, out_point: OutPoint, with_data: bool) -> CellWithStatus;
     pub fn get_tip_block_number(&mut self) -> BlockNumber;
     pub fn get_tip_header(&mut self) -> HeaderView;
-    pub fn get_transaction(&mut self, hash: H256) -> Option<TransactionWithStatus>;
+    pub fn get_transaction(&mut self, hash: H256) -> Option<TransactionWithStatusResponse>;
     pub fn get_transaction_proof(
         &mut self,
         tx_hashes: Vec<H256>,
