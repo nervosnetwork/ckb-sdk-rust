@@ -17,23 +17,23 @@ use super::OpenTxError;
 /// Assemble a transaction from multiple opentransaction, remove duplicate cell deps and header deps.
 /// Alter base input/output index.
 pub fn assemble_new_tx(
-    mut txes: Vec<TransactionView>,
+    mut transactions: Vec<TransactionView>,
     provider: &dyn TransactionDependencyProvider,
     opentx_code_hash: Byte32,
 ) -> Result<TransactionView, OpenTxError> {
-    if txes.len() == 1 {
-        return Ok(txes.remove(0));
+    if transactions.len() == 1 {
+        return Ok(transactions.remove(0));
     }
     let mut builder = TransactionView::new_advanced_builder();
     let mut cell_deps = HashSet::new();
     let mut header_deps = HashSet::new();
     let mut base_input_idx = 0usize;
     let mut base_output_idx = 0usize;
-    for tx in txes.iter() {
+    for tx in transactions.iter() {
         cell_deps.extend(tx.cell_deps());
         header_deps.extend(tx.header_deps());
         builder = builder.inputs(tx.inputs());
-        // handle opentx witness
+        // Handle opentx witness
         for (input, witness) in tx.inputs().into_iter().zip(tx.witnesses().into_iter()) {
             let lock = provider.get_cell(&input.previous_output())?.lock();
             let code_hash = lock.code_hash();
@@ -42,7 +42,7 @@ pub fn assemble_new_tx(
                 if args.len() >= 22
                     && OmniLockFlags::from_bits_truncate(args[21]).contains(OmniLockFlags::OPENTX)
                 {
-                    // parse lock data
+                    // Parse lock data
                     let witness_data = witness.raw_data();
                     let current_witness: WitnessArgs =
                         WitnessArgs::from_slice(witness_data.as_ref())?;

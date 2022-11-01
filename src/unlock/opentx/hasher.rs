@@ -121,7 +121,7 @@ impl OpenTxSigInput {
             + (((self.arg2 & ARG2_MASK) as u32) << 20)
     }
 
-    /// new OpentxCommand::TxHash OpenTxSigInput, command 0x00
+    /// Build new OpentxCommand::TxHash OpenTxSigInput, command 0x00
     pub fn new_tx_hash() -> OpenTxSigInput {
         OpenTxSigInput {
             cmd: OpentxCommand::TxHash,
@@ -129,7 +129,7 @@ impl OpenTxSigInput {
             arg2: 0,
         }
     }
-    // new OpentxCommand::GroupInputOutputLen OpenTxSigInput, command 0x01
+    // Build new OpentxCommand::GroupInputOutputLen OpenTxSigInput, command 0x01
     pub fn new_group_input_output_len() -> OpenTxSigInput {
         OpenTxSigInput {
             cmd: OpentxCommand::GroupInputOutputLen,
@@ -137,23 +137,23 @@ impl OpenTxSigInput {
             arg2: 0,
         }
     }
-    /// new OpentxCommand::IndexOutput OpenTxSigInput, command 0x11
+    /// Build new OpentxCommand::IndexOutput OpenTxSigInput, command 0x11
     pub fn new_index_output(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_cell_command(OpentxCommand::IndexOutput, arg1, arg2)
     }
-    /// new OpentxCommand::OffsetOutput OpenTxSigInput, command 0x12
+    /// Build new OpentxCommand::OffsetOutput OpenTxSigInput, command 0x12
     pub fn new_offset_output(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_cell_command(OpentxCommand::OffsetOutput, arg1, arg2)
     }
-    /// new OpentxCommand::IndexInput OpenTxSigInput, command 0x13
+    /// Build new OpentxCommand::IndexInput OpenTxSigInput, command 0x13
     pub fn new_index_input(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_cell_command(OpentxCommand::IndexInput, arg1, arg2)
     }
-    /// new OpentxCommand::OffsetInput OpenTxSigInput, command 0x14
+    /// Build new OpentxCommand::OffsetInput OpenTxSigInput, command 0x14
     pub fn new_offset_input(arg1: u16, arg2: CellMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_cell_command(OpentxCommand::OffsetInput, arg1, arg2)
     }
-    /// new OpenTxSigInput to handle part or the whole input/output cell
+    /// Build new OpenTxSigInput to handle part or the whole input/output cell
     pub fn new_cell_command(
         cmd: OpentxCommand,
         arg1: u16,
@@ -169,18 +169,18 @@ impl OpenTxSigInput {
             arg2: arg2.bits,
         })
     }
-    /// new OpentxCommand::ConcatArg1Arg2 OpenTxSigInput, command 0x15
+    /// Build new OpentxCommand::ConcatArg1Arg2 OpenTxSigInput, command 0x15
     pub fn new_cell_input_index(arg1: u16, arg2: InputMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_input_command(OpentxCommand::CellInputIndex, arg1, arg2)
     }
-    //// new OpentxCommand::CellInputOffset OpenTxSigInput, command 0x16
+    //// Build new OpentxCommand::CellInputOffset OpenTxSigInput, command 0x16
     pub fn new_cell_input_offset(
         arg1: u16,
         arg2: InputMask,
     ) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_input_command(OpentxCommand::CellInputOffset, arg1, arg2)
     }
-    /// new OpenTxSigInput to hash  part or the whole cell input structure
+    /// Build new OpenTxSigInput to hash  part or the whole cell input structure
     pub fn new_input_command(
         cmd: OpentxCommand,
         arg1: u16,
@@ -197,7 +197,7 @@ impl OpenTxSigInput {
         })
     }
 
-    /// new OpentxCommand::ConcatArg1Arg2 OpenTxSigInput, command 0x20
+    /// Build new OpentxCommand::ConcatArg1Arg2 OpenTxSigInput, command 0x20
     pub fn new_concat_arg1_arg2(arg1: u16, arg2: u16) -> OpenTxSigInput {
         OpenTxSigInput {
             cmd: OpentxCommand::ConcatArg1Arg2,
@@ -205,7 +205,7 @@ impl OpenTxSigInput {
             arg2: arg2 & ARG2_MASK,
         }
     }
-    /// new OpentxCommand::End OpenTxSigInput, command 0xF0
+    /// Build new OpentxCommand::End OpenTxSigInput, command 0xF0
     pub fn new_end() -> OpenTxSigInput {
         OpenTxSigInput {
             cmd: OpentxCommand::End,
@@ -564,6 +564,12 @@ impl OpentxWitness {
         witness_data
     }
 
+    /// Generate message for sign.
+    ///
+    /// # Arguments
+    /// * `reader` the read object can fetch data from blockchain.
+    ///
+    /// Return a tuple with first one is the message, the second is open transaction data exclude signature in witness.
     pub fn generate_message(&self, reader: &OpenTxReader) -> Result<(Bytes, Bytes), OpenTxError> {
         let (is_input, is_output) = (true, false);
         let (relative_idx, absolute_idx) = (true, false);
@@ -640,14 +646,20 @@ impl OpentxWitness {
         Ok((msg, s_data))
     }
 
+    /// The byte length of base_input_index, base_output_index, and signature input list in the witness field.
     pub fn opentx_sig_data_len(&self) -> usize {
         4 + 4 + 4 * self.inputs.len()
     }
 
-    pub fn build_opentx_sig(&self, sil_data: Bytes, sig_bytes: Bytes) -> Bytes {
+    /// Build open transaction signature by combile open_sig_data and real signatures sig_bytes
+    ///
+    /// # Arguments
+    /// * `open_sig_data` open transaction data, include base_input_index, base_output_index, and signature input list.
+    /// * `sig_bytes` real signature bytes.
+    pub fn build_opentx_sig(&self, open_sig_data: Bytes, sig_bytes: Bytes) -> Bytes {
         let mut data = BytesMut::with_capacity(self.opentx_sig_data_len() + sig_bytes.len());
 
-        data.put(sil_data);
+        data.put(open_sig_data);
         data.put(sig_bytes);
         data.freeze()
     }

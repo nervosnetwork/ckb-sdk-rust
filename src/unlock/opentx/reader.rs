@@ -147,7 +147,7 @@ impl<'r> OpenTxReader<'r> {
 
         Ok(cell)
     }
-    /// fetch the hash of the current running transaction
+    /// Fetch the hash of the current running transaction
     pub fn tx_hash(&self) -> Byte32 {
         self.transaction.hash()
     }
@@ -221,8 +221,7 @@ impl<'r> OpenTxReader<'r> {
                     .outputs_data()
                     .get(index)
                     .ok_or(OpenTxError::OutOfBound)?;
-                // TODO: why split here?
-                let data = output.as_slice().split_at(4).1.to_vec();
+                let data = output.raw_data().to_vec();
                 if data.is_empty() {
                     Result::Ok([0u8; 32].to_vec())
                 } else {
