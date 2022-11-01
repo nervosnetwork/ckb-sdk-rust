@@ -10,11 +10,11 @@ use parking_lot::Mutex;
 use thiserror::Error;
 
 use ckb_hash::blake2b_256;
-use ckb_jsonrpc_types as json_types;
+use ckb_jsonrpc_types::{self as json_types, Either};
 use ckb_types::{
     bytes::Bytes,
     core::{BlockView, DepType, HeaderView, TransactionView},
-    packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction},
+    packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction, TransactionReader},
     prelude::*,
     H160,
 };
@@ -460,7 +460,12 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
                 tx_with_status.tx_status
             )));
         }
-        let tx = Transaction::from(tx_with_status.transaction.unwrap().inner).into_view();
+        let tx = match tx_with_status.transaction.unwrap().inner {
+            Either::Left(t) => Transaction::from(t.inner).into_view(),
+            Either::Right(bytes) => TransactionReader::from_slice(bytes.as_bytes())
+                .map(|reader| reader.to_entity().into_view())
+                .map_err(|err| anyhow!("invalid molecule encoded TransactionView: {}", err))?,
+        };
         inner.tx_cache.put(tx_hash.clone(), tx.clone());
         Ok(tx)
     }
@@ -551,10 +556,10 @@ impl Signer for SecpCkbRawKeySigner {
         let msg = secp256k1::Message::from_slice(message).expect("Convert to message failed");
         let key = self.keys.get(&H160::from_slice(id).unwrap()).unwrap();
         if recoverable {
-            let sig = SECP256K1.sign_recoverable(&msg, key);
+            let sig = SECP256K1.sign_ecdsa_recoverable(&msg, key);
             Ok(Bytes::from(serialize_signature(&sig).to_vec()))
         } else {
-            let sig = SECP256K1.sign(&msg, key);
+            let sig = SECP256K1.sign_ecdsa(&msg, key);
             Ok(Bytes::from(sig.serialize_compact().to_vec()))
         }
     }

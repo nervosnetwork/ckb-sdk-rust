@@ -683,14 +683,19 @@ fn test_dao_prepare() {
         ],
     );
 
+    let deposit_point = (5, 5, 1000);
+    let deposit_number = deposit_point.0 * deposit_point.2 + deposit_point.1;
+    let deposit_point =
+        EpochNumberWithFraction::new(deposit_point.0, deposit_point.1, deposit_point.2);
+
     let deposit_input = CellInput::new(random_out_point(), 0);
     let deposit_output = CellOutput::new_builder()
         .capacity((220 * ONE_CKB).pack())
         .lock(sender.clone())
         .type_(Some(build_dao_script()).pack())
         .build();
-    let deposit_number: u64 = 1;
     let deposit_header = HeaderBuilder::default()
+        .epoch(deposit_point.full_value().pack())
         .number(deposit_number.pack())
         .build();
     let deposit_block_hash = deposit_header.hash();
