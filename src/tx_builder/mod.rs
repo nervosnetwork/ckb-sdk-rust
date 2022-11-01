@@ -393,6 +393,7 @@ pub fn balance_tx_capacity(
         let (lock_script, placeholder_witness, since_source) = &lock_scripts[lock_script_idx];
         let base_query = {
             let mut query = CellQueryOptions::new_lock(lock_script.clone());
+            query.secondary_script_len_range = Some(ValueRangeOption::new_exact(0));
             query.data_len_range = Some(ValueRangeOption::new_exact(0));
             query
         };

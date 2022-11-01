@@ -303,6 +303,15 @@ impl TxBuilder for DaoWithdrawBuilder {
             };
             let deposit_header = header_dep_resolver
                 .resolve_by_number(deposit_number)
+                .or_else(|_err| {
+                    // for light client
+                    let prepare_tx = tx_dep_provider.get_transaction(&tx_hash)?;
+                    for input in prepare_tx.inputs() {
+                        let _ = header_dep_resolver
+                            .resolve_by_tx(&input.previous_output().tx_hash())?;
+                    }
+                    header_dep_resolver.resolve_by_number(deposit_number)
+                })
                 .map_err(TxBuilderError::Other)?
                 .ok_or(TxBuilderError::ResolveHeaderDepByNumberFailed(
                     deposit_number,

@@ -3,11 +3,16 @@
 
 pub mod default_impls;
 pub mod dummy_impls;
+pub mod light_client_impls;
 pub mod offchain_impls;
 
 pub use default_impls::{
     DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
     DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
+};
+pub use light_client_impls::{
+    LightClientCellCollector, LightClientHeaderDepResolver,
+    LightClientTransactionDependencyProvider,
 };
 pub use offchain_impls::{
     OffchainCellCollector, OffchainCellDepResolver, OffchainHeaderDepResolver,
@@ -85,16 +90,16 @@ pub enum TransactionDependencyError {
 ///   * cell_deps
 ///   * header_deps
 pub trait TransactionDependencyProvider {
-    // For verify certain cell belong to certain transaction
+    /// For verify certain cell belong to certain transaction
     fn get_transaction(
         &self,
         tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError>;
-    // For get the output information of inputs or cell_deps, those cell should be live cell
+    /// For get the output information of inputs or cell_deps, those cell should be live cell
     fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError>;
-    // For get the output data information of inputs or cell_deps
+    /// For get the output data information of inputs or cell_deps
     fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError>;
-    // For get the header information of header_deps
+    /// For get the header information of header_deps
     fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError>;
 }
 
@@ -226,7 +231,11 @@ pub enum QueryOrder {
 pub struct CellQueryOptions {
     pub primary_script: Script,
     pub primary_type: PrimaryScriptType,
+    pub with_data: Option<bool>,
+
+    // Options for SearchKeyFilter
     pub secondary_script: Option<Script>,
+    pub secondary_script_len_range: Option<ValueRangeOption>,
     pub data_len_range: Option<ValueRangeOption>,
     pub capacity_range: Option<ValueRangeOption>,
     pub block_range: Option<ValueRangeOption>,
@@ -246,11 +255,13 @@ impl CellQueryOptions {
             primary_script,
             primary_type,
             secondary_script: None,
+            secondary_script_len_range: None,
             data_len_range: None,
             capacity_range: None,
             block_range: None,
-            limit: None,
+            with_data: None,
             order: QueryOrder::Asc,
+            limit: None,
             maturity: MaturityOption::Mature,
             min_total_capacity: 1,
         }
@@ -312,6 +323,27 @@ impl CellQueryOptions {
                 // if primary is `type`, secondary is `lock`
                 if let Some(prefix) = filter_prefix {
                     if !extract_raw_data(&cell.output.lock()).starts_with(&prefix) {
+                        return false;
+                    }
+                }
+            }
+        }
+        if let Some(range) = self.secondary_script_len_range {
+            match self.primary_type {
+                PrimaryScriptType::Lock => {
+                    let script_len = cell
+                        .output
+                        .type_()
+                        .to_opt()
+                        .map(|script| extract_raw_data(&script).len())
+                        .unwrap_or_default();
+                    if !range.match_value(script_len as u64) {
+                        return false;
+                    }
+                }
+                PrimaryScriptType::Type => {
+                    let script_len = extract_raw_data(&cell.output.lock()).len();
+                    if !range.match_value(script_len as u64) {
                         return false;
                     }
                 }

@@ -25,6 +25,7 @@ futures = "0.3"
 jsonrpc-core = "18"
 parking_lot = "0.12"
 lru = "0.7.1"
+dashmap = "5.4"
 
 ckb-types = "=0.104.0"
 ckb-dao-utils = "=0.104.0"

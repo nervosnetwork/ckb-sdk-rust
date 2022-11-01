@@ -66,11 +66,8 @@ impl DefaultCellDepResolver {
         if header.number() != 0 {
             return Err(ParseGenesisInfoError::InvalidBlockNumber(header.number()));
         }
-        let mut sighash_data_hash = None;
         let mut sighash_type_hash = None;
-        let mut multisig_data_hash = None;
         let mut multisig_type_hash = None;
-        let mut dao_data_hash = None;
         let mut dao_type_hash = None;
         let out_points = genesis_block
             .transactions()
@@ -95,7 +92,6 @@ impl DefaultCellDepResolver {
                                     CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL,
                                 );
                             }
-                            sighash_data_hash = Some(data_hash);
                         }
                         if tx_index == MULTISIG_OUTPUT_LOC.0 && index == MULTISIG_OUTPUT_LOC.1 {
                             multisig_type_hash = output
@@ -110,7 +106,6 @@ impl DefaultCellDepResolver {
                                     CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
                                 );
                             }
-                            multisig_data_hash = Some(data_hash);
                         }
                         if tx_index == DAO_OUTPUT_LOC.0 && index == DAO_OUTPUT_LOC.1 {
                             dao_type_hash = output
@@ -125,7 +120,6 @@ impl DefaultCellDepResolver {
                                     CODE_HASH_DAO,
                                 );
                             }
-                            dao_data_hash = Some(data_hash);
                         }
                         OutPoint::new(tx.hash(), index as u32)
                     })
@@ -326,7 +320,7 @@ impl CellCollector for DefaultCellCollector {
             let locked_cells = self.offchain.locked_cells.clone();
             let search_key = SearchKey::from(query.clone());
             const MAX_LIMIT: u32 = 4096;
-            let mut limit: u32 = query.limit.unwrap_or(128);
+            let mut limit: u32 = query.limit.unwrap_or(16);
             let mut last_cursor: Option<json_types::JsonBytes> = None;
             while total_capacity < query.min_total_capacity {
                 let page = self

@@ -8,16 +8,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::traits::{CellQueryOptions, LiveCell, PrimaryScriptType, ValueRangeOption};
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SearchKey {
     pub script: Script,
     pub script_type: ScriptType,
     pub filter: Option<SearchKeyFilter>,
+    pub with_data: Option<bool>,
+    pub group_by_transaction: Option<bool>,
 }
 
-#[derive(Serialize, Default, Clone, Debug)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct SearchKeyFilter {
     pub script: Option<Script>,
+    pub script_len_range: Option<[Uint64; 2]>,
     pub output_data_len_range: Option<[Uint64; 2]>,
     pub output_capacity_range: Option<[Uint64; 2]>,
     pub block_range: Option<[BlockNumber; 2]>,
@@ -27,6 +30,7 @@ impl From<CellQueryOptions> for SearchKey {
         let convert_range =
             |range: ValueRangeOption| [Uint64::from(range.start), Uint64::from(range.end)];
         let filter = if opts.secondary_script.is_none()
+            && opts.secondary_script_len_range.is_none()
             && opts.data_len_range.is_none()
             && opts.capacity_range.is_none()
             && opts.block_range.is_none()
@@ -35,6 +39,7 @@ impl From<CellQueryOptions> for SearchKey {
         } else {
             Some(SearchKeyFilter {
                 script: opts.secondary_script.map(|v| v.into()),
+                script_len_range: opts.secondary_script_len_range.map(convert_range),
                 output_data_len_range: opts.data_len_range.map(convert_range),
                 output_capacity_range: opts.capacity_range.map(convert_range),
                 block_range: opts.block_range.map(convert_range),
@@ -44,11 +49,13 @@ impl From<CellQueryOptions> for SearchKey {
             script: opts.primary_script.into(),
             script_type: opts.primary_type.into(),
             filter,
+            with_data: opts.with_data,
+            group_by_transaction: None,
         }
     }
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptType {
     Lock,
@@ -63,30 +70,30 @@ impl From<PrimaryScriptType> for ScriptType {
     }
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum Order {
     Desc,
     Asc,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Tip {
     pub block_hash: H256,
     pub block_number: BlockNumber,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CellsCapacity {
     pub capacity: Capacity,
     pub block_hash: H256,
     pub block_number: BlockNumber,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cell {
     pub output: CellOutput,
-    pub output_data: JsonBytes,
+    pub output_data: Option<JsonBytes>,
     pub out_point: OutPoint,
     pub block_number: BlockNumber,
     pub tx_index: Uint32,
@@ -95,7 +102,10 @@ impl From<Cell> for LiveCell {
     fn from(cell: Cell) -> LiveCell {
         LiveCell {
             output: cell.output.into(),
-            output_data: cell.output_data.into_bytes(),
+            output_data: cell
+                .output_data
+                .map(|data| data.into_bytes())
+                .unwrap_or_default(),
             out_point: cell.out_point.into(),
             block_number: cell.block_number.value(),
             tx_index: cell.tx_index.value(),
@@ -103,23 +113,54 @@ impl From<Cell> for LiveCell {
     }
 }
 
-#[derive(Deserialize, Clone, Debug)]
-pub struct Tx {
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum Tx {
+    Ungrouped(TxWithCell),
+    Grouped(TxWithCells),
+}
+
+impl Tx {
+    pub fn tx_hash(&self) -> H256 {
+        match self {
+            Tx::Ungrouped(tx) => tx.tx_hash.clone(),
+            Tx::Grouped(tx) => tx.tx_hash.clone(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TxWithCell {
     pub tx_hash: H256,
     pub block_number: BlockNumber,
     pub tx_index: Uint32,
     pub io_index: Uint32,
-    pub io_type: IOType,
+    pub io_type: CellType,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TxWithCells {
+    pub tx_hash: H256,
+    pub block_number: BlockNumber,
+    pub tx_index: Uint32,
+    pub cells: Vec<(CellType, Uint32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum CellType {
+    Input,
+    Output,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum IOType {
     Input,
     Output,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Pagination<T> {
     pub objects: Vec<T>,
     pub last_cursor: JsonBytes,

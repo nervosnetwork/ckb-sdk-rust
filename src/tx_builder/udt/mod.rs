@@ -202,6 +202,7 @@ impl TxBuilder for UdtIssueBuilder {
         // Build inputs
         let owner_query = {
             let mut query = CellQueryOptions::new_lock(self.owner.clone());
+            query.secondary_script_len_range = Some(ValueRangeOption::new_exact(0));
             query.data_len_range = Some(ValueRangeOption::new_exact(0));
             query
         };
