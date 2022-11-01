@@ -1,6 +1,22 @@
 
+# 2.3.0
+* Update ckb to v0.105.1
+* **BREAKING CHANGE**: `get_transaction` rpc now return `TransactionWithStatusResponse`
+* **BREAKING CHANGE**: Update ckb-indexer json types
+  - Add `SearchKey.with_data`
+  - Add `SearchKey.group_by_transaction`
+  - Add `SearchKeyFilter.script_len_range`
+* Add light client support
+  - Add rpc client for light client
+  - Add `LightClientHeaderDepResolver`
+  - Add `LightClientTransactionDependencyProvider`
+  - Add `LightClientCellCollector`
+  - Little improvement to `DaoWithdrawBuilder` for support light client
+* Add `query.secondary_script_len_range = Some(ValueRangeOption::new_exact(0));` to fix cell collector bug
+
+
 # 2.2.0
-* **breaking change** Use ckb-indexer from ckb rpc
+* **BREAKING CHANGE** Use ckb-indexer from ckb rpc
   - `DefaultCellCollector::new` API changed
   - remove `IndexerRpcClient::get_indexer_info` rpc method
   - rename `IndexerRpcClient::get_tip` to `IndexerRpcClient::get_indexer_tip`
@@ -8,7 +24,7 @@
 # 2.1.0
 * Support omni-lock supply mode
 * Use anyhow::Error to replace Box<dyn std::error::Error>
-* **breaking change**: Use hash instead pubkey directly when create `Identity` and `OmniLockConfig`:
+* **BREAKING CHANGE**: Use hash instead pubkey directly when create `Identity` and `OmniLockConfig`:
   - From `Identity::new_pubkey_hash(pubkey: &Pubkey)` to `Identity::new_pubkey_hash(pubkey_hash: H160)`
   - From `Identity::new_ethereum(pubkey: &Pubkey)` to `Identity::new_ethereum(pubkey_hash: H160)`
   - From `OmniLockConfig::new_pubkey_hash(pubkey: &Pubkey)` to `OmniLockConfig::new_pubkey_hash(lock_arg: H160)`
@@ -24,7 +40,7 @@
   - Support Unlock via owner's public key hash (sighash/multisig/ethereum)
   - Support Unlock via owner's lock script hash
 * Add `acceptable_indexer_leftbehind` field in `DefaultCellCollector`
-* **breaking change**: change `CapacityProvider::new(lock_scripts)` argument type 
+* **BREAKING CHANGE**: change `CapacityProvider::new(lock_scripts)` argument type
   - from `Vec<(Script, WitnessArgs)>` to `Vec<(Script, WitnessArgs, SinceSource)>`
   - Add `CapacityProvider::new_simple` for compatible with old function
 
