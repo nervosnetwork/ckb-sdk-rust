@@ -558,6 +558,11 @@ impl OmniLockConfig {
         self.omni_lock_flags.set(OmniLockFlags::OPENTX, true);
     }
 
+    /// Check if it contains open transaction mode
+    pub fn is_opentx_mode(&self) -> bool {
+        self.omni_lock_flags.contains(OmniLockFlags::OPENTX)
+    }
+
     /// Clear the open transaction input data, and clear OmniLockFlags::OPENTX from omni_lock_flags.
     pub fn clear_opentx_input(&mut self) {
         self.omni_lock_flags.set(OmniLockFlags::OPENTX, false);

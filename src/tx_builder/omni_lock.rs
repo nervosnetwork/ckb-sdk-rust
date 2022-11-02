@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 use ckb_types::{
     bytes::Bytes,
@@ -8,10 +8,10 @@ use ckb_types::{
     H256,
 };
 
-use super::{TxBuilder, TxBuilderError};
+use super::{TxBuilder, TxBuilderError, CapacityBalancer, fill_placeholder_witnesses, balance_tx_capacity};
 use crate::{
     traits::{CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider},
-    unlock::{omni_lock::ConfigError, OmniLockConfig, OmniUnlockMode},
+    unlock::{omni_lock::ConfigError, OmniLockConfig, OmniUnlockMode, ScriptUnlocker},
 };
 use crate::{types::ScriptId, HumanCapacity};
 
@@ -205,5 +205,40 @@ impl TxBuilder for OmniLockTransferBuilder {
             .set_inputs(inputs.into_iter().collect())
             .set_outputs_data(outputs_data)
             .build())
+    }
+
+    /// Build balanced transaction that ready to sign:
+    ///  * Build base transaction
+    ///  * Fill placeholder witness for lock script
+    ///  * balance the capacity
+    fn build_balanced(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        balancer: &CapacityBalancer,
+        unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+    ) -> Result<TransactionView, TxBuilderError> {
+        let base_tx = self.build_base(
+            cell_collector,
+            cell_dep_resolver,
+            header_dep_resolver,
+            tx_dep_provider,
+        )?;
+        let (tx_filled_witnesses, _) =
+            fill_placeholder_witnesses(base_tx, tx_dep_provider, unlockers)?;
+        let mut tx = balance_tx_capacity(
+            &tx_filled_witnesses,
+            balancer,
+            cell_collector,
+            tx_dep_provider,
+            cell_dep_resolver,
+            header_dep_resolver,
+        )?;
+        if self.cfg.is_opentx_mode() {
+            tx = OmniLockTransferBuilder::remove_open_out(tx);
+        }
+        Ok(tx)
     }
 }
