@@ -1087,3 +1087,4 @@ fn test_udt_transfer() {
 
 pub mod omni_lock;
 pub mod omni_lock_util;
+pub mod opentx;

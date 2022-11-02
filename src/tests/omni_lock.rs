@@ -40,9 +40,9 @@ use rand::Rng;
 
 use crate::tx_builder::{unlock_tx, CapacityBalancer, TxBuilder};
 
-const OMNILOCK_BIN: &[u8] = include_bytes!("../test-data/omni_lock");
+pub const OMNILOCK_BIN: &[u8] = include_bytes!("../test-data/omni_lock");
 
-fn build_omnilock_script(cfg: &OmniLockConfig) -> Script {
+pub fn build_omnilock_script(cfg: &OmniLockConfig) -> Script {
     let omnilock_data_hash = H256::from(blake2b_256(OMNILOCK_BIN));
     Script::new_builder()
         .code_hash(omnilock_data_hash.pack())
@@ -51,7 +51,7 @@ fn build_omnilock_script(cfg: &OmniLockConfig) -> Script {
         .build()
 }
 
-fn build_omnilock_unlockers(
+pub fn build_omnilock_unlockers(
     key: secp256k1::SecretKey,
     config: OmniLockConfig,
     unlock_mode: OmniUnlockMode,
@@ -117,13 +117,12 @@ fn test_omnilock_simple_hash(cfg: OmniLockConfig) {
         CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
 
     let mut cell_collector = ctx.to_live_cells_context();
-    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
-    let unlockers = build_omnilock_unlockers(account2_key, cfg.clone(), unlock_mode);
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone(), unlock_mode);
     let mut tx = builder
         .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
         .unwrap();
 
-    let unlockers = build_omnilock_unlockers(account2_key, cfg, unlock_mode);
     let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
     assert!(new_locked_groups.is_empty());
     tx = new_tx;
