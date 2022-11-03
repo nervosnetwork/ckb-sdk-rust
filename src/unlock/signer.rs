@@ -728,6 +728,10 @@ impl ScriptSigner for OmniLockScriptSigner {
             return false;
         }
 
+        if args != self.config.build_args() {
+            return false;
+        }
+
         if self.unlock_mode == OmniUnlockMode::Admin {
             if let Some(admin_config) = self.config.get_admin_config() {
                 if args.len() < 54 {

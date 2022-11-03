@@ -58,7 +58,6 @@ impl TxBuilder for CapacityTransferBuilder {
     }
 }
 
-
 /// It's like CapacityTransferBuilder, except with a predefined transaction, it can be used when an open transaction is avaiable.
 pub struct CapacityTransferBuilderWithTransaction {
     pub outputs: Vec<(CellOutput, Bytes)>,
@@ -66,8 +65,14 @@ pub struct CapacityTransferBuilderWithTransaction {
 }
 
 impl CapacityTransferBuilderWithTransaction {
-    pub fn new(outputs: Vec<(CellOutput, Bytes)>, transaction: TransactionView) -> CapacityTransferBuilderWithTransaction {
-        CapacityTransferBuilderWithTransaction { outputs, transaction }
+    pub fn new(
+        outputs: Vec<(CellOutput, Bytes)>,
+        transaction: TransactionView,
+    ) -> CapacityTransferBuilderWithTransaction {
+        CapacityTransferBuilderWithTransaction {
+            outputs,
+            transaction,
+        }
     }
 }
 
@@ -96,11 +101,12 @@ impl TxBuilder for CapacityTransferBuilderWithTransaction {
                 }
             }
         }
-        Ok(self.transaction.as_advanced_builder()
+        Ok(self
+            .transaction
+            .as_advanced_builder()
             .cell_deps(cell_deps)
             .outputs(outputs)
             .outputs_data(outputs_data)
             .build())
     }
 }
-

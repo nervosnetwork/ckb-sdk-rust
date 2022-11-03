@@ -169,7 +169,7 @@ impl OpenTxSigInput {
             arg2: arg2.bits,
         })
     }
-    /// Build new OpentxCommand::ConcatArg1Arg2 OpenTxSigInput, command 0x15
+    /// Build new OpentxCommand::CellInputIndex OpenTxSigInput, command 0x15
     pub fn new_cell_input_index(arg1: u16, arg2: InputMask) -> Result<OpenTxSigInput, OpenTxError> {
         Self::new_input_command(OpentxCommand::CellInputIndex, arg1, arg2)
     }
@@ -368,7 +368,7 @@ impl OpentxWitness {
 
     /// Build new OpentxWitness which will sign all data.
     ///
-    /// It will first generate the TxHash(0x00), GroupInputOutputLen(0x01),
+    /// It will first generate the GroupInputOutputLen(0x01),
     /// then iterate the inputs to generate the relative index OpenTxSigInput with all CellMask on, and InputMask on,
     /// then iterate each output to generate the relative index OpenTxSigInput with all CellMask on.
     ///
@@ -485,10 +485,7 @@ impl OpentxWitness {
         base_output_index: usize,
         end_output_index: usize,
     ) -> Result<Self, OpenTxError> {
-        let mut inputs = vec![
-            OpenTxSigInput::new_tx_hash(),
-            OpenTxSigInput::new_group_input_output_len(),
-        ];
+        let mut inputs = vec![OpenTxSigInput::new_group_input_output_len()];
 
         let start_input_idx = base_input_index;
         let end_input_idx =
@@ -543,6 +540,37 @@ impl OpentxWitness {
             base_output_index,
             inputs,
         ))
+    }
+    /// Same to `new_sig_range_absolute`, except end_input_index and end_output_index are all usize::MAX,
+    /// which will be changed to the length of inputs/outputs list.
+    pub fn new_sig_to_end_absolute(
+        transaction: &TransactionView,
+        salt: Option<u32>,
+        base_input_index: usize,
+        base_output_index: usize,
+    ) -> Result<Self, OpenTxError> {
+        Self::new_sig_range_absolute(
+            transaction,
+            salt,
+            base_input_index,
+            usize::MAX,
+            base_output_index,
+            usize::MAX,
+        )
+    }
+
+    /// Same to `new_sig_to_end_absolute`, except base_input_index and base_output_index are all 0
+    pub fn new_sig_all_absolute(
+        transaction: &TransactionView,
+        salt: Option<u32>,
+    ) -> Result<Self, OpenTxError> {
+        Self::new_sig_range_absolute(transaction, salt, 0, usize::MAX, 0, usize::MAX)
+    }
+
+    /// Add OpentxCommand to the first of the input list, this should only be called if the opentx is ready to sent.
+    /// If the open transaction will be add input/output, this function should not be called.
+    pub fn add_tx_hash_input(&mut self) {
+        self.inputs.insert(0, OpenTxSigInput::new_tx_hash());
     }
 
     pub fn set_base_input_index(&mut self, index: u32) {

@@ -118,7 +118,7 @@ fn test_omnilock_simple_hash(cfg: OmniLockConfig) {
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
-    let unlockers = build_omnilock_unlockers(account0_key, cfg.clone(), unlock_mode);
+    let unlockers = build_omnilock_unlockers(account0_key, cfg, unlock_mode);
     let mut tx = builder
         .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
         .unwrap();

@@ -425,6 +425,8 @@ pub struct OmniLockConfig {
 
     /// open tx config
     opentx_input: Option<OpentxWitness>,
+    /// When do placeholder_witness_lock, opentx_input will be used if it's not None, or this field is used to reserve more capacity.
+    opentx_reserve_bytes: u32,
 }
 
 impl OmniLockConfig {
@@ -449,6 +451,7 @@ impl OmniLockConfig {
             time_lock_config: None,
             info_cell: None,
             opentx_input: None,
+            opentx_reserve_bytes: 0,
         }
     }
     /// Create an ethereum algorithm omnilock with pubkey
@@ -496,6 +499,7 @@ impl OmniLockConfig {
             time_lock_config: None,
             info_cell: None,
             opentx_input: None,
+            opentx_reserve_bytes: 0,
         }
     }
 
@@ -571,6 +575,22 @@ impl OmniLockConfig {
 
     pub fn get_opentx_input(&self) -> Option<&OpentxWitness> {
         self.opentx_input.as_ref()
+    }
+
+    /// Set opentx reserve bytes for placeholder witness.
+    /// # Arguments
+    /// * `bytes` number of bytes to reserve, the minimual should be 12, and be multiple of 4.
+    pub fn set_opentx_reserve_bytes(&mut self, bytes: u32) {
+        self.opentx_reserve_bytes = bytes;
+    }
+
+    /// Set opentx reserve bytes by possible command numbers.
+    ///
+    /// If all data are hashed, the command number verifies depend on input/output numbers,
+    /// if random salt is used for OpenTxSigInput::new_concat_arg1_arg2, salt bigger than 0xFFFFFF will be 2 commands,
+    /// salt <= 0xFFFFFF will be one 1 command.
+    pub fn set_opentx_reserve_bytes_by_commands(&mut self, commands: u32) {
+        self.set_opentx_reserve_bytes(4 + 4 + 4 * commands);
     }
 
     pub fn id(&self) -> &Identity {
@@ -687,6 +707,9 @@ impl OmniLockConfig {
         let mut buf = BytesMut::new();
         if let Some(optx) = self.opentx_input.as_ref() {
             buf.extend_from_slice(&optx.to_witness_data());
+        } else if self.is_opentx_mode() {
+            let new_len = buf.len() + self.opentx_reserve_bytes as usize;
+            buf.resize(new_len, 0u8);
         }
         let mut builder = match self.id.flag {
             IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => {

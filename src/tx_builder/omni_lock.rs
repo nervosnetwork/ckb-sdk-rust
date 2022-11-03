@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
 use ckb_types::{
     bytes::Bytes,
@@ -8,7 +8,9 @@ use ckb_types::{
     H256,
 };
 
-use super::{TxBuilder, TxBuilderError, CapacityBalancer, fill_placeholder_witnesses, balance_tx_capacity};
+use super::{
+    balance_tx_capacity, fill_placeholder_witnesses, CapacityBalancer, TxBuilder, TxBuilderError,
+};
 use crate::{
     traits::{CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider},
     unlock::{omni_lock::ConfigError, OmniLockConfig, OmniUnlockMode, ScriptUnlocker},
