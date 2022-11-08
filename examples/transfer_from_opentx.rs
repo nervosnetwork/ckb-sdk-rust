@@ -266,7 +266,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         Commands::SignOpenTx(args) => {
             let tx_info: TxInfo = serde_json::from_slice(&fs::read(&args.tx_file)?)?;
             let tx = Transaction::from(tx_info.tx.inner).into_view();
-            let keys = args
+            let keys: Vec<secp256k1::SecretKey> = args
                 .sender_key
                 .iter()
                 .map(|sender_key| {
@@ -276,7 +276,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
                 })
                 .collect();
             if tx_info.omnilock_config.is_pubkey_hash() || tx_info.omnilock_config.is_ethereum() {
-                for key in &keys {
+                for (i, key) in keys.iter().enumerate() {
                     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, key);
                     let hash160 = match tx_info.omnilock_config.id().flag() {
                         IdentityFlag::PubkeyHash => {
@@ -288,7 +288,11 @@ fn main() -> Result<(), Box<dyn StdErr>> {
                         _ => unreachable!(),
                     };
                     if tx_info.omnilock_config.id().auth_content().as_bytes() != hash160 {
-                        return Err(format!("key {:#x} is not in omnilock config", key).into());
+                        return Err(format!(
+                            "key {:#x} is not in omnilock config",
+                            args.sender_key[i]
+                        )
+                        .into());
                     }
                 }
             }
