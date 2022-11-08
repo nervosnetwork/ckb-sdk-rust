@@ -1171,11 +1171,7 @@ fn test_omnilock_udt_transfer() {
     ctx.add_live_cell(receiver_input, receiver_output.clone(), receiver_data, None);
 
     let udt_receiver = UdtTargetReceiver::new(TransferAction::Update, receiver_acp_lock, 300);
-    let builder = UdtTransferBuilder {
-        type_script,
-        sender: sender.clone(),
-        receivers: vec![udt_receiver],
-    };
+    let builder = UdtTransferBuilder::new(type_script, sender.clone(), vec![udt_receiver]);
     let placeholder_witness = WitnessArgs::new_builder()
         .lock(Some(Bytes::from(vec![0u8; 65])).pack())
         .build();

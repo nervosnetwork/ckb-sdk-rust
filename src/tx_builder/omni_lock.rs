@@ -40,12 +40,12 @@ impl OmniLockTransferBuilder {
     /// Create an OmniLockTransferBuilder with open out in the output list.
     /// After the transaction built, the open out should be removed.
     pub fn new_open(
-        open_capacity: HumanCapacity,
+        open_out_capacity: HumanCapacity,
         mut outputs: Vec<(CellOutput, Bytes)>,
         cfg: OmniLockConfig,
         rce_cells: Option<Vec<OutPoint>>,
     ) -> OmniLockTransferBuilder {
-        let tmp_out = OmniLockTransferBuilder::build_tmp_open_out(open_capacity);
+        let tmp_out = OmniLockTransferBuilder::build_tmp_open_out(open_out_capacity);
         outputs.push((tmp_out, Bytes::default()));
         OmniLockTransferBuilder {
             outputs,

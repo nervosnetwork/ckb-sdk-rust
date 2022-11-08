@@ -265,6 +265,57 @@ pub struct UdtTransferBuilder {
 
     /// The transfer receivers
     pub receivers: Vec<UdtTargetReceiver>,
+
+    /// The exist transaction
+    pub transaction: Option<TransactionView>,
+}
+
+impl UdtTransferBuilder {
+    pub fn new(type_script: Script, sender: Script, receivers: Vec<UdtTargetReceiver>) -> Self {
+        UdtTransferBuilder {
+            type_script,
+            sender,
+            receivers,
+            transaction: None,
+        }
+    }
+
+    pub fn new_with_transaction(
+        type_script: Script,
+        sender: Script,
+        receivers: Vec<UdtTargetReceiver>,
+        transaction: TransactionView,
+    ) -> Self {
+        UdtTransferBuilder {
+            type_script,
+            sender,
+            receivers,
+            transaction: Some(transaction),
+        }
+    }
+
+    fn tx_output_amount(&self) -> u128 {
+        if self.transaction.is_none() {
+            return 0;
+        }
+        let tx = self.transaction.as_ref().unwrap();
+        tx.outputs_with_data_iter()
+            .filter_map(|(output, data)| {
+                if data.len() >= 16
+                    && output.type_().is_some()
+                    && output.type_().to_opt().unwrap() == self.type_script
+                // && output.lock() == self.sender
+                {
+                    let mut amount_bytes = [0u8; 16];
+                    amount_bytes.copy_from_slice(&data.as_ref()[0..16]);
+                    let amount = u128::from_le_bytes(amount_bytes);
+                    Some(amount)
+                } else {
+                    None
+                }
+            })
+            .sum()
+    }
 }
 
 impl TxBuilder for UdtTransferBuilder {
@@ -302,6 +353,7 @@ impl TxBuilder for UdtTransferBuilder {
         amount_bytes.copy_from_slice(&sender_cell.output_data.as_ref()[0..16]);
         let input_total = u128::from_le_bytes(amount_bytes);
         let output_total: u128 = self.receivers.iter().map(|receiver| receiver.amount).sum();
+        let output_total = output_total + self.tx_output_amount();
         if input_total < output_total {
             return Err(TxBuilderError::Other(anyhow!(
                 "sender udt amount not enough, expected at least: {}, actual: {}",
@@ -334,12 +386,16 @@ impl TxBuilder for UdtTransferBuilder {
             outputs.push(output);
             outputs_data.push(output_data.pack());
         }
-
-        Ok(TransactionBuilder::default()
-            .set_cell_deps(cell_deps.into_iter().collect())
-            .set_inputs(inputs)
-            .set_outputs(outputs)
-            .set_outputs_data(outputs_data)
+        let builder = if let Some(tx) = self.transaction.as_ref() {
+            tx.as_advanced_builder()
+        } else {
+            TransactionBuilder::default()
+        };
+        Ok(builder
+            .cell_deps(cell_deps)
+            .inputs(inputs)
+            .outputs(outputs)
+            .outputs_data(outputs_data)
             .build())
     }
 }
