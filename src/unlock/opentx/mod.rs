@@ -30,8 +30,8 @@ pub enum OpenTxError {
 
     #[error(transparent)]
     VerificationError(#[from] VerificationError),
-    #[error("witness field not exist")]
-    WitnessMissing,
+    #[error("Open transaction input list not configured.")]
+    InputListConfigMissing,
     #[error("lock field of witness not exist")]
     WitnessLockMissing,
     #[error("signature not exist")]

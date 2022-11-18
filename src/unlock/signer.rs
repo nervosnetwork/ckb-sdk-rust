@@ -562,9 +562,15 @@ impl OmniLockScriptSigner {
 
         let zero_lock = self.config.zero_lock(self.unlock_mode)?;
         let zero_lock_len = zero_lock.len();
-        let (message, open_sig_data) = if let Some(opentx_wit) = self.config.get_opentx_input() {
-            let reader = OpenTxReader::new(&tx_new, tx_dep_provider, script_group)?;
-            opentx_wit.generate_message(&reader)?
+        let (message, open_sig_data) = if self.config.is_opentx_mode() {
+            if let Some(opentx_wit) = self.config.get_opentx_input() {
+                let reader = OpenTxReader::new(&tx_new, tx_dep_provider, script_group)?;
+                opentx_wit.generate_message(&reader)?
+            } else {
+                return Err(ScriptSignError::OpenTxError(
+                    OpenTxError::InputListConfigMissing,
+                ));
+            }
         } else {
             (
                 generate_message(&tx_new, script_group, zero_lock)?,
@@ -692,9 +698,14 @@ impl OmniLockScriptSigner {
         } else {
             WitnessArgs::from_slice(witness_data.as_ref())?
         };
-
-        if let Some(opentx_wit) = self.config.get_opentx_input() {
-            signature = opentx_wit.build_opentx_sig(open_sig_data, signature);
+        if self.config.is_opentx_mode() {
+            if let Some(opentx_wit) = self.config.get_opentx_input() {
+                signature = opentx_wit.build_opentx_sig(open_sig_data, signature);
+            } else {
+                return Err(ScriptSignError::OpenTxError(
+                    OpenTxError::InputListConfigMissing,
+                ));
+            }
         }
         let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
         current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
@@ -830,9 +841,14 @@ impl ScriptSigner for OmniLockScriptSigner {
                 } else {
                     WitnessArgs::from_slice(witness_data.as_ref())?
                 };
-
-                if let Some(opentx_wit) = self.config.get_opentx_input() {
-                    signature = opentx_wit.build_opentx_sig(open_sig_data, signature);
+                if self.config.is_opentx_mode() {
+                    if let Some(opentx_wit) = self.config.get_opentx_input() {
+                        signature = opentx_wit.build_opentx_sig(open_sig_data, signature);
+                    } else {
+                        return Err(ScriptSignError::OpenTxError(
+                            OpenTxError::InputListConfigMissing,
+                        ));
+                    }
                 }
                 let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
 
