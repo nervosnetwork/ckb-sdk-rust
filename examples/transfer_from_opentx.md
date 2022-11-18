@@ -59,8 +59,6 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
 ```
 output:
 ```json
-pubkey:"038d3cfceea4f9c2e76c5c4f5e99aec74c26d6ac894648b5700a0b71f91f9b5c2a"
-pubkey:"048d3cfceea4f9c2e76c5c4f5e99aec74c26d6ac894648b5700a0b71f91f9b5c2a26b16aac1d5753e56849ea83bf795eb8b06f0b6f4e5ed7b8caca720595458039"
 {
   "lock-arg": "0x01cf2485c76aff1f2b4464edf04a1c8045068cf7e010",
   "lock-hash": "0x057dcd204f26621ef49346ed77d2bdbf3069b83a5ef0a2b52be5299a93507cf6",

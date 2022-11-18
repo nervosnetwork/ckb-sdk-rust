@@ -35,6 +35,10 @@ use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, error::Error as StdErr, fs, path::PathBuf};
 
+// The transaction hash i deployed my omnilock script with open transaction function on my test environment.
+// You should not use this hash to find your open transaction code_hash at any circumstances,
+// or you will lost your CKB for ever, or not make the example work.
+// You should replace this hash with your own transaction hash or provide one with command line parameter for this example.
 const OPENTX_TX_HASH: &str = "d7697f6b3684d1451c42cc538b3789f13b01430007f65afe74834b6a28714a18";
 const OPENTX_TX_IDX: &str = "0";
 
@@ -438,8 +442,8 @@ fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdEr
     } else if let Some(ethereum_receiver) = args.ethereum_receiver.as_ref() {
         let privkey = secp256k1::SecretKey::from_slice(ethereum_receiver.as_bytes()).unwrap();
         let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &privkey);
-        println!("pubkey:{:?}", hex_string(&pubkey.serialize()));
-        println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
+        // println!("pubkey:{:?}", hex_string(&pubkey.serialize()));
+        // println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
         let addr = keccak160(Pubkey::from(pubkey).as_ref());
         OmniLockConfig::new_ethereum(addr)
     } else if !args.multis_args.sighash_address.is_empty() {
