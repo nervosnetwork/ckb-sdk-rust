@@ -455,10 +455,12 @@ pub fn balance_tx_capacity(
                     //   * second 4 bytes if for output data offset
                     //   * third 4 bytes is for output offset
                     let output_header_extra = 4 + 4 + 4;
+                    // NOTE: extra_min_fee +1 is for `FeeRate::fee` round
                     let extra_min_fee = balancer
                         .fee_rate
                         .fee(base_change_output.as_slice().len() + output_header_extra)
-                        .as_u64();
+                        .as_u64()
+                        + 1;
                     // The extra capacity (delta - extra_min_fee) is enough to hold the change cell.
                     if delta >= base_change_occupied_capacity + extra_min_fee {
                         // next loop round must return new_tx;
@@ -506,7 +508,9 @@ pub fn balance_tx_capacity(
                 }
             }
             // fee is positive and `fee < min_fee`
-            Ok(_fee) => {}
+            Ok(fee) => {
+                need_more_capacity = min_fee - fee;
+            }
             Err(TransactionFeeError::CapacityOverflow(delta)) => {
                 need_more_capacity = delta + min_fee;
             }
