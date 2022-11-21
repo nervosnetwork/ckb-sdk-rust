@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-
 use std::{cmp::Ordering, collections::HashSet, convert::TryFrom};
 
 use ckb_types::{
@@ -9,10 +8,26 @@ use ckb_types::{
     prelude::*,
 };
 
-use crate::types::omni_lock::OmniLockWitnessLock;
 use crate::{traits::TransactionDependencyProvider, unlock::omni_lock::OmniLockFlags};
+use crate::{
+    tx_builder::{gen_script_groups, ScriptGroups},
+    types::omni_lock::OmniLockWitnessLock,
+};
 
 use super::OpenTxError;
+
+/// Check if different
+fn check_script_groups(group_vec: &[ScriptGroups]) -> Result<(), OpenTxError> {
+    let mut keys = HashSet::new();
+    for group in group_vec.iter() {
+        let len = keys.len();
+        keys.extend(group.lock_groups.keys().clone());
+        if len + group.lock_groups.len() > keys.len() {
+            return Err(OpenTxError::SameLockInDifferentOpenTx);
+        }
+    }
+    Ok(())
+}
 
 /// Assemble a transaction from multiple opentransaction, remove duplicate cell deps and header deps.
 /// Alter base input/output index.
@@ -29,21 +44,33 @@ pub fn assemble_new_tx(
     let mut header_deps = HashSet::new();
     let mut base_input_idx = 0usize;
     let mut base_output_idx = 0usize;
+    let mut base_input_cap = 0usize;
+    let mut base_output_cap = 0usize;
+    let group_vec: Result<Vec<_>, _> = transactions
+        .iter()
+        .map(|tx| gen_script_groups(tx, provider))
+        .collect();
+    let group_vec = group_vec?;
+    check_script_groups(&group_vec)?;
     for tx in transactions.iter() {
         cell_deps.extend(tx.cell_deps());
         header_deps.extend(tx.header_deps());
         builder = builder.inputs(tx.inputs());
+        base_input_cap += tx.inputs().len();
+        base_output_cap += tx.outputs().len();
         // Handle opentx witness
         for (input, witness) in tx.inputs().into_iter().zip(tx.witnesses().into_iter()) {
             let lock = provider.get_cell(&input.previous_output())?.lock();
             let code_hash = lock.code_hash();
-            if code_hash.cmp(&opentx_code_hash) == Ordering::Equal {
+            // empty witness should be in a script group
+            if !witness.is_empty() && code_hash.cmp(&opentx_code_hash) == Ordering::Equal {
                 let args = &lock.args().raw_data();
-                if args.len() >= 22
+                let witness_data = witness.raw_data();
+                if witness_data.len() > 8 // sizeof base_input + sizeof base_output
+                    && args.len() >= 22
                     && OmniLockFlags::from_bits_truncate(args[21]).contains(OmniLockFlags::OPENTX)
                 {
                     // Parse lock data
-                    let witness_data = witness.raw_data();
                     let current_witness: WitnessArgs =
                         WitnessArgs::from_slice(witness_data.as_ref())?;
                     let lock_field = current_witness
@@ -64,11 +91,17 @@ pub fn assemble_new_tx(
                     tmp.copy_from_slice(&data[0..4]);
                     let this_base_input_idx = u32::from_le_bytes(tmp)
                         + u32::try_from(base_input_idx).map_err(|e| anyhow!(e))?;
+                    if this_base_input_idx as usize > base_input_cap {
+                        return Err(OpenTxError::BaseInputIndexOverFlow);
+                    }
                     data[0..4].copy_from_slice(&this_base_input_idx.to_le_bytes());
 
                     tmp.copy_from_slice(&data[4..8]);
                     let this_base_output_idx = u32::from_le_bytes(tmp)
                         + u32::try_from(base_output_idx).map_err(|e| anyhow!(e))?;
+                    if this_base_output_idx as usize > base_output_cap {
+                        return Err(OpenTxError::BaseOutputIndexOverFlow);
+                    }
                     data[4..8].copy_from_slice(&this_base_output_idx.to_le_bytes());
 
                     let omnilock_witnesslock = omnilock_witnesslock

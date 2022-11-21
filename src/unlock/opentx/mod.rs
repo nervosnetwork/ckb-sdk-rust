@@ -36,6 +36,12 @@ pub enum OpenTxError {
     WitnessLockMissing,
     #[error("signature not exist")]
     SignatureMissing,
+    #[error("Cells in different partital open transaction can not be merged")]
+    SameLockInDifferentOpenTx,
+    #[error("Base input index is overflow")]
+    BaseInputIndexOverFlow,
+    #[error("Base output index is overflow")]
+    BaseOutputIndexOverFlow,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
