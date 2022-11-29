@@ -5,8 +5,8 @@ authors = ["Linfeng Qian <thewawar@gmail.com>", "Nervos Core Dev <dev@nervos.org
 edition = "2018"
 license = "MIT"
 description = "Rust SDK for CKB"
-homepage = "https://github.com/nervosnetwork/ckb-sdk"
-repository = "https://github.com/nervosnetwork/ckb-sdk"
+homepage = "https://github.com/nervosnetwork/ckb-sdk-rust"
+repository = "https://github.com/nervosnetwork/ckb-sdk-rust"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
