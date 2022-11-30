@@ -1,7 +1,7 @@
 
 This document is about how to use the transfer_from_opentx example to do open transaction operation.
 All the addresses and keys are all in my development local node, you should not use in the production environment.
-# Singhash open transaction example
+# Sighash open transaction example
 1. Build an opentx address
 ```bash
  ./target/debug/examples/transfer_from_opentx build --receiver ckt1qyqt8xpk328d89zgl928nsgh3lelch33vvvq5u3024
@@ -109,7 +109,7 @@ ckb-cli wallet transfer --from-account 0xc8328aabcd9b9e8e64fbc566c4385c3bdeb219d
   --threshold 2 \
   --sighash-address ckt1qyqt8xpk328d89zgl928nsgh3lelch33vvvq5u3024 \
   --sighash-address ckt1qyqvsv5240xeh85wvnau2eky8pwrhh4jr8ts8vyj37 \
-  --sighash-address ckt1qyqywrwdchjyqeysjegpzw38fvandtktdhrs0zaxl4                                                                                                                                                                                    14:03:11
+  --sighash-address ckt1qyqywrwdchjyqeysjegpzw38fvandtktdhrs0zaxl4
 ```
 The output:
 ```json
