@@ -82,9 +82,9 @@ bitflags! {
         /// Cell data
         const CELL_DATA = 0x80;
         /// Lock script hash
-        const TYPE_SCRIPT_HASH = 0x100;
+        const LOCK_SCRIPT_HASH = 0x100;
         /// Type script hash
-        const LOCK_SCRIPT_HASH = 0x200;
+        const TYPE_SCRIPT_HASH = 0x200;
         /// The whole cell
         const WHOLE_CELL = 0x400;
     }
@@ -274,18 +274,18 @@ impl OpenTxSigInput {
             cache.update(data.as_slice());
         }
 
+        if cell_mask.contains(CellMask::LOCK_SCRIPT_HASH) {
+            let cell = reader.get_cell(index, is_input)?;
+            let hash = cell.lock().calc_script_hash();
+            cache.update(hash.as_slice());
+        }
+
         if cell_mask.contains(CellMask::TYPE_SCRIPT_HASH) {
             let cell = reader.get_cell(index, is_input)?;
             if let Some(script) = cell.type_().to_opt() {
                 let hash = script.calc_script_hash();
                 cache.update(hash.as_slice());
             }
-        }
-
-        if cell_mask.contains(CellMask::LOCK_SCRIPT_HASH) {
-            let cell = reader.get_cell(index, is_input)?;
-            let hash = cell.lock().calc_script_hash();
-            cache.update(hash.as_slice());
         }
 
         if cell_mask.contains(CellMask::WHOLE_CELL) {
