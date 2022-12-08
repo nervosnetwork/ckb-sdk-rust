@@ -576,7 +576,6 @@ fn build_open_tx(
         &header_dep_resolver,
     )?;
 
-    let tx = OmniLockTransferBuilder::remove_open_out(tx);
     let wit = OpentxWitness::new_sig_all_relative(&tx, Some(0xdeadbeef)).unwrap();
     omnilock_config.set_opentx_input(wit);
     let tx = OmniLockTransferBuilder::update_opentx_witness(

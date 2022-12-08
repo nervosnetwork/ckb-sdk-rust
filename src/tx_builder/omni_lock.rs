@@ -2,14 +2,14 @@ use std::collections::{HashMap, HashSet};
 
 use ckb_types::{
     bytes::Bytes,
-    core::{DepType, ScriptHashType, TransactionBuilder, TransactionView},
+    core::{DepType, TransactionBuilder, TransactionView},
     packed::{CellDep, CellInput, CellOutput, OutPoint, Script},
     prelude::*,
-    H256,
 };
 
 use super::{
-    balance_tx_capacity, fill_placeholder_witnesses, CapacityBalancer, TxBuilder, TxBuilderError,
+    balance_tx_capacity_with_open, fill_placeholder_witnesses, CapacityBalancer, TxBuilder,
+    TxBuilderError,
 };
 use crate::{
     traits::{CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider},
@@ -22,6 +22,7 @@ pub struct OmniLockTransferBuilder {
     pub outputs: Vec<(CellOutput, Bytes)>,
     pub cfg: OmniLockConfig,
     pub rce_cells: Option<Vec<OutPoint>>,
+    pub open_out_capacity: HumanCapacity,
 }
 
 impl OmniLockTransferBuilder {
@@ -34,6 +35,7 @@ impl OmniLockTransferBuilder {
             outputs,
             cfg,
             rce_cells,
+            open_out_capacity: HumanCapacity(0),
         }
     }
 
@@ -41,72 +43,16 @@ impl OmniLockTransferBuilder {
     /// After the transaction built, the open out should be removed.
     pub fn new_open(
         open_out_capacity: HumanCapacity,
-        mut outputs: Vec<(CellOutput, Bytes)>,
+        outputs: Vec<(CellOutput, Bytes)>,
         cfg: OmniLockConfig,
         rce_cells: Option<Vec<OutPoint>>,
     ) -> OmniLockTransferBuilder {
-        let tmp_out = OmniLockTransferBuilder::build_tmp_open_out(open_out_capacity);
-        outputs.push((tmp_out, Bytes::default()));
         OmniLockTransferBuilder {
             outputs,
             cfg,
             rce_cells,
+            open_out_capacity,
         }
-    }
-
-    fn build_opentx_placeholder_hash() -> H256 {
-        let mut ret = H256::default();
-        let opentx = "opentx";
-        let offset = ret.0.len() - opentx.len();
-        ret.0[offset..].copy_from_slice(opentx.as_bytes());
-        ret
-    }
-
-    fn build_opentx_tmp_script() -> Script {
-        let tmp_locker = Self::build_opentx_placeholder_hash();
-        Script::new_builder()
-            .code_hash(tmp_locker.pack())
-            .hash_type(ScriptHashType::Type.into())
-            .args([0xffu8; 65].pack())
-            .build()
-    }
-
-    pub fn build_tmp_open_out(open_capacity: HumanCapacity) -> CellOutput {
-        let tmp_locker = Self::build_opentx_tmp_script();
-        CellOutput::new_builder()
-            .lock(tmp_locker)
-            .capacity(open_capacity.0.pack())
-            .build()
-    }
-
-    /// remove the open output
-    pub fn remove_open_out(tx: TransactionView) -> TransactionView {
-        let tmp_locker = Self::build_opentx_tmp_script();
-        let tmp_idxes: HashSet<usize> = tx
-            .outputs()
-            .into_iter()
-            .enumerate()
-            .filter(|(_, out)| out.lock() == tmp_locker)
-            .map(|(idx, _)| idx)
-            .collect();
-        let outputs: Vec<CellOutput> = tx
-            .outputs()
-            .into_iter()
-            .enumerate()
-            .filter(|(idx, _)| !tmp_idxes.contains(idx))
-            .map(|(_, out)| out)
-            .collect();
-        let outputs_data: Vec<ckb_types::packed::Bytes> = tx
-            .outputs_data()
-            .into_iter()
-            .enumerate()
-            .filter(|(idx, _)| !tmp_idxes.contains(idx))
-            .map(|(_, out)| out)
-            .collect();
-        tx.as_advanced_builder()
-            .set_outputs(outputs)
-            .set_outputs_data(outputs_data)
-            .build()
     }
 
     /// after the open transaction input list updated(exclude base input/output), the witness should be updated
@@ -230,17 +176,15 @@ impl TxBuilder for OmniLockTransferBuilder {
         )?;
         let (tx_filled_witnesses, _) =
             fill_placeholder_witnesses(base_tx, tx_dep_provider, unlockers)?;
-        let mut tx = balance_tx_capacity(
+        let tx = balance_tx_capacity_with_open(
             &tx_filled_witnesses,
             balancer,
             cell_collector,
             tx_dep_provider,
             cell_dep_resolver,
             header_dep_resolver,
+            self.open_out_capacity.into(),
         )?;
-        if self.cfg.is_opentx_mode() {
-            tx = OmniLockTransferBuilder::remove_open_out(tx);
-        }
         Ok(tx)
     }
 }
