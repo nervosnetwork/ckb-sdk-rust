@@ -165,6 +165,14 @@ pub fn tx_fee(
     tx_dep_provider: &dyn TransactionDependencyProvider,
     header_dep_resolver: &dyn HeaderDepResolver,
 ) -> Result<u64, TransactionFeeError> {
+    tx_fee_with_open(tx, tx_dep_provider, header_dep_resolver, 0)
+}
+pub fn tx_fee_with_open(
+    tx: TransactionView,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+    header_dep_resolver: &dyn HeaderDepResolver,
+    open_capacity: u64,
+) -> Result<u64, TransactionFeeError> {
     let mut input_total: u64 = 0;
     for input in tx.inputs() {
         let mut is_withdraw = false;
@@ -218,7 +226,7 @@ pub fn tx_fee(
         };
         input_total += capacity;
     }
-    let output_total = tx.outputs_capacity()?.as_u64();
+    let output_total = tx.outputs_capacity()?.as_u64() + open_capacity;
     #[allow(clippy::unnecessary_lazy_evaluations)]
     input_total
         .checked_sub(output_total)
@@ -360,6 +368,26 @@ pub fn balance_tx_capacity(
     cell_dep_resolver: &dyn CellDepResolver,
     header_dep_resolver: &dyn HeaderDepResolver,
 ) -> Result<TransactionView, BalanceTxCapacityError> {
+    balance_tx_capacity_with_open(
+        tx,
+        balancer,
+        cell_collector,
+        tx_dep_provider,
+        cell_dep_resolver,
+        header_dep_resolver,
+        0,
+    )
+}
+/// Fill more inputs to balance the transaction capacity
+pub fn balance_tx_capacity_with_open(
+    tx: &TransactionView,
+    balancer: &CapacityBalancer,
+    cell_collector: &mut dyn CellCollector,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+    cell_dep_resolver: &dyn CellDepResolver,
+    header_dep_resolver: &dyn HeaderDepResolver,
+    open_capacity: u64,
+) -> Result<TransactionView, BalanceTxCapacityError> {
     let capacity_provider = &balancer.capacity_provider;
     if capacity_provider.lock_scripts.is_empty() {
         return Err(BalanceTxCapacityError::EmptyCapacityProvider);
@@ -403,6 +431,7 @@ pub fn balance_tx_capacity(
             let cell = tx_dep_provider.get_cell(&input.previous_output())?;
             if cell.lock() == *lock_script {
                 has_provider = true;
+                break;
             }
         }
         while tx.witnesses().item_count() + witnesses.len()
@@ -430,8 +459,12 @@ pub fn balance_tx_capacity(
         let tx_size = new_tx.data().as_reader().serialized_size_in_block();
         let min_fee = balancer.fee_rate.fee(tx_size).as_u64();
         let mut need_more_capacity = 1;
-        let fee_result: Result<u64, TransactionFeeError> =
-            tx_fee(new_tx.clone(), tx_dep_provider, header_dep_resolver);
+        let fee_result: Result<u64, TransactionFeeError> = tx_fee_with_open(
+            new_tx.clone(),
+            tx_dep_provider,
+            header_dep_resolver,
+            open_capacity,
+        );
         match fee_result {
             Ok(fee) if fee == min_fee => {
                 return Ok(new_tx);

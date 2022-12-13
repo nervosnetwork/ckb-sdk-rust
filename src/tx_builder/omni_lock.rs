@@ -1,24 +1,28 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use ckb_types::{
     bytes::Bytes,
     core::{DepType, TransactionBuilder, TransactionView},
-    packed::{CellDep, CellInput, CellOutput, OutPoint},
+    packed::{CellDep, CellInput, CellOutput, OutPoint, Script},
     prelude::*,
 };
 
-use super::{TxBuilder, TxBuilderError};
-use crate::types::ScriptId;
+use super::{
+    balance_tx_capacity_with_open, fill_placeholder_witnesses, CapacityBalancer, TxBuilder,
+    TxBuilderError,
+};
 use crate::{
     traits::{CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider},
-    unlock::OmniLockConfig,
+    unlock::{omni_lock::ConfigError, OmniLockConfig, OmniUnlockMode, ScriptUnlocker},
 };
+use crate::{types::ScriptId, HumanCapacity};
 
 /// A builder to build an omnilock transfer transaction.
 pub struct OmniLockTransferBuilder {
     pub outputs: Vec<(CellOutput, Bytes)>,
     pub cfg: OmniLockConfig,
     pub rce_cells: Option<Vec<OutPoint>>,
+    pub open_out_capacity: HumanCapacity,
 }
 
 impl OmniLockTransferBuilder {
@@ -31,7 +35,56 @@ impl OmniLockTransferBuilder {
             outputs,
             cfg,
             rce_cells,
+            open_out_capacity: HumanCapacity(0),
         }
+    }
+
+    /// Create an OmniLockTransferBuilder with open out in the output list.
+    /// After the transaction built, the open out should be removed.
+    pub fn new_open(
+        open_out_capacity: HumanCapacity,
+        outputs: Vec<(CellOutput, Bytes)>,
+        cfg: OmniLockConfig,
+        rce_cells: Option<Vec<OutPoint>>,
+    ) -> OmniLockTransferBuilder {
+        OmniLockTransferBuilder {
+            outputs,
+            cfg,
+            rce_cells,
+            open_out_capacity,
+        }
+    }
+
+    /// after the open transaction input list updated(exclude base input/output), the witness should be updated
+    pub fn update_opentx_witness(
+        tx: TransactionView,
+        omnilock_config: &OmniLockConfig,
+        unlock_mode: OmniUnlockMode,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        sender: &Script,
+    ) -> Result<TransactionView, ConfigError> {
+        // after set opentx config, need to update the witness field
+        let placeholder_witness = omnilock_config.placeholder_witness(unlock_mode)?;
+        let tmp_idxes: Vec<_> = tx
+            .input_pts_iter()
+            .enumerate()
+            .filter(|(_, output)| tx_dep_provider.get_cell(output).unwrap().lock() == *sender)
+            .map(|(idx, _)| idx)
+            .collect();
+        let witnesses: Vec<_> = tx
+            .witnesses()
+            .into_iter()
+            .enumerate()
+            .map(|(i, w)| {
+                if tmp_idxes.contains(&i) {
+                    placeholder_witness.as_bytes().pack()
+                } else {
+                    w
+                }
+            })
+            .collect();
+        let tx = tx.as_advanced_builder().set_witnesses(witnesses).build();
+        Ok(tx)
     }
 }
 
@@ -100,5 +153,38 @@ impl TxBuilder for OmniLockTransferBuilder {
             .set_inputs(inputs.into_iter().collect())
             .set_outputs_data(outputs_data)
             .build())
+    }
+
+    /// Build balanced transaction that ready to sign:
+    ///  * Build base transaction
+    ///  * Fill placeholder witness for lock script
+    ///  * balance the capacity
+    fn build_balanced(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        balancer: &CapacityBalancer,
+        unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+    ) -> Result<TransactionView, TxBuilderError> {
+        let base_tx = self.build_base(
+            cell_collector,
+            cell_dep_resolver,
+            header_dep_resolver,
+            tx_dep_provider,
+        )?;
+        let (tx_filled_witnesses, _) =
+            fill_placeholder_witnesses(base_tx, tx_dep_provider, unlockers)?;
+        let tx = balance_tx_capacity_with_open(
+            &tx_filled_witnesses,
+            balancer,
+            cell_collector,
+            tx_dep_provider,
+            cell_dep_resolver,
+            header_dep_resolver,
+            self.open_out_capacity.into(),
+        )?;
+        Ok(tx)
     }
 }

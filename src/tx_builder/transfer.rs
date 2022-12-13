@@ -17,11 +17,25 @@ use crate::types::ScriptId;
 /// will resolve the type script's cell_dep if given.
 pub struct CapacityTransferBuilder {
     pub outputs: Vec<(CellOutput, Bytes)>,
+    pub transaction: Option<TransactionView>,
 }
 
 impl CapacityTransferBuilder {
     pub fn new(outputs: Vec<(CellOutput, Bytes)>) -> CapacityTransferBuilder {
-        CapacityTransferBuilder { outputs }
+        CapacityTransferBuilder {
+            outputs,
+            transaction: None,
+        }
+    }
+
+    pub fn new_with_transaction(
+        outputs: Vec<(CellOutput, Bytes)>,
+        transaction: TransactionView,
+    ) -> CapacityTransferBuilder {
+        CapacityTransferBuilder {
+            outputs,
+            transaction: Some(transaction),
+        }
     }
 }
 
@@ -50,10 +64,15 @@ impl TxBuilder for CapacityTransferBuilder {
                 }
             }
         }
-        Ok(TransactionBuilder::default()
-            .set_cell_deps(cell_deps.into_iter().collect())
-            .set_outputs(outputs)
-            .set_outputs_data(outputs_data)
+        let builder = if let Some(tx) = self.transaction.as_ref() {
+            tx.as_advanced_builder()
+        } else {
+            TransactionBuilder::default()
+        };
+        Ok(builder
+            .cell_deps(cell_deps)
+            .outputs(outputs)
+            .outputs_data(outputs_data)
             .build())
     }
 }
