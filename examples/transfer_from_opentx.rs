@@ -39,7 +39,7 @@ use std::{collections::HashMap, error::Error as StdErr, fs, path::PathBuf};
 // You should not use this hash to find your open transaction code_hash at any circumstances,
 // or you will lost your CKB for ever, or not make the example work.
 // You should replace this hash with your own transaction hash or provide one with command line parameter for this example.
-const OPENTX_TX_HASH: &str = "d7697f6b3684d1451c42cc538b3789f13b01430007f65afe74834b6a28714a18";
+const OPENTX_TX_HASH: &str = "cfcc8aa04d963cb40d79eab17e6f8def536defca203b71a8fce9cfb950dd04fc";
 const OPENTX_TX_IDX: &str = "0";
 
 #[derive(Args)]

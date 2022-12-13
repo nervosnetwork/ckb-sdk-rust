@@ -1,4 +1,8 @@
 
+# 2.4.0
+* **BREAKING CHANGE**: add parameter `tx_dep_provider: &dyn TransactionDependencyProvider` to `ScriptSigner::sing_tx`.
+* Support open transaction.
+
 # 2.3.0
 * Update ckb to v0.105.1
 * **BREAKING CHANGE**: `get_transaction` rpc now return `TransactionWithStatusResponse`
