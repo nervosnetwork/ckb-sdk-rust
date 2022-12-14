@@ -293,7 +293,7 @@ impl Context {
     /// Check if the transaction fee is greater than fee rate
     pub fn verify_tx_fee(&self, tx: &TransactionView, fee_rate: u64) -> Result<(), Error> {
         let min_fee = FeeRate::from_u64(fee_rate)
-            .fee(tx.data().as_reader().serialized_size_in_block())
+            .fee(tx.data().as_reader().serialized_size_in_block() as u64)
             .as_u64();
         let fee = tx_fee(tx.clone(), self, self).map_err(|err| Error::Other(err.to_string()))?;
         if fee < min_fee {

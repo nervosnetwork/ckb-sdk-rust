@@ -428,7 +428,7 @@ pub fn balance_tx_capacity(
             builder.build()
         };
         let tx_size = new_tx.data().as_reader().serialized_size_in_block();
-        let min_fee = balancer.fee_rate.fee(tx_size).as_u64();
+        let min_fee = balancer.fee_rate.fee(tx_size as u64).as_u64();
         let mut need_more_capacity = 1;
         let fee_result: Result<u64, TransactionFeeError> =
             tx_fee(new_tx.clone(), tx_dep_provider, header_dep_resolver);
@@ -458,7 +458,7 @@ pub fn balance_tx_capacity(
                     // NOTE: extra_min_fee +1 is for `FeeRate::fee` round
                     let extra_min_fee = balancer
                         .fee_rate
-                        .fee(base_change_output.as_slice().len() + output_header_extra)
+                        .fee(base_change_output.as_slice().len() as u64 + output_header_extra)
                         .as_u64()
                         + 1;
                     // The extra capacity (delta - extra_min_fee) is enough to hold the change cell.
