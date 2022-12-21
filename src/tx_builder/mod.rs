@@ -358,6 +358,9 @@ pub enum BalanceTxCapacityError {
 
     #[error("verify script error: {0}")]
     VerifyScript(String),
+
+    #[error("should not try to rebalance, orignal fee {0}, required fee: {1},")]
+    AlreadyBalance(u64, u64),
 }
 
 /// Transaction capacity balancer config
@@ -435,6 +438,17 @@ impl CapacityBalancer {
         }
     }
 
+    /// Set or clear the force_small_change_as_fee
+    /// # Arguments
+    /// * `max_fee` if it is 0, set the force_small_change_as_fee, or set the value.
+    pub fn set_max_fee(&mut self, max_fee: u64) {
+        if max_fee == 0 {
+            self.force_small_change_as_fee = None;
+        } else {
+            self.force_small_change_as_fee = Some(max_fee);
+        }
+    }
+
     pub fn balance_tx_capacity(
         &mut self,
         tx: &TransactionView,
@@ -461,7 +475,7 @@ impl CapacityBalancer {
         tx_dep_provider: &dyn TransactionDependencyProvider,
         cell_dep_resolver: &dyn CellDepResolver,
         header_dep_resolver: &dyn HeaderDepResolver,
-        extra_fee: u64,
+        mini_fee: u64,
         change_index: Option<usize>,
     ) -> Result<(TransactionView, Option<usize>), BalanceTxCapacityError> {
         if let Some(idx) = change_index {
@@ -480,6 +494,14 @@ impl CapacityBalancer {
                 .fee(output.as_slice().len() as u64 + output_header_extra)
                 .as_u64()
                 + 1;
+            let original_fee = tx_fee(tx.clone(), tx_dep_provider, header_dep_resolver)?;
+            if original_fee >= mini_fee {
+                return Err(BalanceTxCapacityError::AlreadyBalance(
+                    original_fee,
+                    mini_fee,
+                ));
+            }
+            let extra_fee = mini_fee - original_fee;
             // The extra capacity (delta - extra_min_fee) is enough to hold the change cell.
             let original_capacity: u64 = output.capacity().unpack();
             if original_capacity >= base_change_occupied_capacity + extra_min_fee + extra_fee {
@@ -501,10 +523,11 @@ impl CapacityBalancer {
             tx_dep_provider,
             cell_dep_resolver,
             header_dep_resolver,
-            extra_fee,
+            mini_fee,
             change_index,
         )
     }
+
     pub fn check_cycle_fee(
         &self,
         tx: TransactionView,
@@ -523,18 +546,18 @@ impl CapacityBalancer {
         }
         let fee = tx_fee(tx.clone(), tx_dep_provider, header_dep_resolver).unwrap();
         let cycle_fee = self.fee_rate.fee(vsize as u64).as_u64();
+
         if fee >= cycle_fee {
             return Ok((tx, None, true));
         }
 
-        let extra_fee = self.fee_rate.fee((vsize - tx_size) as u64).as_u64() + 1;
         let (tx, idx) = self.rebalance_tx_capacity(
             &tx,
             cell_collector,
             tx_dep_provider,
             cell_dep_resolver,
             header_dep_resolver,
-            extra_fee,
+            cycle_fee,
             change_index,
         )?;
         Ok((tx, idx, false))
@@ -543,7 +566,7 @@ impl CapacityBalancer {
 
 const DEFAULT_BYTES_PER_CYCLE: f64 = 0.000_170_571_4;
 pub const fn bytes_per_cycle() -> f64 {
-    return DEFAULT_BYTES_PER_CYCLE;
+    DEFAULT_BYTES_PER_CYCLE
 }
 
 pub struct CycleResolver<'a> {
@@ -606,7 +629,7 @@ fn rebalance_tx_capacity(
     tx_dep_provider: &dyn TransactionDependencyProvider,
     cell_dep_resolver: &dyn CellDepResolver,
     header_dep_resolver: &dyn HeaderDepResolver,
-    extra_fee: u64,
+    mini_fee: u64,
     change_index: Option<usize>,
 ) -> Result<(TransactionView, Option<usize>), BalanceTxCapacityError> {
     let capacity_provider = &balancer.capacity_provider;
@@ -710,7 +733,7 @@ fn rebalance_tx_capacity(
             builder.build()
         };
         let tx_size = new_tx.data().as_reader().serialized_size_in_block();
-        let min_fee = balancer.fee_rate.fee(tx_size as u64).as_u64() + extra_fee;
+        let min_fee = mini_fee.max(balancer.fee_rate.fee(tx_size as u64).as_u64());
         let mut need_more_capacity = 1;
         let fee_result: Result<u64, TransactionFeeError> =
             tx_fee(new_tx.clone(), tx_dep_provider, header_dep_resolver);

@@ -1,8 +1,9 @@
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 
-use anyhow::anyhow;
 use ckb_jsonrpc_types::Serialize;
+use ckb_types::core::TransactionBuilder;
 use rand::{thread_rng, Rng};
 use thiserror::Error;
 
@@ -264,9 +265,50 @@ impl Context {
         }
         None
     }
+    pub fn get_live_cell_with_tx_hash(&self, tx_hash: &Byte32) -> Option<Vec<(CellOutput, Bytes)>> {
+        if let Some(result) = self.get_input_with_tx_hash(tx_hash) {
+            return Some(vec![result]);
+        }
+        let mut ret = vec![];
+        for mock_cell_dep in &self.cell_deps {
+            let outpoint = mock_cell_dep.cell_dep.out_point();
+            if tx_hash == &outpoint.tx_hash() {
+                let idx = Unpack::<u32>::unpack(&outpoint.index()) as usize;
+                let value = (mock_cell_dep.output.clone(), mock_cell_dep.data.clone());
+                match idx.cmp(&ret.len()) {
+                    Ordering::Equal => {
+                        ret.push(value);
+                    }
+                    Ordering::Less => {
+                        ret[idx] = value;
+                    }
+                    Ordering::Greater => {
+                        while ret.len() < idx {
+                            ret.push((CellOutput::default(), Bytes::default()));
+                        }
+                        ret.push(value);
+                    }
+                }
+            }
+        }
+        if ret.is_empty() {
+            None
+        } else {
+            Some(ret)
+        }
+    }
     pub fn get_input(&self, out_point: &OutPoint) -> Option<(CellOutput, Bytes)> {
         for mock_input in &self.inputs {
             if out_point == &mock_input.input.previous_output() {
+                return Some((mock_input.output.clone(), mock_input.data.clone()));
+            }
+        }
+        None
+    }
+
+    pub fn get_input_with_tx_hash(&self, tx_hash: &Byte32) -> Option<(CellOutput, Bytes)> {
+        for mock_input in &self.inputs {
+            if tx_hash == &mock_input.input.previous_output().tx_hash() {
                 return Some((mock_input.output.clone(), mock_input.data.clone()));
             }
         }
@@ -334,11 +376,22 @@ impl TransactionDependencyProvider for Context {
     // For verify certain cell belong to certain transaction
     fn get_transaction(
         &self,
-        _tx_hash: &Byte32,
+        tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError> {
-        Err(TransactionDependencyError::Other(anyhow!(
-            "context get_transaction"
-        )))
+        self.get_live_cell_with_tx_hash(tx_hash)
+            .map(|data| {
+                let (outputs, outputs_data): (Vec<_>, Vec<_>) = data
+                    .into_iter()
+                    .map(|(output, data)| (output, data.pack()))
+                    .unzip();
+                TransactionBuilder::default()
+                    .outputs(outputs)
+                    .outputs_data(outputs_data)
+                    .build()
+            })
+            .ok_or_else(|| {
+                TransactionDependencyError::NotFound("transaction not found".to_string())
+            })
     }
     // For get the output information of inputs or cell_deps, those cell should be live cell
     fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
