@@ -21,7 +21,7 @@ index 777c931..4b7fe1e 100644
         docker run --rm -v `pwd`:/code ${BUILDER_DOCKER} bash -c "cd /code && make"
 
 +build/cycle: c/cycle.c
-+       $(CC) $(CFLAGS) $(LDFLAGS) -D CKB_C_STDLIB_PRINTF -o $@ $<
++       $(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 +       $(OBJCOPY) --only-keep-debug $@ $@.debug
 +       $(OBJCOPY) --strip-debug --strip-all $@
 +
@@ -29,7 +29,8 @@ index 777c931..4b7fe1e 100644
         $(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
         $(OBJCOPY) --only-keep-debug $@ $@.debug
 ```
-if you don't wan't to use log information, remove `-D CKB_C_STDLIB_PRINTF` from `build/cycle` section.
+if you want to use log information, add `-D CKB_C_STDLIB_PRINTF` to CC command in `build/cycle` section, add add `ckb_debug` function call in c code.
+
 3. save `cycle.c` to `c/cycle.c` into project `ckb-production-scripts`
 4. compile the project `ckb-production-scripts`
 ```sh
