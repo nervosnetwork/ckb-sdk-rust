@@ -134,6 +134,13 @@ pub trait TxBuilder {
         Ok(unlock_tx(balanced_tx, tx_dep_provider, unlockers)?)
     }
 
+    /// Build unlocked transaction that ready to send or for further unlock, it's similar to `build_unlocked` except it take cycle into consideration:
+    /// If all input unlocked, and the transaction takes more cycles, and it's virtual size(calculated from cycles) is bigger than it's actual size,
+    /// and the transaction fee can not mee the required transaction fee, so it will try to search more capacity to balance the capacity.
+    ///
+    /// Return value:
+    ///   * The built transaction
+    ///   * The script groups that not unlocked by given `unlockers`
     fn build_balance_unlocked(
         &self,
         cell_collector: &mut dyn CellCollector,
