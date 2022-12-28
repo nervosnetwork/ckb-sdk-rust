@@ -60,6 +60,9 @@ pub enum TxBuilderError {
     #[error("unlock error: `{0}`")]
     Unlock(#[from] UnlockError),
 
+    #[error("build_balance_unlocked exceed max loop times, current is: `{0}`")]
+    ExceedCycleMaxLoopTimes(u32),
+
     #[error("other error: `{0}`")]
     Other(anyhow::Error),
 }
@@ -136,7 +139,7 @@ pub trait TxBuilder {
 
     /// Build unlocked transaction that ready to send or for further unlock, it's similar to `build_unlocked` except it take cycle into consideration:
     /// If all input unlocked, and the transaction takes more cycles, and it's virtual size(calculated from cycles) is bigger than it's actual size,
-    /// and the transaction fee can not mee the required transaction fee, so it will try to search more capacity to balance the capacity.
+    /// and the transaction fee can not meet the required transaction fee, it will try to provide more fee to balance the capacity.
     ///
     /// Return value:
     ///   * The built transaction
@@ -171,7 +174,11 @@ pub trait TxBuilder {
         let (mut tx, unlocked_group) = unlock_tx(balanced_tx, tx_dep_provider, unlockers)?;
         if unlocked_group.is_empty() {
             let mut ready = false;
-            while !ready {
+            const MAX_LOOP_TIMES: u32 = 16;
+            let mut n = 0;
+            while !ready && n < MAX_LOOP_TIMES {
+                n += 1;
+
                 let (new_tx, new_change_idx, ok) = balancer.check_cycle_fee(
                     tx,
                     cell_collector,
@@ -187,6 +194,9 @@ pub trait TxBuilder {
                     let (new_tx, _) = unlock_tx(tx, tx_dep_provider, unlockers)?;
                     tx = new_tx
                 }
+            }
+            if !ready && n >= MAX_LOOP_TIMES {
+                return Err(TxBuilderError::ExceedCycleMaxLoopTimes(n));
             }
         }
         Ok((tx, unlocked_group))
