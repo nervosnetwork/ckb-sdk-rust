@@ -1,49 +1,37 @@
-#include "blake2b.h"
-#include "blockchain.h"
 #include "ckb_syscalls.h"
-#include "secp256k1_helper.h"
-#include "secp256k1_lock.h"
+// #include "secp256k1_helper.h"
+#define CKB_SUCCESS 0
+///************************************************************************************************
+// #include "secp256k1_lock.h"
+// #include "blake2b.h"
+#define ERROR_ARGUMENTS_LEN -1
+#define ERROR_ENCODING -2
+#define ERROR_SYSCALL -3
+#define ERROR_SCRIPT_TOO_LONG -21
+///************************************************************************************************
+#define MAX_WITNESS_SIZE 32768
 #define SCRIPT_SIZE 32768
+
+#define ERROR_WITNESS_SIZE -22
+
+#define         MolReader_WitnessArgs_get_lock(s)               mol_table_slice_by_index(s, 0)
 
 int read_args(uint64_t *loop)
 {
-    int ret;
-    uint64_t len = 0;
-//    char buf[4096];
+  int ret;
+  /* Load witness of first input */
+  uint64_t witness_len = 8;
+  ret = ckb_load_witness(loop, &witness_len, 0, 0,
+                         CKB_SOURCE_GROUP_INPUT);
+  if (ret != CKB_SUCCESS) {
+    return ERROR_SYSCALL;
+  }
 
-    /* Load args */
-    unsigned char script[SCRIPT_SIZE];
-    len = SCRIPT_SIZE;
-    ret = ckb_load_script(script, &len, 0);
-    if (ret != CKB_SUCCESS)
-    {
-        return ERROR_SYSCALL;
-    }
-    if (len > SCRIPT_SIZE)
-    {
-        return ERROR_SCRIPT_TOO_LONG;
-    }
-    mol_seg_t script_seg;
-    script_seg.ptr = (uint8_t *)script;
-    script_seg.size = len;
+  if (witness_len > 8) {
+    return MAX_WITNESS_SIZE;
+  }
 
-    if (MolReader_Script_verify(&script_seg, false) != MOL_OK)
-    {
-        return ERROR_ENCODING;
-    }
-
-    mol_seg_t args_seg = MolReader_Script_get_args(&script_seg);
-    mol_seg_t args_bytes_seg = MolReader_Bytes_raw_bytes(&args_seg);
-    if (args_bytes_seg.size != 8)
-    {
-        return ERROR_ARGUMENTS_LEN;
-    }
-
-    *loop = *(uint64_t*)args_bytes_seg.ptr;
-    // memcpy(loop, args_bytes_seg.ptr, 8);
-    // sprintf_(buf, "loop times is %lu", *loop);
-    // ckb_debug(buf);
-    return CKB_SUCCESS;
+  return CKB_SUCCESS;
 }
 
 int main()

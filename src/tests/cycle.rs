@@ -4,7 +4,7 @@ use bytes::{Bytes, BytesMut};
 use ckb_hash::blake2b_256;
 use ckb_types::{
     core::{ScriptHashType, TransactionView},
-    packed::{CellOutput, Script, WitnessArgs},
+    packed::{self, CellOutput, Script, WitnessArgs},
     prelude::{Builder, Entity, Pack},
     H256,
 };
@@ -23,29 +23,27 @@ use crate::{
 
 const CYCLE_BIN: &[u8] = include_bytes!("../test-data/cycle");
 
-pub struct CycleUnlocker;
+pub struct CycleUnlocker {
+    loops: u64,
+}
 impl ScriptUnlocker for CycleUnlocker {
     fn match_args(&self, _args: &[u8]) -> bool {
         true
     }
 
-    /// Check if the script group is already unlocked
-    fn is_unlocked(
-        &self,
-        _tx: &TransactionView,
-        _script_group: &ScriptGroup,
-        _tx_dep_provider: &dyn TransactionDependencyProvider,
-    ) -> Result<bool, UnlockError> {
-        Ok(true)
-    }
-
     fn unlock(
         &self,
         tx: &TransactionView,
-        _script_group: &ScriptGroup,
+        script_group: &ScriptGroup,
         _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        Ok(tx.clone())
+        let witness_idx = script_group.input_indices[0];
+        let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+        while witnesses.len() <= witness_idx {
+            witnesses.push(Default::default());
+        }
+        witnesses[witness_idx] = self.loops.to_le_bytes().pack();
+        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
     }
 
     fn fill_placeholder_witness(
@@ -77,7 +75,7 @@ fn build_script(loops: u64) -> Script {
 
 fn build_cycle_unlockers(loops: u64) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
     let script = build_script(loops);
-    let cycle_unlockder = CycleUnlocker {};
+    let cycle_unlockder = CycleUnlocker { loops };
     let cycle_script_id = ScriptId::from(&script);
     let mut unlockers = HashMap::default();
     unlockers.insert(
@@ -137,7 +135,7 @@ fn test_change_enough(loops: u64) {
         .map(|w| w.raw_data())
         .collect::<Vec<_>>();
     assert_eq!(witnesses.len(), 1);
-    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+    assert_eq!(witnesses[0].len(), 8);
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 
@@ -184,7 +182,7 @@ fn vsize_big_and_fee_enough() {
         .map(|w| w.raw_data())
         .collect::<Vec<_>>();
     assert_eq!(witnesses.len(), 1);
-    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+    assert_eq!(witnesses[0].len(), 8);
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 
@@ -314,7 +312,7 @@ fn vsize_big_and_can_find_more_capacity() {
         .map(|w| w.raw_data())
         .collect::<Vec<_>>();
     assert_eq!(witnesses.len(), 2);
-    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+    assert_eq!(witnesses[0].len(), 8);
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 
