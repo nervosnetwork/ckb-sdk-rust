@@ -32,7 +32,7 @@ use ckb_crypto::secp::{Pubkey, SECP256K1};
 use ckb_hash::blake2b_256;
 use ckb_types::{
     bytes::Bytes,
-    core::ScriptHashType,
+    core::{FeeRate, ScriptHashType},
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
     H160, H256,
@@ -792,14 +792,15 @@ fn test_omnilock_transfer_from_ownerlock() {
         .lock(Some(Bytes::from(vec![0u8; 65])).pack())
         .build();
 
-    let balancer = CapacityBalancer::new_with_provider_max_fee(
-        FEE_RATE,
-        CapacityProvider::new_simple(vec![
+    let balancer = CapacityBalancer {
+        fee_rate: FeeRate::from_u64(FEE_RATE),
+        capacity_provider: CapacityProvider::new_simple(vec![
             (sender0.clone(), placeholder_witness0.clone()),
             (sender1.clone(), placeholder_witness1.clone()),
         ]),
-        ONE_CKB,
-    );
+        change_lock_script: None,
+        force_small_change_as_fee: Some(ONE_CKB),
+    };
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
@@ -891,14 +892,15 @@ fn test_omnilock_transfer_from_ownerlock_wl_admin() {
         .lock(Some(Bytes::from(vec![0u8; 65])).pack())
         .build();
 
-    let balancer = CapacityBalancer::new_with_provider_max_fee(
-        FEE_RATE,
-        CapacityProvider::new_simple(vec![
+    let balancer = CapacityBalancer {
+        fee_rate: FeeRate::from_u64(FEE_RATE),
+        capacity_provider: CapacityProvider::new_simple(vec![
             (sender0.clone(), placeholder_witness0.clone()),
             (owner_sender.clone(), placeholder_witness1.clone()),
         ]),
-        ONE_CKB,
-    );
+        change_lock_script: None,
+        force_small_change_as_fee: Some(ONE_CKB),
+    };
 
     let mut cell_collector = ctx.to_live_cells_context();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();

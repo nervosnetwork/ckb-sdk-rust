@@ -109,8 +109,7 @@ fn test_change_enough(loops: u64) {
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
     let placeholder_witness = WitnessArgs::default();
-    let balancer =
-        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+    let balancer = CapacityBalancer::new_simple(sender.clone(), placeholder_witness, FEE_RATE);
 
     let mut cell_collector = ctx.to_live_cells_context();
     let unlockers = build_cycle_unlockers(loops);
@@ -156,9 +155,8 @@ fn vsize_big_and_fee_enough() {
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
     let placeholder_witness = WitnessArgs::default();
-    let mut balancer =
-        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
-    balancer.set_max_fee(ONE_CKB);
+    let mut balancer = CapacityBalancer::new_simple(sender.clone(), placeholder_witness, FEE_RATE);
+    balancer.set_max_fee(Some(ONE_CKB));
 
     let mut cell_collector = ctx.to_live_cells_context();
     let unlockers = build_cycle_unlockers(loops);
@@ -204,7 +202,7 @@ fn vsize_big_and_fee_not_enough() {
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
     let placeholder_witness = WitnessArgs::default();
     let mut balancer = CapacityBalancer::new_simple(sender, placeholder_witness, FEE_RATE);
-    balancer.set_max_fee(100_000);
+    balancer.set_max_fee(Some(100_000));
 
     let mut cell_collector = ctx.to_live_cells_context();
     let unlockers = build_cycle_unlockers(loops);
@@ -245,9 +243,8 @@ fn vsize_big_and_can_find_more_capacity() {
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
     let placeholder_witness = WitnessArgs::default();
-    let mut balancer =
-        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
-    balancer.set_max_fee(1000);
+    let mut balancer = CapacityBalancer::new_simple(sender.clone(), placeholder_witness, FEE_RATE);
+    balancer.set_max_fee(Some(1000));
 
     let mut cell_collector = ctx.to_live_cells_context();
     let unlockers = build_cycle_unlockers(loops);
@@ -337,7 +334,7 @@ fn vsize_big_and_cannot_find_more_capacity() {
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
     let placeholder_witness = WitnessArgs::default();
     let mut balancer = CapacityBalancer::new_simple(sender, placeholder_witness, FEE_RATE);
-    balancer.set_max_fee(1000);
+    balancer.set_max_fee(Some(1000));
 
     let mut cell_collector = ctx.to_live_cells_context();
     let unlockers = build_cycle_unlockers(loops);

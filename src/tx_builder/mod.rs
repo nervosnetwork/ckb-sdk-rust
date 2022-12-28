@@ -370,6 +370,9 @@ pub enum BalanceTxCapacityError {
     #[error("Fail to parse since value from args, offset: `{0}`, args length: `{1}`")]
     InvalidSinceValue(usize, usize),
 
+    #[error("change index not found at given index: `{0}`")]
+    ChangeIndexNotFound(usize),
+
     #[error("Fail to estimate_cycles: `{0}`")]
     FailEstimateCycles(#[from] RpcError),
 
@@ -442,28 +445,10 @@ impl CapacityBalancer {
             force_small_change_as_fee: None,
         }
     }
-    pub fn new_with_provider_max_fee(
-        fee_rate: u64,
-        capacity_provider: CapacityProvider,
-        max_fee: u64,
-    ) -> Self {
-        CapacityBalancer {
-            fee_rate: FeeRate::from_u64(fee_rate),
-            capacity_provider,
-            change_lock_script: None,
-            force_small_change_as_fee: Some(max_fee),
-        }
-    }
 
     /// Set or clear the force_small_change_as_fee
-    /// # Arguments
-    /// * `max_fee` if it is 0, set the force_small_change_as_fee, or set the value.
-    pub fn set_max_fee(&mut self, max_fee: u64) {
-        if max_fee == 0 {
-            self.force_small_change_as_fee = None;
-        } else {
-            self.force_small_change_as_fee = Some(max_fee);
-        }
+    pub fn set_max_fee(&mut self, max_fee: Option<u64>) {
+        self.force_small_change_as_fee = max_fee;
     }
 
     pub fn balance_tx_capacity(
@@ -499,7 +484,7 @@ impl CapacityBalancer {
             let output = tx
                 .outputs()
                 .get(idx)
-                .unwrap_or_else(|| panic!("change index not found at given index: {}", idx));
+                .ok_or(BalanceTxCapacityError::ChangeIndexNotFound(idx))?;
             let base_change_occupied_capacity = output
                 .occupied_capacity(Capacity::zero())
                 .expect("init change occupied capacity")
@@ -662,7 +647,7 @@ fn rebalance_tx_capacity(
         let output = tx
             .outputs()
             .get(idx)
-            .unwrap_or_else(|| panic!("change index not found at given index: {}", idx));
+            .ok_or(BalanceTxCapacityError::ChangeIndexNotFound(idx))?;
 
         // remove change output
         let outputs: Vec<_> = outputs
