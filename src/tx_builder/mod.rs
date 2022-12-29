@@ -477,7 +477,7 @@ impl CapacityBalancer {
         tx_dep_provider: &dyn TransactionDependencyProvider,
         cell_dep_resolver: &dyn CellDepResolver,
         header_dep_resolver: &dyn HeaderDepResolver,
-        mini_fee: u64,
+        accepted_min_fee: u64,
         change_index: Option<usize>,
     ) -> Result<(TransactionView, Option<usize>), BalanceTxCapacityError> {
         if let Some(idx) = change_index {
@@ -497,13 +497,13 @@ impl CapacityBalancer {
                 .as_u64()
                 + 1;
             let original_fee = tx_fee(tx.clone(), tx_dep_provider, header_dep_resolver)?;
-            if original_fee >= mini_fee {
+            if original_fee >= accepted_min_fee {
                 return Err(BalanceTxCapacityError::AlreadyBalance(
                     original_fee,
-                    mini_fee,
+                    accepted_min_fee,
                 ));
             }
-            let extra_fee = mini_fee - original_fee;
+            let extra_fee = accepted_min_fee - original_fee;
             // The extra capacity (delta - extra_min_fee) is enough to hold the change cell.
             let original_capacity: u64 = output.capacity().unpack();
             if original_capacity >= base_change_occupied_capacity + extra_min_fee + extra_fee {
@@ -525,7 +525,7 @@ impl CapacityBalancer {
             tx_dep_provider,
             cell_dep_resolver,
             header_dep_resolver,
-            mini_fee,
+            accepted_min_fee,
             change_index,
         )
     }
@@ -631,7 +631,7 @@ fn rebalance_tx_capacity(
     tx_dep_provider: &dyn TransactionDependencyProvider,
     cell_dep_resolver: &dyn CellDepResolver,
     header_dep_resolver: &dyn HeaderDepResolver,
-    mini_fee: u64,
+    accepted_min_fee: u64,
     change_index: Option<usize>,
 ) -> Result<(TransactionView, Option<usize>), BalanceTxCapacityError> {
     let capacity_provider = &balancer.capacity_provider;
@@ -735,7 +735,7 @@ fn rebalance_tx_capacity(
             builder.build()
         };
         let tx_size = new_tx.data().as_reader().serialized_size_in_block();
-        let min_fee = mini_fee.max(balancer.fee_rate.fee(tx_size as u64).as_u64());
+        let min_fee = accepted_min_fee.max(balancer.fee_rate.fee(tx_size as u64).as_u64());
         let mut need_more_capacity = 1;
         let fee_result: Result<u64, TransactionFeeError> =
             tx_fee(new_tx.clone(), tx_dep_provider, header_dep_resolver);
