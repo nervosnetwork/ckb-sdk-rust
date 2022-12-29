@@ -137,9 +137,10 @@ pub trait TxBuilder {
         Ok(unlock_tx(balanced_tx, tx_dep_provider, unlockers)?)
     }
 
-    /// Build unlocked transaction that ready to send or for further unlock, it's similar to `build_unlocked` except it take cycle into consideration:
-    /// If all input unlocked, and the transaction takes more cycles, and it's virtual size(calculated from cycles) is bigger than it's actual size,
-    /// and the transaction fee can not meet the required transaction fee, it will try to provide more fee to balance the capacity.
+    /// Build unlocked transaction that ready to send or for further unlock, it's similar to `build_unlocked`,
+    /// except it will try to check the consumed cycles limitation:
+    /// If all input unlocked, and transaction fee can not meet the required transaction fee rate because of a big estimated cycles,
+    /// it will tweak the change cell capacity or collect more cells to balance the transaction.
     ///
     /// Return value:
     ///   * The built transaction
@@ -542,8 +543,8 @@ impl CapacityBalancer {
         let cycle_resolver = CycleResolver::new(tx_dep_provider);
         let cycle = cycle_resolver.estimate_cycles(&tx)?;
         let vsize = (cycle as f64 * bytes_per_cycle()) as usize;
-        let tx_size = tx.data().as_reader().serialized_size_in_block();
-        if tx_size >= vsize {
+        let serialized_size = tx.data().as_reader().serialized_size_in_block();
+        if serialized_size >= vsize {
             return Ok((tx, None, true));
         }
         let fee = tx_fee(tx.clone(), tx_dep_provider, header_dep_resolver).unwrap();
