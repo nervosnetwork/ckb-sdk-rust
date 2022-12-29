@@ -542,13 +542,13 @@ impl CapacityBalancer {
     ) -> Result<(TransactionView, Option<usize>, bool), BalanceTxCapacityError> {
         let cycle_resolver = CycleResolver::new(tx_dep_provider);
         let cycle = cycle_resolver.estimate_cycles(&tx)?;
-        let vsize = (cycle as f64 * bytes_per_cycle()) as usize;
+        let cycle_size = (cycle as f64 * bytes_per_cycle()) as usize;
         let serialized_size = tx.data().as_reader().serialized_size_in_block();
-        if serialized_size >= vsize {
+        if serialized_size >= cycle_size {
             return Ok((tx, None, true));
         }
         let fee = tx_fee(tx.clone(), tx_dep_provider, header_dep_resolver).unwrap();
-        let cycle_fee = self.fee_rate.fee(vsize as u64).as_u64();
+        let cycle_fee = self.fee_rate.fee(cycle_size as u64).as_u64();
 
         if fee >= cycle_fee {
             return Ok((tx, None, true));
