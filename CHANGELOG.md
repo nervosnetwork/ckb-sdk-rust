@@ -1,3 +1,7 @@
+# 2.4.0
+* Update ckb to 0.106.0
+* Add `TxBuilder::build_balance_unlocked` to support transaction's cycles limitation.
+* chore: fix git repo url
 
 # 2.3.0
 * Update ckb to v0.105.1
