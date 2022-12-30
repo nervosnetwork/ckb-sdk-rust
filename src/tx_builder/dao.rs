@@ -382,7 +382,7 @@ impl TxBuilder for DaoWithdrawBuilder {
                         .set_witnesses(witnesses.clone())
                         .build();
                     let tx_size = tmp_tx.data().as_reader().serialized_size_in_block();
-                    let tx_fee = fee_rate.fee(tx_size).as_u64();
+                    let tx_fee = fee_rate.fee(tx_size as u64).as_u64();
                     input_total - tx_fee
                 } else {
                     input_total

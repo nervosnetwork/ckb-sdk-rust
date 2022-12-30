@@ -8,23 +8,30 @@ pub mod udt;
 use std::collections::{HashMap, HashSet};
 
 use anyhow::anyhow;
+use ckb_script::TransactionScriptsVerifier;
 use thiserror::Error;
 
 use ckb_types::{
-    core::{error::OutPointError, Capacity, CapacityError, FeeRate, TransactionView},
+    core::{
+        cell::resolve_transaction, error::OutPointError, Capacity, CapacityError, FeeRate,
+        TransactionView,
+    },
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
 };
 
 use crate::constants::DAO_TYPE_HASH;
-use crate::traits::{
-    CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
-    TransactionDependencyError, TransactionDependencyProvider, ValueRangeOption,
-};
 use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::calculate_dao_maximum_withdraw4;
+use crate::{
+    traits::{
+        CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+        TransactionDependencyError, TransactionDependencyProvider, ValueRangeOption,
+    },
+    RpcError,
+};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
@@ -52,6 +59,9 @@ pub enum TxBuilderError {
 
     #[error("unlock error: `{0}`")]
     Unlock(#[from] UnlockError),
+
+    #[error("build_balance_unlocked exceed max loop times, current is: `{0}`")]
+    ExceedCycleMaxLoopTimes(u32),
 
     #[error("other error: `{0}`")]
     Other(anyhow::Error),
@@ -125,6 +135,72 @@ pub trait TxBuilder {
             unlockers,
         )?;
         Ok(unlock_tx(balanced_tx, tx_dep_provider, unlockers)?)
+    }
+
+    /// Build unlocked transaction that ready to send or for further unlock, it's similar to `build_unlocked`,
+    /// except it will try to check the consumed cycles limitation:
+    /// If all input unlocked, and transaction fee can not meet the required transaction fee rate because of a big estimated cycles,
+    /// it will tweak the change cell capacity or collect more cells to balance the transaction.
+    ///
+    /// Return value:
+    ///   * The built transaction
+    ///   * The script groups that not unlocked by given `unlockers`
+    fn build_balance_unlocked(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        balancer: &CapacityBalancer,
+        unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+    ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
+        let base_tx = self.build_base(
+            cell_collector,
+            cell_dep_resolver,
+            header_dep_resolver,
+            tx_dep_provider,
+        )?;
+        let (tx_filled_witnesses, _) =
+            fill_placeholder_witnesses(base_tx, tx_dep_provider, unlockers)?;
+        let (balanced_tx, mut change_idx) = rebalance_tx_capacity(
+            &tx_filled_witnesses,
+            balancer,
+            cell_collector,
+            tx_dep_provider,
+            cell_dep_resolver,
+            header_dep_resolver,
+            0,
+            None,
+        )?;
+        let (mut tx, unlocked_group) = unlock_tx(balanced_tx, tx_dep_provider, unlockers)?;
+        if unlocked_group.is_empty() {
+            let mut ready = false;
+            const MAX_LOOP_TIMES: u32 = 16;
+            let mut n = 0;
+            while !ready && n < MAX_LOOP_TIMES {
+                n += 1;
+
+                let (new_tx, new_change_idx, ok) = balancer.check_cycle_fee(
+                    tx,
+                    cell_collector,
+                    tx_dep_provider,
+                    cell_dep_resolver,
+                    header_dep_resolver,
+                    change_idx,
+                )?;
+                tx = new_tx;
+                ready = ok;
+                change_idx = new_change_idx;
+                if !ready {
+                    let (new_tx, _) = unlock_tx(tx, tx_dep_provider, unlockers)?;
+                    tx = new_tx
+                }
+            }
+            if !ready && n >= MAX_LOOP_TIMES {
+                return Err(TxBuilderError::ExceedCycleMaxLoopTimes(n));
+            }
+        }
+        Ok((tx, unlocked_group))
     }
 }
 
@@ -294,6 +370,18 @@ pub enum BalanceTxCapacityError {
 
     #[error("Fail to parse since value from args, offset: `{0}`, args length: `{1}`")]
     InvalidSinceValue(usize, usize),
+
+    #[error("change index not found at given index: `{0}`")]
+    ChangeIndexNotFound(usize),
+
+    #[error("Fail to estimate_cycles: `{0}`")]
+    FailEstimateCycles(#[from] RpcError),
+
+    #[error("verify script error: {0}")]
+    VerifyScript(String),
+
+    #[error("should not try to rebalance, orignal fee {0}, required fee: {1},")]
+    AlreadyBalance(u64, u64),
 }
 
 /// Transaction capacity balancer config
@@ -349,6 +437,169 @@ impl CapacityBalancer {
             force_small_change_as_fee: None,
         }
     }
+
+    pub fn new_with_provider(fee_rate: u64, capacity_provider: CapacityProvider) -> Self {
+        CapacityBalancer {
+            fee_rate: FeeRate::from_u64(fee_rate),
+            capacity_provider,
+            change_lock_script: None,
+            force_small_change_as_fee: None,
+        }
+    }
+
+    /// Set or clear the force_small_change_as_fee
+    pub fn set_max_fee(&mut self, max_fee: Option<u64>) {
+        self.force_small_change_as_fee = max_fee;
+    }
+
+    pub fn balance_tx_capacity(
+        &mut self,
+        tx: &TransactionView,
+        cell_collector: &mut dyn CellCollector,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+    ) -> Result<TransactionView, BalanceTxCapacityError> {
+        balance_tx_capacity(
+            tx,
+            self,
+            cell_collector,
+            tx_dep_provider,
+            cell_dep_resolver,
+            header_dep_resolver,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn rebalance_tx_capacity(
+        &self,
+        tx: &TransactionView,
+        cell_collector: &mut dyn CellCollector,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        accepted_min_fee: u64,
+        change_index: Option<usize>,
+    ) -> Result<(TransactionView, Option<usize>), BalanceTxCapacityError> {
+        if let Some(idx) = change_index {
+            let output = tx
+                .outputs()
+                .get(idx)
+                .ok_or(BalanceTxCapacityError::ChangeIndexNotFound(idx))?;
+            let base_change_occupied_capacity = output
+                .occupied_capacity(Capacity::zero())
+                .expect("init change occupied capacity")
+                .as_u64();
+            let output_header_extra = 4 + 4 + 4;
+            // NOTE: extra_min_fee +1 is for `FeeRate::fee` round
+            let extra_min_fee = self
+                .fee_rate
+                .fee(output.as_slice().len() as u64 + output_header_extra)
+                .as_u64()
+                + 1;
+            let original_fee = tx_fee(tx.clone(), tx_dep_provider, header_dep_resolver)?;
+            if original_fee >= accepted_min_fee {
+                return Err(BalanceTxCapacityError::AlreadyBalance(
+                    original_fee,
+                    accepted_min_fee,
+                ));
+            }
+            let extra_fee = accepted_min_fee - original_fee;
+            // The extra capacity (delta - extra_min_fee) is enough to hold the change cell.
+            let original_capacity: u64 = output.capacity().unpack();
+            if original_capacity >= base_change_occupied_capacity + extra_min_fee + extra_fee {
+                let output = output
+                    .as_builder()
+                    .capacity((original_capacity - extra_fee).pack())
+                    .build();
+                let mut outputs: Vec<_> = tx.outputs().into_iter().collect();
+                outputs[idx] = output;
+                let tx = tx.as_advanced_builder().set_outputs(outputs).build();
+                return Ok((tx, change_index));
+            };
+        }
+
+        rebalance_tx_capacity(
+            tx,
+            self,
+            cell_collector,
+            tx_dep_provider,
+            cell_dep_resolver,
+            header_dep_resolver,
+            accepted_min_fee,
+            change_index,
+        )
+    }
+
+    pub fn check_cycle_fee(
+        &self,
+        tx: TransactionView,
+        cell_collector: &mut dyn CellCollector,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        change_index: Option<usize>,
+    ) -> Result<(TransactionView, Option<usize>, bool), BalanceTxCapacityError> {
+        let cycle_resolver = CycleResolver::new(tx_dep_provider);
+        let cycle = cycle_resolver.estimate_cycles(&tx)?;
+        let cycle_size = (cycle as f64 * bytes_per_cycle()) as usize;
+        let serialized_size = tx.data().as_reader().serialized_size_in_block();
+        if serialized_size >= cycle_size {
+            return Ok((tx, None, true));
+        }
+        let fee = tx_fee(tx.clone(), tx_dep_provider, header_dep_resolver).unwrap();
+        let cycle_fee = self.fee_rate.fee(cycle_size as u64).as_u64();
+
+        if fee >= cycle_fee {
+            return Ok((tx, None, true));
+        }
+
+        let (tx, idx) = self.rebalance_tx_capacity(
+            &tx,
+            cell_collector,
+            tx_dep_provider,
+            cell_dep_resolver,
+            header_dep_resolver,
+            cycle_fee,
+            change_index,
+        )?;
+        Ok((tx, idx, false))
+    }
+}
+
+const DEFAULT_BYTES_PER_CYCLE: f64 = 0.000_170_571_4;
+pub const fn bytes_per_cycle() -> f64 {
+    DEFAULT_BYTES_PER_CYCLE
+}
+
+pub struct CycleResolver<'a> {
+    tx_dep_provider: &'a dyn TransactionDependencyProvider,
+}
+
+impl<'a> CycleResolver<'a> {
+    pub fn new(tx_dep_provider: &'a dyn TransactionDependencyProvider) -> CycleResolver {
+        CycleResolver { tx_dep_provider }
+    }
+
+    fn estimate_cycles(&self, tx: &TransactionView) -> Result<u64, BalanceTxCapacityError> {
+        let rtx = resolve_transaction(
+            tx.clone(),
+            &mut HashSet::new(),
+            &self.tx_dep_provider,
+            &self.tx_dep_provider,
+        )
+        .map_err(|err| {
+            BalanceTxCapacityError::VerifyScript(format!("Resolve transaction error: {:?}", err))
+        })?;
+
+        let mut verifier = TransactionScriptsVerifier::new(&rtx, &self.tx_dep_provider);
+        verifier.set_debug_printer(|script_hash, message| {
+            println!("script: {:x}, debug: {}", script_hash, message);
+        });
+        verifier.verify(u64::max_value()).map_err(|err| {
+            BalanceTxCapacityError::VerifyScript(format!("Verify script error : {:?}", err))
+        })
+    }
 }
 
 /// Fill more inputs to balance the transaction capacity
@@ -360,6 +611,30 @@ pub fn balance_tx_capacity(
     cell_dep_resolver: &dyn CellDepResolver,
     header_dep_resolver: &dyn HeaderDepResolver,
 ) -> Result<TransactionView, BalanceTxCapacityError> {
+    let (tx, _change_idx) = rebalance_tx_capacity(
+        tx,
+        balancer,
+        cell_collector,
+        tx_dep_provider,
+        cell_dep_resolver,
+        header_dep_resolver,
+        0,
+        None,
+    )?;
+    Ok(tx)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rebalance_tx_capacity(
+    tx: &TransactionView,
+    balancer: &CapacityBalancer,
+    cell_collector: &mut dyn CellCollector,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+    cell_dep_resolver: &dyn CellDepResolver,
+    header_dep_resolver: &dyn HeaderDepResolver,
+    accepted_min_fee: u64,
+    change_index: Option<usize>,
+) -> Result<(TransactionView, Option<usize>), BalanceTxCapacityError> {
     let capacity_provider = &balancer.capacity_provider;
     if capacity_provider.lock_scripts.is_empty() {
         return Err(BalanceTxCapacityError::EmptyCapacityProvider);
@@ -368,11 +643,37 @@ pub fn balance_tx_capacity(
         .change_lock_script
         .clone()
         .unwrap_or_else(|| capacity_provider.lock_scripts[0].0.clone());
-    let base_change_output = CellOutput::new_builder().lock(change_lock_script).build();
-    let base_change_occupied_capacity = base_change_output
-        .occupied_capacity(Capacity::zero())
-        .expect("init change occupied capacity")
-        .as_u64();
+    let (tx, base_change_output, base_change_occupied_capacity) = if let Some(idx) = change_index {
+        let outputs = tx.outputs();
+        let output = tx
+            .outputs()
+            .get(idx)
+            .ok_or(BalanceTxCapacityError::ChangeIndexNotFound(idx))?;
+
+        // remove change output
+        let outputs: Vec<_> = outputs
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, output)| if idx == i { None } else { Some(output) })
+            .collect();
+        let base_change_occupied_capacity = output
+            .occupied_capacity(Capacity::zero())
+            .expect("init change occupied capacity")
+            .as_u64();
+        let tx = tx.data().as_advanced_builder().set_outputs(outputs).build();
+        (tx, output, base_change_occupied_capacity)
+    } else {
+        let base_change_output = CellOutput::new_builder().lock(change_lock_script).build();
+        let base_change_occupied_capacity = base_change_output
+            .occupied_capacity(Capacity::zero())
+            .expect("init change occupied capacity")
+            .as_u64();
+        (
+            tx.clone(),
+            base_change_output,
+            base_change_occupied_capacity,
+        )
+    };
 
     let mut lock_scripts = Vec::new();
     // remove duplicated lock script
@@ -386,7 +687,11 @@ pub fn balance_tx_capacity(
     #[allow(clippy::mutable_key_type)]
     let mut resolved_scripts = HashSet::new();
     let mut inputs = Vec::new();
-    let mut change_output: Option<CellOutput> = None;
+    let mut change_output: Option<CellOutput> = if change_index.is_some() {
+        Some(base_change_output.clone())
+    } else {
+        None
+    };
     let mut changed_witnesses: HashMap<usize, WitnessArgs> = HashMap::default();
     let mut witnesses = Vec::new();
     loop {
@@ -410,12 +715,14 @@ pub fn balance_tx_capacity(
         {
             witnesses.push(Default::default());
         }
+        let mut ret_change_index = None;
         let new_tx = {
             let mut all_witnesses = tx.witnesses().into_iter().collect::<Vec<_>>();
             for (idx, witness_args) in &changed_witnesses {
                 all_witnesses[*idx] = witness_args.as_bytes().pack();
             }
             all_witnesses.extend(witnesses.clone());
+            let output_len = tx.outputs().len();
             let mut builder = tx
                 .data()
                 .as_advanced_builder()
@@ -423,18 +730,19 @@ pub fn balance_tx_capacity(
                 .inputs(inputs.clone())
                 .set_witnesses(all_witnesses);
             if let Some(output) = change_output.clone() {
+                ret_change_index = Some(output_len);
                 builder = builder.output(output).output_data(Default::default());
             }
             builder.build()
         };
         let tx_size = new_tx.data().as_reader().serialized_size_in_block();
-        let min_fee = balancer.fee_rate.fee(tx_size).as_u64();
+        let min_fee = accepted_min_fee.max(balancer.fee_rate.fee(tx_size as u64).as_u64());
         let mut need_more_capacity = 1;
         let fee_result: Result<u64, TransactionFeeError> =
             tx_fee(new_tx.clone(), tx_dep_provider, header_dep_resolver);
         match fee_result {
             Ok(fee) if fee == min_fee => {
-                return Ok(new_tx);
+                return Ok((new_tx, ret_change_index));
             }
             Ok(fee) if fee > min_fee => {
                 let delta = fee - min_fee;
@@ -458,7 +766,7 @@ pub fn balance_tx_capacity(
                     // NOTE: extra_min_fee +1 is for `FeeRate::fee` round
                     let extra_min_fee = balancer
                         .fee_rate
-                        .fee(base_change_output.as_slice().len() + output_header_extra)
+                        .fee(base_change_output.as_slice().len() as u64 + output_header_extra)
                         .as_u64()
                         + 1;
                     // The extra capacity (delta - extra_min_fee) is enough to hold the change cell.
@@ -483,7 +791,7 @@ pub fn balance_tx_capacity(
                                         BalanceTxCapacityError::ForceSmallChangeAsFeeFailed(fee),
                                     );
                                 } else {
-                                    return Ok(new_tx);
+                                    return Ok((new_tx, ret_change_index));
                                 }
                             } else if lock_script_idx + 1 == lock_scripts.len() {
                                 return Err(BalanceTxCapacityError::CapacityNotEnough(format!(

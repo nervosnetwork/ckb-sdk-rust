@@ -27,6 +27,7 @@ use crate::{
     ScriptId, Since,
 };
 
+use crate::tx_builder::{unlock_tx, CapacityBalancer, TxBuilder};
 use ckb_crypto::secp::{Pubkey, SECP256K1};
 use ckb_hash::blake2b_256;
 use ckb_types::{
@@ -37,8 +38,6 @@ use ckb_types::{
     H160, H256,
 };
 use rand::Rng;
-
-use crate::tx_builder::{unlock_tx, CapacityBalancer, TxBuilder};
 
 const OMNILOCK_BIN: &[u8] = include_bytes!("../test-data/omni_lock");
 

@@ -1,9 +1,9 @@
 use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockTemplate, BlockView,
-    CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, ExtraLoggerConfig, HeaderView,
-    JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode,
-    Script, SyncState, Timestamp, Transaction, TransactionProof, TransactionWithStatusResponse,
-    TxPoolInfo, Uint64, Version,
+    CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, EstimateCycles,
+    ExtraLoggerConfig, FeeRateStatics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
+    OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState, Timestamp, Transaction,
+    TransactionProof, TransactionWithStatusResponse, TxPoolInfo, Uint64, Version,
 };
 use ckb_types::H256;
 
@@ -30,6 +30,8 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_consensus(&mut self) -> Consensus;
     pub fn get_block_median_time(&mut self, block_hash: H256) -> Option<Timestamp>;
     pub fn get_block_economic_state(&mut self, block_hash: H256) -> Option<BlockEconomicState>;
+    pub fn estimate_cycles(&mut self, tx: Transaction)-> EstimateCycles;
+    pub fn get_fee_rate_statics(&mut self, tartet:Option<Uint64>)->FeeRateStatics;
 
     // Net
     pub fn get_banned_addresses(&mut self) -> Vec<BannedAddr>;
