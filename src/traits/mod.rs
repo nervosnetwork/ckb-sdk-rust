@@ -384,9 +384,17 @@ pub trait CellCollector {
     ) -> Result<(Vec<LiveCell>, u64), CellCollectorError>;
 
     /// Mark this cell as dead cell
-    fn lock_cell(&mut self, out_point: OutPoint) -> Result<(), CellCollectorError>;
+    fn lock_cell(
+        &mut self,
+        out_point: OutPoint,
+        tip_block_number: u64,
+    ) -> Result<(), CellCollectorError>;
     /// Mark all inputs as dead cells and outputs as live cells in the transaction.
-    fn apply_tx(&mut self, tx: Transaction) -> Result<(), CellCollectorError>;
+    fn apply_tx(
+        &mut self,
+        tx: Transaction,
+        tip_block_number: u64,
+    ) -> Result<(), CellCollectorError>;
 
     /// Clear cache and locked cells
     fn reset(&mut self);

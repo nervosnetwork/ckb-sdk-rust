@@ -517,10 +517,18 @@ impl CellCollector for LiveCellsContext {
         Ok((cells, total_capacity))
     }
 
-    fn lock_cell(&mut self, _out_point: OutPoint) -> Result<(), CellCollectorError> {
+    fn lock_cell(
+        &mut self,
+        _out_point: OutPoint,
+        _tip_block_number: u64,
+    ) -> Result<(), CellCollectorError> {
         unimplemented!()
     }
-    fn apply_tx(&mut self, _tx: Transaction) -> Result<(), CellCollectorError> {
+    fn apply_tx(
+        &mut self,
+        _tx: Transaction,
+        _tip_block_number: u64,
+    ) -> Result<(), CellCollectorError> {
         unimplemented!()
     }
     fn reset(&mut self) {

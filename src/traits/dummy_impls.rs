@@ -25,11 +25,19 @@ impl CellCollector for DummyCellCollector {
         )))
     }
 
-    fn lock_cell(&mut self, _out_point: OutPoint) -> Result<(), CellCollectorError> {
+    fn lock_cell(
+        &mut self,
+        _out_point: OutPoint,
+        _tip_block_num: u64,
+    ) -> Result<(), CellCollectorError> {
         Err(CellCollectorError::Other(anyhow!("dummy lock_cell")))
     }
 
-    fn apply_tx(&mut self, _tx: Transaction) -> Result<(), CellCollectorError> {
+    fn apply_tx(
+        &mut self,
+        _tx: Transaction,
+        _tip_block_num: u64,
+    ) -> Result<(), CellCollectorError> {
         Err(CellCollectorError::Other(anyhow!("dummy apply_tx")))
     }
     fn reset(&mut self) {}

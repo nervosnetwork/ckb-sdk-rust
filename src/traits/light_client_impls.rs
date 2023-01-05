@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::anyhow;
 use dashmap::DashMap;
 use parking_lot::Mutex;
@@ -10,7 +12,7 @@ use ckb_types::{
     prelude::*,
 };
 
-use super::OffchainCellCollector;
+use super::{offchain_impls::CollectResult, OffchainCellCollector};
 use crate::rpc::{
     ckb_light_client::{FetchStatus, Order, SearchKey},
     LightClientRpcClient,
@@ -204,13 +206,29 @@ impl CellCollector for LightClientCellCollector {
     ) -> Result<(Vec<LiveCell>, u64), CellCollectorError> {
         let max_mature_number = 0;
         self.offchain.max_mature_number = max_mature_number;
-        let (mut cells, rest_cells, mut total_capacity) = self.offchain.collect(query);
+        let tip_num = self
+            .light_client
+            .get_tip_header()
+            .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?
+            .inner
+            .number
+            .value();
+        let CollectResult {
+            cells,
+            rest_cells,
+            mut total_capacity,
+        } = self.offchain.collect(query, tip_num);
+        let mut cells: Vec<_> = cells.into_iter().map(|c| c.0).collect();
 
         if total_capacity < query.min_total_capacity {
             let order = match query.order {
                 QueryOrder::Asc => Order::Asc,
                 QueryOrder::Desc => Order::Desc,
             };
+            let mut ret_cells: HashMap<_, _> = cells
+                .into_iter()
+                .map(|c| (c.out_point.clone(), c))
+                .collect();
             let locked_cells = self.offchain.locked_cells.clone();
             let search_key = SearchKey::from(query.clone());
             const MAX_LIMIT: u32 = 4096;
@@ -227,7 +245,7 @@ impl CellCollector for LightClientCellCollector {
                 for cell in page.objects {
                     let live_cell = LiveCell::from(cell);
                     if !query.match_cell(&live_cell, max_mature_number)
-                        || locked_cells.contains(&(
+                        || locked_cells.contains_key(&(
                             live_cell.out_point.tx_hash().unpack(),
                             live_cell.out_point.index().unpack(),
                         ))
@@ -235,8 +253,12 @@ impl CellCollector for LightClientCellCollector {
                         continue;
                     }
                     let capacity: u64 = live_cell.output.capacity().unpack();
-                    total_capacity += capacity;
-                    cells.push(live_cell);
+                    if ret_cells
+                        .insert(live_cell.out_point.clone(), live_cell)
+                        .is_none()
+                    {
+                        total_capacity += capacity;
+                    }
                     if total_capacity >= query.min_total_capacity {
                         break;
                     }
@@ -246,21 +268,26 @@ impl CellCollector for LightClientCellCollector {
                     limit *= 2;
                 }
             }
+            cells = ret_cells.into_iter().map(|(_k, v)| v).collect();
         }
         if apply_changes {
             self.offchain.live_cells = rest_cells;
             for cell in &cells {
-                self.lock_cell(cell.out_point.clone())?;
+                self.lock_cell(cell.out_point.clone(), tip_num)?;
             }
         }
         Ok((cells, total_capacity))
     }
 
-    fn lock_cell(&mut self, out_point: OutPoint) -> Result<(), CellCollectorError> {
-        self.offchain.lock_cell(out_point)
+    fn lock_cell(
+        &mut self,
+        out_point: OutPoint,
+        tip_number: u64,
+    ) -> Result<(), CellCollectorError> {
+        self.offchain.lock_cell(out_point, tip_number)
     }
-    fn apply_tx(&mut self, tx: Transaction) -> Result<(), CellCollectorError> {
-        self.offchain.apply_tx(tx)
+    fn apply_tx(&mut self, tx: Transaction, tip_number: u64) -> Result<(), CellCollectorError> {
+        self.offchain.apply_tx(tx, tip_number)
     }
     fn reset(&mut self) {
         self.offchain.reset();

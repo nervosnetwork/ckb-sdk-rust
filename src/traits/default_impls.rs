@@ -19,7 +19,10 @@ use ckb_types::{
     H160,
 };
 
-use super::{OffchainCellCollector, OffchainCellDepResolver};
+use super::{
+    offchain_impls::CollectResult, OffchainCellCollector, OffchainCellDepResolver,
+    OffchainTransactionDependencyProvider,
+};
 use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
 use crate::rpc::{CkbRpcClient, IndexerRpcClient};
 use crate::traits::{
@@ -309,7 +312,17 @@ impl CellCollector for DefaultCellCollector {
             .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?;
 
         self.offchain.max_mature_number = max_mature_number;
-        let (mut cells, rest_cells, mut total_capacity) = self.offchain.collect(query);
+        let tip_num = self
+            .ckb_client
+            .get_tip_block_number()
+            .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?
+            .value();
+        let CollectResult {
+            cells,
+            rest_cells,
+            mut total_capacity,
+        } = self.offchain.collect(query, tip_num);
+        let mut cells: Vec<_> = cells.into_iter().map(|c| c.0).collect();
 
         if total_capacity < query.min_total_capacity {
             self.check_ckb_chain()?;
@@ -317,6 +330,10 @@ impl CellCollector for DefaultCellCollector {
                 QueryOrder::Asc => Order::Asc,
                 QueryOrder::Desc => Order::Desc,
             };
+            let mut ret_cells: HashMap<_, _> = cells
+                .into_iter()
+                .map(|c| (c.out_point.clone(), c))
+                .collect();
             let locked_cells = self.offchain.locked_cells.clone();
             let search_key = SearchKey::from(query.clone());
             const MAX_LIMIT: u32 = 4096;
@@ -333,7 +350,7 @@ impl CellCollector for DefaultCellCollector {
                 for cell in page.objects {
                     let live_cell = LiveCell::from(cell);
                     if !query.match_cell(&live_cell, max_mature_number)
-                        || locked_cells.contains(&(
+                        || locked_cells.contains_key(&(
                             live_cell.out_point.tx_hash().unpack(),
                             live_cell.out_point.index().unpack(),
                         ))
@@ -341,8 +358,13 @@ impl CellCollector for DefaultCellCollector {
                         continue;
                     }
                     let capacity: u64 = live_cell.output.capacity().unpack();
-                    total_capacity += capacity;
-                    cells.push(live_cell);
+                    // use cell from indexer to replace offchain cell
+                    if ret_cells
+                        .insert(live_cell.out_point.clone(), live_cell)
+                        .is_none()
+                    {
+                        total_capacity += capacity;
+                    }
                     if total_capacity >= query.min_total_capacity {
                         break;
                     }
@@ -352,21 +374,30 @@ impl CellCollector for DefaultCellCollector {
                     limit *= 2;
                 }
             }
+            cells = ret_cells.into_iter().map(|(_k, v)| v).collect();
         }
         if apply_changes {
             self.offchain.live_cells = rest_cells;
             for cell in &cells {
-                self.lock_cell(cell.out_point.clone())?;
+                self.lock_cell(cell.out_point.clone(), tip_num)?;
             }
         }
         Ok((cells, total_capacity))
     }
 
-    fn lock_cell(&mut self, out_point: OutPoint) -> Result<(), CellCollectorError> {
-        self.offchain.lock_cell(out_point)
+    fn lock_cell(
+        &mut self,
+        out_point: OutPoint,
+        tip_block_number: u64,
+    ) -> Result<(), CellCollectorError> {
+        self.offchain.lock_cell(out_point, tip_block_number)
     }
-    fn apply_tx(&mut self, tx: Transaction) -> Result<(), CellCollectorError> {
-        self.offchain.apply_tx(tx)
+    fn apply_tx(
+        &mut self,
+        tx: Transaction,
+        tip_block_number: u64,
+    ) -> Result<(), CellCollectorError> {
+        self.offchain.apply_tx(tx, tip_block_number)
     }
     fn reset(&mut self) {
         self.offchain.reset();
@@ -378,6 +409,7 @@ struct DefaultTxDepProviderInner {
     tx_cache: LruCache<Byte32, TransactionView>,
     cell_cache: LruCache<OutPoint, (CellOutput, Bytes)>,
     header_cache: LruCache<Byte32, HeaderView>,
+    offchain_cache: OffchainTransactionDependencyProvider,
 }
 
 /// A transaction dependency provider use ckb rpc client as backend, and with LRU cache supported
@@ -404,10 +436,21 @@ impl DefaultTransactionDependencyProvider {
             tx_cache: LruCache::new(cache_capacity),
             cell_cache: LruCache::new(cache_capacity),
             header_cache: LruCache::new(cache_capacity),
+            offchain_cache: OffchainTransactionDependencyProvider::new(),
         };
         DefaultTransactionDependencyProvider {
             inner: Arc::new(Mutex::new(inner)),
         }
+    }
+
+    pub fn apply_tx(
+        &mut self,
+        tx: Transaction,
+        tip_block_number: u64,
+    ) -> Result<(), TransactionDependencyError> {
+        let mut inner = self.inner.lock();
+        inner.offchain_cache.apply_tx(tx, tip_block_number)?;
+        Ok(())
     }
 
     pub fn get_cell_with_data(
@@ -418,7 +461,7 @@ impl DefaultTransactionDependencyProvider {
         if let Some(pair) = inner.cell_cache.get(out_point) {
             return Ok(pair.clone());
         }
-        // TODO: handle proposed/pending transactions
+
         let cell_with_status = inner
             .rpc_client
             .get_live_cell(out_point.clone().into(), true)
@@ -448,7 +491,10 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
         if let Some(tx) = inner.tx_cache.get(tx_hash) {
             return Ok(tx.clone());
         }
-        // TODO: handle proposed/pending transactions
+        let ret = inner.offchain_cache.get_transaction(tx_hash);
+        if ret.is_ok() {
+            return ret;
+        }
         let tx_with_status = inner
             .rpc_client
             .get_transaction(tx_hash.unpack())
@@ -470,9 +516,23 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
         Ok(tx)
     }
     fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
+        {
+            let inner = self.inner.lock();
+            let ret = inner.offchain_cache.get_cell(out_point);
+            if ret.is_ok() {
+                return ret;
+            }
+        }
         self.get_cell_with_data(out_point).map(|(output, _)| output)
     }
     fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
+        {
+            let inner = self.inner.lock();
+            let ret = inner.offchain_cache.get_cell_data(out_point);
+            if ret.is_ok() {
+                return ret;
+            }
+        }
         self.get_cell_with_data(out_point)
             .map(|(_, output_data)| output_data)
     }
