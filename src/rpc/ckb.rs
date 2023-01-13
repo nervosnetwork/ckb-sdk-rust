@@ -1,6 +1,6 @@
 use ckb_jsonrpc_types::{
-    Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockTemplate, BlockView,
-    CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, EstimateCycles,
+    Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockResponse, BlockTemplate,
+    BlockView, CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, EstimateCycles,
     ExtraLoggerConfig, FeeRateStatics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
     OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState, Timestamp, Transaction,
     TransactionProof, TransactionWithStatusResponse, TxPoolInfo, Uint64, Version,
@@ -81,3 +81,23 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn update_main_logger(&mut self, config: MainLoggerConfig) -> ();
     pub fn set_extra_logger(&mut self, name: String, config_opt: Option<ExtraLoggerConfig>) -> ();
 });
+
+impl CkbRpcClient {
+    /// Same as get_block except with parameter with_cycles and return BlockResponse
+    pub fn get_block_with_cycles(
+        &mut self,
+        hash: H256,
+        with_cycles: bool,
+    ) -> Result<Option<BlockResponse>, crate::rpc::RpcError> {
+        self.post("get_block", (hash, None::<u32>, with_cycles))
+    }
+
+    /// Same as get_block_by_number except with parameter with_cycles and return BlockResponse
+    pub fn get_block_by_number_with_cycles(
+        &mut self,
+        number: BlockNumber,
+        with_cycles: bool,
+    ) -> Result<Option<BlockResponse>, crate::rpc::RpcError> {
+        self.post("get_block_by_number", (number, None::<u32>, with_cycles))
+    }
+}

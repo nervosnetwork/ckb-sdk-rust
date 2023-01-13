@@ -41,9 +41,41 @@ macro_rules! jsonrpc {
                 $struct_name { url, id: 0, client: reqwest::blocking::Client::new(), }
             }
 
+            pub fn post<PARAM, RET>(&mut self, method:&str, params: PARAM)->Result<RET, crate::rpc::RpcError>
+            where
+                PARAM:serde::ser::Serialize,
+                RET: serde::de::DeserializeOwned,
+            {
+                let params = serde_json::to_value(params)?;
+                self.id += 1;
+
+                let mut req_json = serde_json::Map::new();
+                req_json.insert("id".to_owned(), serde_json::json!(self.id));
+                req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
+                req_json.insert("method".to_owned(), serde_json::json!(method));
+                req_json.insert("params".to_owned(), params);
+
+                let resp = self.client.post(self.url.clone()).json(&req_json).send()?;
+                let output = resp.json::<jsonrpc_core::response::Output>()?;
+                match output {
+                    jsonrpc_core::response::Output::Success(success) => {
+                        serde_json::from_value(success.result).map_err(Into::into)
+                    },
+                    jsonrpc_core::response::Output::Failure(failure) => {
+                        Err(failure.error.into())
+                    }
+                }
+
+            }
+
             $(
                 $(#[$attr])*
                 pub fn $method(&mut $selff $(, $arg_name: $arg_ty)*) -> Result<$return_ty, crate::rpc::RpcError> {
+                    // This method can be implemented by calling the post function
+                    // let method = stringify!($method);
+                    // let params = ($($arg_name,)*);
+                    // $selff.post(method, params)
+
                     let method = String::from(stringify!($method));
                     let params = crate::serialize_parameters!($($arg_name,)*);
                     $selff.id += 1;
