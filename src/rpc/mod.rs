@@ -2,8 +2,10 @@ mod ckb;
 pub mod ckb_indexer;
 pub mod ckb_light_client;
 
+use anyhow::anyhow;
 pub use ckb::CkbRpcClient;
 pub use ckb_indexer::IndexerRpcClient;
+use ckb_jsonrpc_types::{JsonBytes, ResponseFormat};
 pub use ckb_light_client::LightClientRpcClient;
 
 use thiserror::Error;
@@ -16,6 +18,8 @@ pub enum RpcError {
     Http(#[from] reqwest::Error),
     #[error("jsonrpc error: `{0}`")]
     Rpc(#[from] jsonrpc_core::Error),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 #[macro_export]
@@ -106,6 +110,35 @@ macro_rules! jsonrpc {
 macro_rules! serialize_parameters {
     () => ( serde_json::Value::Null );
     ($($arg_name:ident,)+) => ( serde_json::to_value(($($arg_name,)+))?)
+}
+
+pub trait ResponseFormatGetter<V> {
+    fn get_value(self) -> Result<V, crate::rpc::RpcError>;
+    fn get_json_bytes(self) -> Result<JsonBytes, crate::rpc::RpcError>;
+}
+
+impl<V> ResponseFormatGetter<V> for ResponseFormat<V> {
+    fn get_value(self) -> Result<V, crate::rpc::RpcError> {
+        match self.inner {
+            ckb_jsonrpc_types::Either::Left(v) => Ok(v),
+            ckb_jsonrpc_types::Either::Right(_) => {
+                return Err(crate::rpc::RpcError::Other(anyhow!(
+                    "It's a JsonBytes, can't not get the inner value directly"
+                )))
+            }
+        }
+    }
+
+    fn get_json_bytes(self) -> Result<JsonBytes, crate::rpc::RpcError> {
+        match self.inner {
+            ckb_jsonrpc_types::Either::Left(_v) => {
+                return Err(crate::rpc::RpcError::Other(anyhow!(
+                    "It's not a JsonBytes, can't not get the json bytes directly"
+                )))
+            }
+            ckb_jsonrpc_types::Either::Right(json_bytes) => Ok(json_bytes),
+        }
+    }
 }
 
 #[cfg(test)]
