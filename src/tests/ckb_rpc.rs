@@ -267,3 +267,14 @@ fn test_get_packed_transaction_verbosity_1_not_exist() {
     assert!(transaction.tx_status.block_hash.is_none());
     assert!(transaction.tx_status.reason.is_none());
 }
+
+#[test]
+fn test_get_tip_header() {
+    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let header_bytes = ckb_client.get_packed_tip_header();
+    let header_bytes = header_bytes.unwrap();
+
+    let header_view =
+        ckb_types::packed::Header::from_slice(header_bytes.as_bytes());
+    assert!(header_view.is_ok())
+}

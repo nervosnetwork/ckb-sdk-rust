@@ -216,4 +216,11 @@ impl CkbRpcClient {
             (hash, Some(Uint32::from(1u32))),
         )
     }
+
+    pub fn get_packed_tip_header(&mut self) -> Result<JsonBytes , crate::rpc::RpcError> {
+        self.post::<_, JsonBytes>(
+            "get_tip_header",
+            (Some(Uint32::from(0u32)),),
+        )
+    }
 }
