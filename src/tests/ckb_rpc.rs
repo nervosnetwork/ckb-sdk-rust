@@ -274,7 +274,18 @@ fn test_get_tip_header() {
     let header_bytes = ckb_client.get_packed_tip_header();
     let header_bytes = header_bytes.unwrap();
 
-    let header_view =
-        ckb_types::packed::Header::from_slice(header_bytes.as_bytes());
+    let header_view = ckb_types::packed::Header::from_slice(header_bytes.as_bytes());
     assert!(header_view.is_ok())
+}
+
+#[test]
+fn test_get_packed_fork_block_not_exist() {
+    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let block = ckb_client.get_packed_fork_block(BLOCK_HASH.clone());
+    let block = block.unwrap();
+    assert!(block.is_none());
+
+    let block = ckb_client.get_packed_fork_block(BLOCK_HASH_NOT_EXIST.clone());
+    let block = block.unwrap();
+    assert!(block.is_none());
 }

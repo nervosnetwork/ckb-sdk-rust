@@ -217,10 +217,14 @@ impl CkbRpcClient {
         )
     }
 
-    pub fn get_packed_tip_header(&mut self) -> Result<JsonBytes , crate::rpc::RpcError> {
-        self.post::<_, JsonBytes>(
-            "get_tip_header",
-            (Some(Uint32::from(0u32)),),
-        )
+    pub fn get_packed_tip_header(&mut self) -> Result<JsonBytes, crate::rpc::RpcError> {
+        self.post::<_, JsonBytes>("get_tip_header", (Some(Uint32::from(0u32)),))
+    }
+
+    pub fn get_packed_fork_block(
+        &mut self,
+        block_hash: H256,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post::<_, Option<JsonBytes>>("get_fork_block", (block_hash, Some(Uint32::from(0u32))))
     }
 }
