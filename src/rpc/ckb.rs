@@ -178,4 +178,21 @@ impl CkbRpcClient {
         )?;
         Self::blockresponse2bytes(res)
     }
+
+    pub fn get_packed_header(
+        &mut self,
+        hash: H256,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post::<_, Option<JsonBytes>>("get_header", (hash, Some(Uint32::from(0u32))))
+    }
+
+    pub fn get_packed_header_by_number(
+        &mut self,
+        number: BlockNumber,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post::<_, Option<JsonBytes>>(
+            "get_header_by_number",
+            (number, Some(Uint32::from(0u32))),
+        )
+    }
 }

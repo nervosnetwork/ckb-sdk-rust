@@ -152,3 +152,43 @@ fn test_get_packed_block_by_number_with_cycles_fail() {
     assert!(block.0.is_none());
     assert!(block.1.is_none());
 }
+
+#[test]
+fn test_get_header() {
+    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let header = ckb_client.get_header(BLOCK_HASH.clone());
+    let header = header.unwrap();
+    let header = header.unwrap();
+    let header_from_json = core::HeaderView::from(header);
+
+    let header = ckb_client.get_packed_header(BLOCK_HASH.clone());
+    let header = header.unwrap();
+    let header_bytes_0 = header.unwrap();
+
+    let header_from_bytes =
+        ckb_types::packed::Header::new_unchecked(header_bytes_0.clone().into_bytes()).into_view();
+
+    assert_eq!(header_from_json, header_from_bytes);
+
+    let header = ckb_client.get_packed_header_by_number(BLOCK_NUMBER.into());
+    let header = header.unwrap();
+    let header_bytes_1 = header.unwrap();
+
+    assert_eq!(header_bytes_0, header_bytes_1);
+}
+
+#[test]
+fn test_get_packed_header_fail() {
+    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let header = ckb_client.get_header(BLOCK_HASH_NOT_EXIST.clone());
+    let header = header.unwrap();
+    assert!(header.is_none());
+}
+
+#[test]
+fn test_get_packed_header_by_number_not_exist() {
+    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let header = ckb_client.get_packed_header_by_number(BLOCK_NUMBER_NOT_EXIST.into());
+    let header = header.unwrap();
+    assert!(header.is_none());
+}
