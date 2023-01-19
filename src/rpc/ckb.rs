@@ -195,4 +195,25 @@ impl CkbRpcClient {
             (number, Some(Uint32::from(0u32))),
         )
     }
+    // get transaction with verbosity=0
+    pub fn get_packed_transaction(
+        &mut self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(0u32))),
+        )
+    }
+
+    // get transaction with verbosity=1, so the result transaction field is None
+    pub fn get_transaction_verbosity_1(
+        &mut self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(1u32))),
+        )
+    }
 }

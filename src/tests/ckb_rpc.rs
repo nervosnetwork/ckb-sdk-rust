@@ -1,4 +1,4 @@
-use crate::rpc::CkbRpcClient;
+use crate::rpc::{CkbRpcClient, ResponseFormatGetter};
 use ckb_types::{core, h256, prelude::Entity, H256};
 use serde_json;
 
@@ -191,4 +191,79 @@ fn test_get_packed_header_by_number_not_exist() {
     let header = ckb_client.get_packed_header_by_number(BLOCK_NUMBER_NOT_EXIST.into());
     let header = header.unwrap();
     assert!(header.is_none());
+}
+const TRANSACTION_HASH: H256 =
+    h256!("0xd713b21bbdeae7ae1fe0050be61afcfdd9335a1ccbfbf7f916be4a45d6e5d012");
+
+// python code: "transaction_hash_does_not_exist_".encode("utf-8").hex()
+// '7472616e73616374696f6e5f686173685f646f65735f6e6f745f65786973745f'
+const TRANSACTION_HASH_NOT_EXIST: H256 =
+    h256!("0x7472616e73616374696f6e5f686173685f646f65735f6e6f745f65786973745f");
+
+#[test]
+fn test_get_packed_transaction() {
+    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let trans_resp0 = ckb_client.get_transaction(TRANSACTION_HASH.clone());
+    let trans_resp0 = trans_resp0.unwrap();
+    let trans_resp0 = trans_resp0.unwrap();
+    let transaction_view_from_json = trans_resp0.transaction.unwrap().get_value().unwrap();
+
+    let transaction_resp = ckb_client.get_packed_transaction(TRANSACTION_HASH.clone());
+    let transaction_1 = transaction_resp.unwrap();
+
+    let json_bytes = transaction_1.transaction.unwrap().get_json_bytes().unwrap();
+
+    let transaction_from_bytes =
+        ckb_types::packed::Transaction::new_unchecked(json_bytes.into_bytes()).into_view();
+    let transaction_view_from_bytes =
+        ckb_jsonrpc_types::TransactionView::from(transaction_from_bytes);
+    assert_eq!(transaction_view_from_json, transaction_view_from_bytes);
+    assert_eq!(trans_resp0.cycles, transaction_1.cycles);
+    assert_eq!(trans_resp0.tx_status, transaction_1.tx_status);
+}
+
+#[test]
+fn test_get_packed_transaction_not_exist() {
+    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let transaction = ckb_client.get_packed_transaction(TRANSACTION_HASH_NOT_EXIST.clone());
+    let transaction = transaction.unwrap();
+    assert!(transaction.transaction.is_none());
+    assert!(transaction.cycles.is_none());
+    assert_eq!(
+        transaction.tx_status.status,
+        ckb_jsonrpc_types::Status::Unknown
+    );
+    assert!(transaction.tx_status.block_hash.is_none());
+    assert!(transaction.tx_status.reason.is_none());
+}
+
+#[test]
+fn test_get_packed_transaction_verbosity_1() {
+    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let trans_resp0 = ckb_client.get_transaction(TRANSACTION_HASH.clone());
+    let trans_resp0 = trans_resp0.unwrap();
+    let trans_resp0 = trans_resp0.unwrap();
+
+    let transaction_resp = ckb_client.get_transaction_verbosity_1(TRANSACTION_HASH.clone());
+    let transaction_1 = transaction_resp.unwrap();
+
+    assert!(transaction_1.transaction.is_none());
+
+    assert_eq!(trans_resp0.cycles, transaction_1.cycles);
+    assert_eq!(trans_resp0.tx_status, transaction_1.tx_status);
+}
+
+#[test]
+fn test_get_packed_transaction_verbosity_1_not_exist() {
+    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let transaction = ckb_client.get_transaction_verbosity_1(TRANSACTION_HASH_NOT_EXIST.clone());
+    let transaction = transaction.unwrap();
+    assert!(transaction.transaction.is_none());
+    assert!(transaction.cycles.is_none());
+    assert_eq!(
+        transaction.tx_status.status,
+        ckb_jsonrpc_types::Status::Unknown
+    );
+    assert!(transaction.tx_status.block_hash.is_none());
+    assert!(transaction.tx_status.reason.is_none());
 }
