@@ -1,6 +1,6 @@
 use crate::rpc::{CkbRpcClient, ResponseFormatGetter};
 use ckb_types::{core, h256, prelude::Entity, H256};
-use serde_json;
+// use serde_json;
 
 const TEST_CKB_RPC_URL: &str = "https://testnet.ckb.dev";
 
@@ -55,19 +55,17 @@ fn test_get_block_with_cycles() {
     let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block_cycle = ckb_client.get_block_with_cycles(BLOCK_HASH.clone());
     let block_cycle = block_cycle.unwrap();
-    let block = block_cycle.0.unwrap();
-    let cycles_0 = block_cycle.1.unwrap();
-    println!("> block: {}", serde_json::to_string_pretty(&block).unwrap());
+    let (block, cycles_0) = block_cycle.unwrap();
+    // println!("> block: {}", serde_json::to_string_pretty(&block).unwrap());
     let block_from_json = core::BlockView::from(block);
 
     let block_cycles = ckb_client
         .get_packed_block_with_cycles(BLOCK_HASH.clone())
         .unwrap();
 
-    assert!(block_cycles.0.is_some());
-    let block = block_cycles.0.unwrap();
-    let cycles_1 = block_cycles.1.unwrap();
-    println!("> block: {}", serde_json::to_string_pretty(&block).unwrap());
+    assert!(block_cycles.is_some());
+    let (block, cycles_1) = block_cycles.unwrap();
+    // println!("> block: {}", serde_json::to_string_pretty(&block).unwrap());
 
     let block_from_types = ckb_types::packed::Block::new_unchecked(block.into_bytes()).into_view();
 
@@ -76,19 +74,17 @@ fn test_get_block_with_cycles() {
 
     let block_cycle_n = ckb_client.get_block_by_number_with_cycles(BLOCK_NUMBER.into());
     let block_cycle_n = block_cycle_n.unwrap();
-    let block = block_cycle_n.0.unwrap();
-    let cycles_0_n = block_cycle_n.1.unwrap();
-    println!("> block: {}", serde_json::to_string_pretty(&block).unwrap());
+    let (block, cycles_0_n) = block_cycle_n.unwrap();
+    // println!("> block: {}", serde_json::to_string_pretty(&block).unwrap());
     let block_from_json_n = core::BlockView::from(block);
 
     let block_cycles = ckb_client
         .get_packed_block_by_number_with_cycles(BLOCK_NUMBER.into())
         .unwrap();
 
-    assert!(block_cycles.0.is_some());
-    let block = block_cycles.0.unwrap();
-    let cycles_1_n = block_cycles.1.unwrap();
-    println!("> block: {}", serde_json::to_string_pretty(&block).unwrap());
+    assert!(block_cycles.is_some());
+    let (block, cycles_1_n) = block_cycles.unwrap();
+    // println!("> block: {}", serde_json::to_string_pretty(&block).unwrap());
 
     let block_from_types_n =
         ckb_types::packed::Block::new_unchecked(block.into_bytes()).into_view();
@@ -114,8 +110,7 @@ fn test_get_block_with_cycles_fail() {
     let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_block_with_cycles(BLOCK_HASH_NOT_EXIST.clone());
     let block = block.unwrap();
-    assert!(block.0.is_none());
-    assert!(block.1.is_none());
+    assert!(block.is_none());
 }
 
 #[test]
@@ -123,8 +118,7 @@ fn test_get_packed_block_with_cycles_fail() {
     let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_packed_block_with_cycles(BLOCK_HASH_NOT_EXIST.clone());
     let block = block.unwrap();
-    assert!(block.0.is_none());
-    assert!(block.1.is_none());
+    assert!(block.is_none());
 }
 
 #[test]
@@ -140,8 +134,7 @@ fn test_get_block_by_number_with_cycles_fail() {
     let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_block_by_number_with_cycles(BLOCK_NUMBER_NOT_EXIST.into());
     let block = block.unwrap();
-    assert!(block.0.is_none());
-    assert!(block.1.is_none());
+    assert!(block.is_none());
 }
 
 #[test]
@@ -149,8 +142,7 @@ fn test_get_packed_block_by_number_with_cycles_fail() {
     let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_packed_block_by_number_with_cycles(BLOCK_NUMBER_NOT_EXIST.into());
     let block = block.unwrap();
-    assert!(block.0.is_none());
-    assert!(block.1.is_none());
+    assert!(block.is_none());
 }
 
 #[test]

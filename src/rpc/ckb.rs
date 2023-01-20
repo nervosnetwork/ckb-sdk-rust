@@ -84,8 +84,12 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn set_extra_logger(&mut self, name: String, config_opt: Option<ExtraLoggerConfig>) -> ();
 });
 
-fn map(cycles: Option<Vec<ckb_jsonrpc_types::Cycle>>) -> Option<Vec<Cycle>> {
-    cycles.map(|cycle_vec| cycle_vec.into_iter().map(|c| c.into()).collect())
+fn transform_cycles(cycles: Option<Vec<ckb_jsonrpc_types::Cycle>>) -> Vec<Cycle> {
+    if let Some(cycles) = cycles {
+        cycles.into_iter().map(|c| c.into()).collect()
+    } else {
+        vec![]
+    }
 }
 
 impl CkbRpcClient {
@@ -96,26 +100,26 @@ impl CkbRpcClient {
     // turn block response into BlcokView and cycle vec
     fn blockresponse2view(
         opt_resp: Option<BlockResponse>,
-    ) -> Result<(Option<BlockView>, Option<Vec<Cycle>>), crate::rpc::RpcError> {
+    ) -> Result<Option<(BlockView, Vec<Cycle>)>, crate::rpc::RpcError> {
         if let Some(resp) = opt_resp {
             match resp {
-                BlockResponse::Regular(block_view) => Ok((Some(block_view.get_value()?), None)),
+                BlockResponse::Regular(block_view) => Ok(Some((block_view.get_value()?, vec![]))),
                 BlockResponse::WithCycles(block_cycles) => {
                     let block_view = block_cycles.block.get_value()?;
-                    let cycles = map(block_cycles.cycles);
+                    let cycles = transform_cycles(block_cycles.cycles);
 
-                    Ok((Some(block_view), cycles))
+                    Ok(Some((block_view, cycles)))
                 }
             }
         } else {
-            Ok((None, None))
+            Ok(None)
         }
     }
     /// Same as get_block except with parameter with_cycles and return BlockResponse
     pub fn get_block_with_cycles(
         &mut self,
         hash: H256,
-    ) -> Result<(Option<BlockView>, Option<Vec<Cycle>>), crate::rpc::RpcError> {
+    ) -> Result<Option<(BlockView, Vec<Cycle>)>, crate::rpc::RpcError> {
         let res = self.post::<_, Option<BlockResponse>>("get_block", (hash, None::<u32>, true))?;
         Self::blockresponse2view(res)
     }
@@ -123,27 +127,27 @@ impl CkbRpcClient {
     // turn BlockResponse to JsonBytes and Cycle tupe
     fn blockresponse2bytes(
         opt_resp: Option<BlockResponse>,
-    ) -> Result<(Option<JsonBytes>, Option<Vec<Cycle>>), crate::rpc::RpcError> {
+    ) -> Result<Option<(JsonBytes, Vec<Cycle>)>, crate::rpc::RpcError> {
         if let Some(resp) = opt_resp {
             match resp {
                 BlockResponse::Regular(block_view) => {
-                    Ok((Some(block_view.get_json_bytes()?), None))
+                    Ok(Some((block_view.get_json_bytes()?, vec![])))
                 }
                 BlockResponse::WithCycles(block_cycles) => {
                     let block_view = block_cycles.block.get_json_bytes()?;
-                    let cycles = map(block_cycles.cycles);
-                    Ok((Some(block_view), cycles))
+                    let cycles = transform_cycles(block_cycles.cycles);
+                    Ok(Some((block_view, cycles)))
                 }
             }
         } else {
-            Ok((None, None))
+            Ok(None)
         }
     }
 
     pub fn get_packed_block_with_cycles(
         &mut self,
         hash: H256,
-    ) -> Result<(Option<JsonBytes>, Option<Vec<Cycle>>), crate::rpc::RpcError> {
+    ) -> Result<Option<(JsonBytes, Vec<Cycle>)>, crate::rpc::RpcError> {
         let res = self.post::<_, Option<BlockResponse>>(
             "get_block",
             (hash, Some(Uint32::from(0u32)), true),
@@ -162,7 +166,7 @@ impl CkbRpcClient {
     pub fn get_block_by_number_with_cycles(
         &mut self,
         number: BlockNumber,
-    ) -> Result<(Option<BlockView>, Option<Vec<Cycle>>), crate::rpc::RpcError> {
+    ) -> Result<Option<(BlockView, Vec<Cycle>)>, crate::rpc::RpcError> {
         let res = self
             .post::<_, Option<BlockResponse>>("get_block_by_number", (number, None::<u32>, true))?;
         Self::blockresponse2view(res)
@@ -171,7 +175,7 @@ impl CkbRpcClient {
     pub fn get_packed_block_by_number_with_cycles(
         &mut self,
         number: BlockNumber,
-    ) -> Result<(Option<JsonBytes>, Option<Vec<Cycle>>), crate::rpc::RpcError> {
+    ) -> Result<Option<(JsonBytes, Vec<Cycle>)>, crate::rpc::RpcError> {
         let res = self.post::<_, Option<BlockResponse>>(
             "get_block_by_number",
             (number, Some(Uint32::from(0u32)), true),
