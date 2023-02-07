@@ -236,7 +236,7 @@ fn test_get_packed_transaction_verbosity_1() {
     let trans_resp0 = trans_resp0.unwrap();
     let trans_resp0 = trans_resp0.unwrap();
 
-    let transaction_resp = ckb_client.get_transaction_verbosity_1(TRANSACTION_HASH.clone());
+    let transaction_resp = ckb_client.get_transaction_status(TRANSACTION_HASH.clone());
     let transaction_1 = transaction_resp.unwrap();
 
     assert!(transaction_1.transaction.is_none());
@@ -248,7 +248,7 @@ fn test_get_packed_transaction_verbosity_1() {
 #[test]
 fn test_get_packed_transaction_verbosity_1_not_exist() {
     let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
-    let transaction = ckb_client.get_transaction_verbosity_1(TRANSACTION_HASH_NOT_EXIST.clone());
+    let transaction = ckb_client.get_transaction_status(TRANSACTION_HASH_NOT_EXIST.clone());
     let transaction = transaction.unwrap();
     assert!(transaction.transaction.is_none());
     assert!(transaction.cycles.is_none());

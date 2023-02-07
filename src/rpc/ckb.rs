@@ -211,7 +211,7 @@ impl CkbRpcClient {
     }
 
     // get transaction with verbosity=1, so the result transaction field is None
-    pub fn get_transaction_verbosity_1(
+    pub fn get_transaction_status(
         &mut self,
         hash: H256,
     ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
