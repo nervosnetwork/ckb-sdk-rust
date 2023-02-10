@@ -1,17 +1,21 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, ops::DerefMut};
 
+use super::{
+    builder::{BaseTransactionBuilder, CkbTransactionBuilder},
+    TxBuilder, TxBuilderError,
+};
+use crate::{
+    traits::{CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider},
+    ScriptGroup,
+};
+use crate::{types::ScriptId, NetworkInfo};
 use ckb_types::{
     bytes::Bytes,
     core::{TransactionBuilder, TransactionView},
     packed::CellOutput,
     prelude::*,
 };
-
-use super::{TxBuilder, TxBuilderError};
-use crate::traits::{
-    CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider,
-};
-use crate::types::ScriptId;
+use std::ops::Deref;
 
 /// A builder to build a transaction simply transfer capcity to an address. It
 /// will resolve the type script's cell_dep if given.
@@ -55,5 +59,81 @@ impl TxBuilder for CapacityTransferBuilder {
             .set_outputs(outputs)
             .set_outputs_data(outputs_data)
             .build())
+    }
+}
+
+pub struct DefaultCapacityTransferBuilder {
+    pub base_builder: BaseTransactionBuilder,
+}
+
+impl DefaultCapacityTransferBuilder {
+    pub fn new(network_info: NetworkInfo, sender: &str) -> Result<Self, TxBuilderError> {
+        Ok(Self {
+            base_builder: BaseTransactionBuilder::new(network_info, sender)?,
+        })
+    }
+}
+
+impl Deref for DefaultCapacityTransferBuilder {
+    type Target = BaseTransactionBuilder;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base_builder
+    }
+}
+
+impl DerefMut for DefaultCapacityTransferBuilder {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base_builder
+    }
+}
+
+impl CkbTransactionBuilder for DefaultCapacityTransferBuilder {
+    fn build_base(&mut self) -> Result<TransactionView, TxBuilderError> {
+        let builder = CapacityTransferBuilder::new(self.base_builder.outputs.clone());
+        builder.build_base(
+            self.base_builder.cell_collector.as_mut(),
+            self.base_builder.cell_dep_resolver.as_ref(),
+            self.base_builder.header_dep_resolver.as_ref(),
+            self.base_builder.tx_dep_provider.as_ref(),
+        )
+    }
+
+    fn build_balanced(&mut self) -> Result<TransactionView, TxBuilderError> {
+        let builder = CapacityTransferBuilder::new(self.base_builder.outputs.clone());
+        builder.build_balanced(
+            self.base_builder.cell_collector.as_mut(),
+            self.base_builder.cell_dep_resolver.as_ref(),
+            self.base_builder.header_dep_resolver.as_ref(),
+            self.base_builder.tx_dep_provider.as_ref(),
+            &self.base_builder.balancer,
+            &self.base_builder.unlockers,
+        )
+    }
+
+    fn build_unlocked(&mut self) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
+        let builder = CapacityTransferBuilder::new(self.base_builder.outputs.clone());
+        builder.build_unlocked(
+            self.base_builder.cell_collector.as_mut(),
+            self.base_builder.cell_dep_resolver.as_ref(),
+            self.base_builder.header_dep_resolver.as_ref(),
+            self.base_builder.tx_dep_provider.as_ref(),
+            &self.base_builder.balancer,
+            &self.base_builder.unlockers,
+        )
+    }
+
+    fn build_balance_unlocked(
+        &mut self,
+    ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
+        let builder = CapacityTransferBuilder::new(self.base_builder.outputs.clone());
+        builder.build_balance_unlocked(
+            self.base_builder.cell_collector.as_mut(),
+            self.base_builder.cell_dep_resolver.as_ref(),
+            self.base_builder.header_dep_resolver.as_ref(),
+            self.base_builder.tx_dep_provider.as_ref(),
+            &self.base_builder.balancer,
+            &self.base_builder.unlockers,
+        )
     }
 }

@@ -1,4 +1,5 @@
 pub mod acp;
+pub mod builder;
 pub mod cheque;
 pub mod dao;
 pub mod omni_lock;
@@ -62,6 +63,14 @@ pub enum TxBuilderError {
 
     #[error("build_balance_unlocked exceed max loop times, current is: `{0}`")]
     ExceedCycleMaxLoopTimes(u32),
+
+    #[error(transparent)]
+    RpcError(#[from] RpcError),
+
+    #[error("parse address error: `{0}`")]
+    AddressFormat(String),
+    #[error("parse key error: `{0}`")]
+    KeyFormat(String),
 
     #[error("other error: `{0}`")]
     Other(anyhow::Error),
@@ -319,7 +328,7 @@ impl Default for SinceSource {
 ///
 /// The cells collected by `lock_script` will filter out those have type script
 /// or data length is not `0` or is not mature.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CapacityProvider {
     /// The lock scripts provider capacity. The second field of the tuple is the
     /// placeholder witness of the lock script.
@@ -339,6 +348,16 @@ impl CapacityProvider {
             .map(|(script, witness)| (script, witness, SinceSource::default()))
             .collect();
         CapacityProvider { lock_scripts }
+    }
+
+    pub fn set_witness(&mut self, script: Script, witness: WitnessArgs) {
+        let idx = self.lock_scripts.iter().position(|ls| ls.0 == script);
+        if let Some(idx) = idx {
+            self.lock_scripts[idx].1 = witness;
+        } else {
+            self.lock_scripts
+                .push((script, witness, SinceSource::default()));
+        }
     }
 }
 
@@ -400,6 +419,17 @@ pub struct CapacityBalancer {
     /// transaction capacity, force the addition capacity as fee, the value is
     /// actual maximum transaction fee.
     pub force_small_change_as_fee: Option<u64>,
+}
+
+impl Default for CapacityBalancer {
+    fn default() -> Self {
+        Self {
+            fee_rate: FeeRate::from_u64(1000),
+            capacity_provider: Default::default(),
+            change_lock_script: Default::default(),
+            force_small_change_as_fee: Default::default(),
+        }
+    }
 }
 
 impl CapacityBalancer {

@@ -4,6 +4,8 @@ use std::str::FromStr;
 
 use crate::constants::ONE_CKB;
 
+use ckb_types::{packed, prelude::Pack};
+
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct HumanCapacity(pub u64);
 
@@ -80,6 +82,12 @@ impl fmt::Display for HumanCapacity {
                 &shannon_part_string[..(8 - suffix_zero)]
             )
         }
+    }
+}
+
+impl Pack<packed::Uint64> for HumanCapacity {
+    fn pack(&self) -> packed::Uint64 {
+        self.0.pack()
     }
 }
 

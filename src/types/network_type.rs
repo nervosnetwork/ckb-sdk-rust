@@ -57,3 +57,26 @@ impl fmt::Display for NetworkType {
         write!(f, "{}", self.to_str())
     }
 }
+
+pub struct NetworkInfo {
+    pub network_type: NetworkType,
+    pub url: String,
+}
+
+impl NetworkInfo {
+    pub fn new(network_type: NetworkType, url: String) -> Self {
+        Self { network_type, url }
+    }
+    pub fn mainnet() -> Self {
+        Self {
+            network_type: NetworkType::Mainnet,
+            url: "https://mainnet.ckb.dev".to_string(),
+        }
+    }
+    pub fn testnet() -> Self {
+        Self {
+            network_type: NetworkType::Testnet,
+            url: "https://testnet.ckb.dev".to_string(),
+        }
+    }
+}

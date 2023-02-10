@@ -1,4 +1,4 @@
-use std::{convert::TryInto, ptr, sync::atomic};
+use std::{convert::TryInto, ptr, str::FromStr, sync::atomic};
 
 use ckb_dao_utils::extract_dao_data;
 use ckb_types::{
@@ -152,6 +152,15 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
     hasher.update(message);
     let r = hasher.finalize();
     H256::from_slice(r.as_slice()).expect("convert_keccak256_hash")
+}
+
+pub fn parse_h256_str(input: &str) -> Result<ckb_types::H256, String> {
+    let input = if input.starts_with("0x") || input.starts_with("0X") {
+        &input[2..]
+    } else {
+        input
+    };
+    H256::from_str(input).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
