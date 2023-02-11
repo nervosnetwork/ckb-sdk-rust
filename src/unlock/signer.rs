@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, str::FromStr};
 
 use anyhow::anyhow;
 use ckb_hash::{blake2b_256, new_blake2b};
@@ -6,15 +6,20 @@ use ckb_types::{
     bytes::{Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
     error::VerificationError,
-    packed::{self, BytesOpt, WitnessArgs},
+    packed::{self, BytesOpt, Script, WitnessArgs},
     prelude::*,
     H160,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::types::{AddressPayload, CodeHashIndex, ScriptGroup, Since};
-use crate::{constants::MULTISIG_TYPE_HASH, types::omni_lock::OmniLockWitnessLock};
+use crate::{constants::MULTISIG_TYPE_HASH, types::omni_lock::OmniLockWitnessLock, NetworkType};
+use crate::{
+    constants::SIGHASH_TYPE_HASH,
+    types::{AddressPayload, CodeHashIndex, ScriptGroup, Since},
+    util::parse_hex_str,
+    Address,
+};
 use crate::{
     traits::{Signer, SignerError},
     util::convert_keccak256_hash,
@@ -134,7 +139,7 @@ impl ScriptSigner for SecpSighashScriptSigner {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Hash, Serialize, Deserialize, Debug)]
+#[derive(Eq, PartialEq, Clone, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct MultisigConfig {
     sighash_addresses: Vec<H160>,
     require_first_n: u8,
@@ -175,6 +180,50 @@ impl MultisigConfig {
         })
     }
 
+    /// build a multisig config with address list like ['cktdeadbeef', 'cktadbdef',...]
+    /// # Arguments
+    /// * `sighash_addresses`  address list in string format
+    /// * `require_first_n` require first number
+    /// * `threshold` require number
+    pub fn new_with_address<T: AsRef<str>>(
+        sighash_addresses: &[T],
+        require_first_n: u8,
+        threshold: u8,
+    ) -> Result<MultisigConfig, ScriptSignError> {
+        let mut addresses = Vec::with_capacity(sighash_addresses.len());
+        for addr in sighash_addresses {
+            let address = Address::from_str(addr.as_ref()).map_err(|e| anyhow!("{}", e))?;
+            let lock_args = address.payload().args();
+            if address.payload().code_hash(None).as_slice() != SIGHASH_TYPE_HASH.as_bytes()
+                || address.payload().hash_type() != ScriptHashType::Type
+                || lock_args.len() != 20
+            {
+                return Err(
+                    anyhow!("sighash_address {} is not sighash address", addr.as_ref()).into(),
+                );
+            }
+            addresses.push(H160::from_slice(lock_args.as_ref()).unwrap());
+        }
+        MultisigConfig::new_with(addresses, require_first_n, threshold)
+    }
+    /// build a multisig config with key hash list like ['0xdeadbeef', '0xabcdef',...]
+    /// # Arguments
+    /// * `sighash_pubhashes`  key hash list in string format
+    /// * `require_first_n` require first number
+    /// * `threshold` require number
+    pub fn new_with_hash_str<T: AsRef<str>>(
+        sighash_pubhashes: &[T],
+        require_first_n: u8,
+        threshold: u8,
+    ) -> Result<MultisigConfig, ScriptSignError> {
+        let mut hashes = Vec::with_capacity(sighash_pubhashes.len());
+        for hash_str in sighash_pubhashes {
+            let lock_args = parse_hex_str(hash_str.as_ref()).map_err(|e| anyhow!("{}", e))?;
+            hashes.push(lock_args);
+        }
+        MultisigConfig::new_with(hashes, require_first_n, threshold)
+    }
+
     pub fn contains_address(&self, target: &H160) -> bool {
         self.sighash_addresses
             .iter()
@@ -210,6 +259,30 @@ impl MultisigConfig {
         } else {
             AddressPayload::new_short(CodeHashIndex::Multisig, hash160)
         }
+    }
+
+    /// get script without since
+    pub fn to_script(&self) -> Script {
+        Script::from(&self.to_address_payload(None))
+    }
+    pub fn to_script_since(&self, since_absolute_epoch: Option<u64>) -> Script {
+        Script::from(&self.to_address_payload(since_absolute_epoch))
+    }
+    /// get script without since
+    pub fn to_address(&self, network_type: NetworkType) -> Address {
+        Address::new(network_type, self.to_address_payload(None), true)
+    }
+
+    pub fn to_address_since(
+        &self,
+        network_type: NetworkType,
+        since_absolute_epoch: Option<u64>,
+    ) -> Address {
+        Address::new(
+            network_type,
+            self.to_address_payload(since_absolute_epoch),
+            true,
+        )
     }
 
     pub fn to_witness_data(&self) -> Vec<u8> {

@@ -154,13 +154,17 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
     H256::from_slice(r.as_slice()).expect("convert_keccak256_hash")
 }
 
-pub fn parse_h256_str(input: &str) -> Result<ckb_types::H256, String> {
+pub fn parse_hex_str<T>(input: &str) -> Result<T, String>
+where
+    T: FromStr,
+    <T as FromStr>::Err: std::fmt::Display,
+{
     let input = if input.starts_with("0x") || input.starts_with("0X") {
         &input[2..]
     } else {
         input
     };
-    H256::from_str(input).map_err(|e| e.to_string())
+    T::from_str(input).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

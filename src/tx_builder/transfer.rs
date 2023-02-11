@@ -5,8 +5,17 @@ use super::{
     TxBuilder, TxBuilderError,
 };
 use crate::{
-    traits::{CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider},
-    ScriptGroup,
+    constants::{MULTISIG_TYPE_HASH, SIGHASH_TYPE_HASH},
+    traits::{
+        CellCollector, CellDepResolver, HeaderDepResolver, SecpCkbRawKeySigner,
+        TransactionDependencyProvider,
+    },
+    unlock::{
+        MultisigConfig, ScriptUnlocker, SecpMultisigScriptSigner, SecpMultisigUnlocker,
+        SecpSighashUnlocker,
+    },
+    util::parse_hex_str,
+    Address, ScriptGroup,
 };
 use crate::{types::ScriptId, NetworkInfo};
 use ckb_types::{
@@ -14,6 +23,7 @@ use ckb_types::{
     core::{TransactionBuilder, TransactionView},
     packed::CellOutput,
     prelude::*,
+    H256,
 };
 use std::ops::Deref;
 
@@ -71,6 +81,35 @@ impl DefaultCapacityTransferBuilder {
         Ok(Self {
             base_builder: BaseTransactionBuilder::new(network_info, sender)?,
         })
+    }
+
+    pub fn new_with_address(
+        network_info: NetworkInfo,
+        sender: Address,
+    ) -> Result<Self, TxBuilderError> {
+        Ok(Self {
+            base_builder: BaseTransactionBuilder::new_with_address(network_info, sender)?,
+        })
+    }
+
+    /// add a sighash unlocker with private key
+    pub fn add_unlocker_from_str(&mut self, key: &str) -> Result<(), TxBuilderError> {
+        let sender_key = parse_hex_str(key).map_err(TxBuilderError::KeyFormat)?;
+        self.add_unlocker(sender_key)
+    }
+
+    /// add a sighash unlocker with private key
+    pub fn add_unlocker(&mut self, sign_key: H256) -> Result<(), TxBuilderError> {
+        let sender_key = secp256k1::SecretKey::from_slice(sign_key.as_bytes())
+            .map_err(|e| TxBuilderError::KeyFormat(e.to_string()))?;
+        let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_key]);
+        let sighash_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+        let sighash_script_id = ScriptId::new_type(SIGHASH_TYPE_HASH.clone());
+        self.unlockers.insert(
+            sighash_script_id,
+            Box::new(sighash_unlocker) as Box<dyn ScriptUnlocker>,
+        );
+        Ok(())
     }
 }
 
@@ -135,5 +174,81 @@ impl CkbTransactionBuilder for DefaultCapacityTransferBuilder {
             &self.base_builder.balancer,
             &self.base_builder.unlockers,
         )
+    }
+}
+
+pub struct DefaultMultisigCapacityTransferBuilder {
+    pub base_builder: DefaultCapacityTransferBuilder,
+    multisig_config: MultisigConfig,
+}
+
+impl DefaultMultisigCapacityTransferBuilder {
+    pub fn new_with_config(
+        network_info: NetworkInfo,
+        multisig_config: MultisigConfig,
+    ) -> Result<Self, TxBuilderError> {
+        let sender_addr = multisig_config.to_address(network_info.network_type);
+        let mut base_builder =
+            DefaultCapacityTransferBuilder::new_with_address(network_info, sender_addr)?;
+        base_builder.set_sender_placeholder_witness(multisig_config.placeholder_witness());
+        Ok(Self {
+            base_builder,
+            multisig_config,
+        })
+    }
+
+    /// add a multisig unlocker with private keys
+    pub fn add_unlocker_from_str<T: AsRef<str>>(
+        &mut self,
+        keys: &[T],
+    ) -> Result<(), TxBuilderError> {
+        let mut sign_keys = vec![];
+        for key in keys.iter() {
+            let sender_key = parse_hex_str(key.as_ref()).map_err(TxBuilderError::KeyFormat)?;
+            sign_keys.push(sender_key);
+        }
+        self.add_unlocker(sign_keys)
+    }
+
+    /// add a multisig unlocker with private keys
+    pub fn add_unlocker(&mut self, sign_keys: Vec<H256>) -> Result<(), TxBuilderError> {
+        let mut secrect_keys = vec![];
+        for key in sign_keys.iter() {
+            let sender_key = secp256k1::SecretKey::from_slice(key.as_bytes())
+                .map_err(|e| TxBuilderError::KeyFormat(e.to_string()))?;
+            secrect_keys.push(sender_key);
+        }
+        self.add_unlocker_from_secrect_keys(secrect_keys)
+    }
+    /// add
+    pub fn add_unlocker_from_secrect_keys(
+        &mut self,
+        secrect_keys: Vec<secp256k1::SecretKey>,
+    ) -> Result<(), TxBuilderError> {
+        let signer = SecpCkbRawKeySigner::new_with_secret_keys(secrect_keys);
+        let multisig_signer =
+            SecpMultisigScriptSigner::new(Box::new(signer), self.multisig_config.clone());
+        let multisig_unlocker = SecpMultisigUnlocker::new(multisig_signer);
+        let multisig_script_id = ScriptId::new_type(MULTISIG_TYPE_HASH.clone());
+
+        self.unlockers.insert(
+            multisig_script_id,
+            Box::new(multisig_unlocker) as Box<dyn ScriptUnlocker>,
+        );
+        Ok(())
+    }
+}
+
+impl Deref for DefaultMultisigCapacityTransferBuilder {
+    type Target = DefaultCapacityTransferBuilder;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base_builder
+    }
+}
+
+impl DerefMut for DefaultMultisigCapacityTransferBuilder {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base_builder
     }
 }

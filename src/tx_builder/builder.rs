@@ -1,10 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
-use crate::constants::SIGHASH_TYPE_HASH;
-use crate::traits::SecpCkbRawKeySigner;
-use crate::unlock::SecpSighashUnlocker;
-use crate::util::parse_h256_str;
 use crate::ScriptGroup;
 use crate::{
     rpc::CkbRpcClient,
@@ -66,6 +62,16 @@ impl BaseTransactionBuilder {
         network_info: NetworkInfo,
         sender_addr: &str,
     ) -> Result<BaseTransactionBuilder, TxBuilderError> {
+        let sender_address =
+            Address::from_str(sender_addr).map_err(TxBuilderError::AddressFormat)?;
+
+        Self::new_with_address(network_info, sender_address)
+    }
+
+    pub fn new_with_address(
+        network_info: NetworkInfo,
+        sender_address: Address,
+    ) -> Result<BaseTransactionBuilder, TxBuilderError> {
         let mut ckb_client = CkbRpcClient::new(network_info.url.as_str());
         let cell_dep_resolver = {
             let genesis_block = ckb_client.get_block_by_number(0.into())?.unwrap();
@@ -78,8 +84,6 @@ impl BaseTransactionBuilder {
             .lock(Some(Bytes::from(vec![0u8; 65])).pack())
             .build();
 
-        let sender_address =
-            Address::from_str(sender_addr).map_err(TxBuilderError::AddressFormat)?;
         let sender = sender_address.payload().into();
         let balancer = CapacityBalancer::new_simple(sender, placeholder_witness, 1000);
         Ok(Self {
@@ -160,29 +164,14 @@ impl BaseTransactionBuilder {
             .set_witness(script, placeholder_witness);
     }
 
+    pub fn set_sender_placeholder_witness(&mut self, placeholder_witness: WitnessArgs) {
+        let script = Script::from(&self.sender);
+        self.set_placeholder_witness(script, placeholder_witness);
+    }
+
     /// clear the change lock script, so it will use the sender's according script.
     pub fn clear_change_lock_script(&mut self) {
         self.balancer.change_lock_script = None;
-    }
-
-    /// add a sighash unlocker with private key
-    pub fn add_sighash_unlocker_from_str(&mut self, key: &str) -> Result<(), TxBuilderError> {
-        let sender_key = parse_h256_str(key).map_err(TxBuilderError::KeyFormat)?;
-        self.add_sighash_unlocker(sender_key)
-    }
-
-    /// add a sighash unlocker with private key
-    pub fn add_sighash_unlocker(&mut self, sign_key: H256) -> Result<(), TxBuilderError> {
-        let sender_key = secp256k1::SecretKey::from_slice(sign_key.as_bytes())
-            .map_err(|e| TxBuilderError::KeyFormat(e.to_string()))?;
-        let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_key]);
-        let sighash_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
-        let sighash_script_id = ScriptId::new_type(SIGHASH_TYPE_HASH.clone());
-        self.unlockers.insert(
-            sighash_script_id,
-            Box::new(sighash_unlocker) as Box<dyn ScriptUnlocker>,
-        );
-        Ok(())
     }
 
     /// add a built unlocker
