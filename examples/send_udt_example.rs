@@ -16,9 +16,15 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let mut builder =
         DefaultUdtTransferBuilder::new(network_info, sender, owner_lock_script_hash).unwrap();
     builder.add_sudt_output_str(receiver, 1).unwrap();
+
+    // if receiver already have a cell, then can update to save ckb.
+    // builder.add_update_sudt_output_str(receiver, 1).unwrap();
+
+    // if sender and receiver are not the same address, and called function `add_update_sudt_output_str`, 2 keys must be provided
+    // to unlock 2 cells, one is the sender's cell, the other is the receiver's cell that to be updated.
     builder
         .add_sighash_unlocker_from_str(
-            "0x0c982052ffd4af5f3bbf232301dcddf468009161fc48ba1426e3ce0929fb59f8",
+            &["0x0c982052ffd4af5f3bbf232301dcddf468009161fc48ba1426e3ce0929fb59f8"],
         )
         .unwrap();
 

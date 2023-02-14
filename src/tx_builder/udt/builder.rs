@@ -3,7 +3,7 @@ use ckb_types::{core::TransactionView, H256};
 use crate::{
     constants::{SUDT_CODE_HASH_MAINNET, SUDT_CODE_HASH_TESTNET},
     tx_builder::{
-        builder::{BaseTransactionBuilder, CkbTransactionBuilder},
+        builder::{impl_default_builder, BaseTransactionBuilder, CkbTransactionBuilder},
         TxBuilderError,
     },
     unlock::{ScriptUnlocker, SecpSighashUnlocker},
@@ -108,75 +108,12 @@ impl From<&DefaultUdtIssueBuilder> for UdtIssueBuilder {
         }
     }
 }
-
-impl Deref for DefaultUdtIssueBuilder {
-    type Target = BaseTransactionBuilder;
-
-    fn deref(&self) -> &Self::Target {
-        &self.base_builder
-    }
-}
-
-impl DerefMut for DefaultUdtIssueBuilder {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base_builder
-    }
-}
-
-impl CkbTransactionBuilder for DefaultUdtIssueBuilder {
-    fn build_base(&mut self) -> Result<TransactionView, TxBuilderError> {
-        let builder = UdtIssueBuilder::from(&*self);
-        builder.build_base(
-            self.base_builder.cell_collector.as_mut(),
-            self.base_builder.cell_dep_resolver.as_ref(),
-            self.base_builder.header_dep_resolver.as_ref(),
-            self.base_builder.tx_dep_provider.as_ref(),
-        )
-    }
-
-    fn build_balanced(&mut self) -> Result<TransactionView, TxBuilderError> {
-        let builder = UdtIssueBuilder::from(&*self);
-        builder.build_balanced(
-            self.base_builder.cell_collector.as_mut(),
-            self.base_builder.cell_dep_resolver.as_ref(),
-            self.base_builder.header_dep_resolver.as_ref(),
-            self.base_builder.tx_dep_provider.as_ref(),
-            &self.base_builder.balancer,
-            &self.base_builder.unlockers,
-        )
-    }
-
-    fn build_unlocked(&mut self) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
-        let builder = UdtIssueBuilder::from(&*self);
-        builder.build_unlocked(
-            self.base_builder.cell_collector.as_mut(),
-            self.base_builder.cell_dep_resolver.as_ref(),
-            self.base_builder.header_dep_resolver.as_ref(),
-            self.base_builder.tx_dep_provider.as_ref(),
-            &self.base_builder.balancer,
-            &self.base_builder.unlockers,
-        )
-    }
-
-    fn build_balance_unlocked(
-        &mut self,
-    ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
-        let builder = UdtIssueBuilder::from(&*self);
-        builder.build_balance_unlocked(
-            self.base_builder.cell_collector.as_mut(),
-            self.base_builder.cell_dep_resolver.as_ref(),
-            self.base_builder.header_dep_resolver.as_ref(),
-            self.base_builder.tx_dep_provider.as_ref(),
-            &self.base_builder.balancer,
-            &self.base_builder.unlockers,
-        )
-    }
-}
+impl_default_builder!(DefaultUdtIssueBuilder, UdtIssueBuilder);
 
 pub struct DefaultUdtTransferBuilder {
     pub base_builder: BaseTransactionBuilder,
     /// list of receiver's address and amount tuples
-    pub receivers: Vec<(Address, u128)>,
+    pub receivers: Vec<(TransferAction, Address, u128)>,
     pub type_script: Script,
 }
 
@@ -233,17 +170,41 @@ impl DefaultUdtTransferBuilder {
     }
 
     pub fn add_sudt_output(&mut self, address: Address, amount: u128) {
-        self.receivers.push((address, amount));
+        self.receivers
+            .push((TransferAction::Create, address, amount));
     }
 
-    pub fn add_sighash_unlocker_from_str(&mut self, key: &str) -> Result<(), TxBuilderError> {
-        let sender_key = parse_hex_str(key).map_err(TxBuilderError::KeyFormat)?;
-        self.add_sighash_unlocker(sender_key)
+    pub fn add_update_sudt_output_str(
+        &mut self,
+        receiver: &str,
+        amount: u128,
+    ) -> Result<(), TxBuilderError> {
+        let receiver_addr = Address::from_str(receiver).map_err(TxBuilderError::AddressFormat)?;
+        self.add_update_sudt_output(receiver_addr, amount);
+        Ok(())
+    }
+
+    pub fn add_update_sudt_output(&mut self, address: Address, amount: u128) {
+        self.receivers
+            .push((TransferAction::Update, address, amount));
+    }
+
+    pub fn add_sighash_unlocker_from_str<T: AsRef<str>>(
+        &mut self,
+        keys: &[T],
+    ) -> Result<(), TxBuilderError> {
+        let mut sign_keys = Vec::with_capacity(keys.len());
+        for key in keys.iter() {
+            let sender_key: H256 =
+                parse_hex_str(key.as_ref()).map_err(TxBuilderError::KeyFormat)?;
+            sign_keys.push(sender_key);
+        }
+        self.add_sighash_unlocker(&sign_keys)
     }
 
     /// add a sighash unlocker with private key
-    pub fn add_sighash_unlocker(&mut self, sign_key: H256) -> Result<(), TxBuilderError> {
-        let sighash_unlocker = SecpSighashUnlocker::new_with_secret_h256(&[sign_key])
+    pub fn add_sighash_unlocker(&mut self, sign_keys: &[H256]) -> Result<(), TxBuilderError> {
+        let sighash_unlocker = SecpSighashUnlocker::new_with_secret_h256(sign_keys)
             .map_err(|e| TxBuilderError::KeyFormat(e.to_string()))?;
         let sighash_script_id = SecpSighashUnlocker::script_id();
         self.unlockers.insert(
@@ -260,9 +221,9 @@ impl From<&DefaultUdtTransferBuilder> for UdtTransferBuilder {
         let receivers = val
             .receivers
             .iter()
-            .map(|(address, amount)| {
+            .map(|(action, address, amount)| {
                 let receiver_script = Script::from(address);
-                UdtTargetReceiver::new(TransferAction::Create, receiver_script, *amount)
+                UdtTargetReceiver::new(*action, receiver_script, *amount)
             })
             .collect();
         UdtTransferBuilder {
@@ -273,66 +234,4 @@ impl From<&DefaultUdtTransferBuilder> for UdtTransferBuilder {
     }
 }
 
-impl Deref for DefaultUdtTransferBuilder {
-    type Target = BaseTransactionBuilder;
-
-    fn deref(&self) -> &Self::Target {
-        &self.base_builder
-    }
-}
-
-impl DerefMut for DefaultUdtTransferBuilder {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base_builder
-    }
-}
-
-impl CkbTransactionBuilder for DefaultUdtTransferBuilder {
-    fn build_base(&mut self) -> Result<TransactionView, TxBuilderError> {
-        let builder = UdtTransferBuilder::from(&*self);
-        builder.build_base(
-            self.base_builder.cell_collector.as_mut(),
-            self.base_builder.cell_dep_resolver.as_ref(),
-            self.base_builder.header_dep_resolver.as_ref(),
-            self.base_builder.tx_dep_provider.as_ref(),
-        )
-    }
-
-    fn build_balanced(&mut self) -> Result<TransactionView, TxBuilderError> {
-        let builder = UdtTransferBuilder::from(&*self);
-        builder.build_balanced(
-            self.base_builder.cell_collector.as_mut(),
-            self.base_builder.cell_dep_resolver.as_ref(),
-            self.base_builder.header_dep_resolver.as_ref(),
-            self.base_builder.tx_dep_provider.as_ref(),
-            &self.base_builder.balancer,
-            &self.base_builder.unlockers,
-        )
-    }
-
-    fn build_unlocked(&mut self) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
-        let builder = UdtTransferBuilder::from(&*self);
-        builder.build_unlocked(
-            self.base_builder.cell_collector.as_mut(),
-            self.base_builder.cell_dep_resolver.as_ref(),
-            self.base_builder.header_dep_resolver.as_ref(),
-            self.base_builder.tx_dep_provider.as_ref(),
-            &self.base_builder.balancer,
-            &self.base_builder.unlockers,
-        )
-    }
-
-    fn build_balance_unlocked(
-        &mut self,
-    ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
-        let builder = UdtTransferBuilder::from(&*self);
-        builder.build_balance_unlocked(
-            self.base_builder.cell_collector.as_mut(),
-            self.base_builder.cell_dep_resolver.as_ref(),
-            self.base_builder.header_dep_resolver.as_ref(),
-            self.base_builder.tx_dep_provider.as_ref(),
-            &self.base_builder.balancer,
-            &self.base_builder.unlockers,
-        )
-    }
-}
+impl_default_builder!(DefaultUdtTransferBuilder, UdtTransferBuilder);

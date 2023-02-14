@@ -28,6 +28,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
 
     println!("unsigned_group len:{}", unsigned_group.len());
     let tx_hash = builder.send_transaction(tx)?;
+    // example tx_hash : fde89b677ac4d44f7ddc67b52a12080ebdaf3ccb28ed04f408beedfe1b7b6362
     println!("tx {} sent", tx_hash);
     Ok(())
 }

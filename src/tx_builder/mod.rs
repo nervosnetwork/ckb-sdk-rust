@@ -213,7 +213,7 @@ pub trait TxBuilder {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub enum TransferAction {
     /// This action will crate a new cell, typecial lock script: cheque, sighash, multisig
     Create,
