@@ -29,6 +29,9 @@ impl CellDepResolver for OffchainCellDepResolver {
             .get(&script_id)
             .map(|(cell_dep, _)| cell_dep.clone())
     }
+    fn insert(&mut self, script_id: ScriptId, cell_dep: CellDep) {
+        self.items.insert(script_id, (cell_dep, String::new()));
+    }
 }
 
 #[derive(Default, Clone)]

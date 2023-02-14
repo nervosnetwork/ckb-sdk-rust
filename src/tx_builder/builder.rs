@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
+use crate::util::parse_hex_str;
 use crate::ScriptGroup;
 use crate::{
     rpc::CkbRpcClient,
@@ -15,6 +16,7 @@ use crate::{
 };
 use ckb_jsonrpc_types as json_types;
 use ckb_types::core::TransactionView;
+use ckb_types::packed::{Byte32, OutPoint};
 use ckb_types::H256;
 use ckb_types::{
     bytes::Bytes,
@@ -172,6 +174,33 @@ impl BaseTransactionBuilder {
     /// clear the change lock script, so it will use the sender's according script.
     pub fn clear_change_lock_script(&mut self) {
         self.balancer.change_lock_script = None;
+    }
+
+    /// insert a cell cep to cell_dep_resolver
+    pub fn insert_resolv_cell_dep(&mut self, code_hash: H256, tx_hash: H256, index: u32) {
+        let out_point = OutPoint::new(Byte32::from_slice(tx_hash.as_bytes()).unwrap(), index);
+        let cell_dep = CellDep::new_builder().out_point(out_point).build();
+        let script_id = ScriptId::new_type(code_hash);
+
+        self.cell_dep_resolver.insert(script_id, cell_dep);
+    }
+
+    /// insert a cell cep to cell_dep_resolver
+    pub fn insert_resolv_cell_dep_str(
+        &mut self,
+        code_hash: &str,
+        tx_hash: &str,
+        index: u32,
+    ) -> Result<(), TxBuilderError> {
+        let code_hash: H256 = parse_hex_str(code_hash).map_err(TxBuilderError::KeyFormat)?;
+        let tx_hash: H256 = parse_hex_str(tx_hash).map_err(TxBuilderError::KeyFormat)?;
+
+        let out_point = OutPoint::new(Byte32::from_slice(tx_hash.as_bytes()).unwrap(), index);
+        let cell_dep = CellDep::new_builder().out_point(out_point).build();
+        let script_id = ScriptId::new_type(code_hash);
+
+        self.cell_dep_resolver.insert(script_id, cell_dep);
+        Ok(())
     }
 
     /// add a built unlocker

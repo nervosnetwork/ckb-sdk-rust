@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::constants::TYPE_ID_CODE_HASH;
+use crate::{constants::TYPE_ID_CODE_HASH, Address};
 use ckb_types::{core::ScriptHashType, packed::Script, prelude::*, H256};
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug, Default)]
@@ -46,6 +46,13 @@ impl From<&Script> for ScriptId {
             code_hash,
             hash_type,
         }
+    }
+}
+
+impl From<&Address> for ScriptId {
+    fn from(address: &Address) -> ScriptId {
+        let script: Script = Script::from(address);
+        ScriptId::from(&script)
     }
 }
 

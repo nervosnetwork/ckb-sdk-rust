@@ -1,26 +1,34 @@
-mod sudt;
+mod builder;
 
 use anyhow::anyhow;
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     core::{Capacity, TransactionBuilder, TransactionView},
-    packed::{Byte32, CellDep, CellInput, CellOutput, Script},
+    h256,
+    packed::{Byte32, CellDep, CellInput, CellOutput, OutPoint, Script},
     prelude::*,
 };
 use std::collections::HashSet;
 
 use super::{TransferAction, TxBuilder, TxBuilderError};
-use crate::traits::{
-    CellCollector, CellDepResolver, CellQueryOptions, HeaderDepResolver,
-    TransactionDependencyProvider, ValueRangeOption,
-};
 use crate::types::ScriptId;
+use crate::{
+    constants,
+    traits::{
+        CellCollector, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+        TransactionDependencyProvider, ValueRangeOption,
+    },
+    NetworkType,
+};
+
+pub use builder::DefaultUdtIssueBuilder;
 
 /// The udt type
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum UdtType {
     Sudt,
     /// The parameter is <xudt args> (NOTE: xudt is current not supported, this variant is for future support)
+    /// The tuple data is for extra parameters after lock code hash for type script.
     Xudt(Bytes),
 }
 
@@ -43,6 +51,28 @@ impl UdtType {
     }
 }
 
+/// Add default sudt cell dependencies, the dependent cells are metioned in the RFC.
+pub fn add_default_sudt_dep(dep_resolver: &mut dyn CellDepResolver, net_work_type: NetworkType) {
+    let (code_hash, tx_hash) = if net_work_type == NetworkType::Mainnet {
+        (
+            constants::SUDT_CODE_HASH_MAINNET,
+            h256!("0xc7813f6a415144643970c2e88e0bb6ca6a8edc5dd7c1022746f628284a9936d5"),
+        )
+    } else if net_work_type == NetworkType::Testnet {
+        (
+            constants::SUDT_CODE_HASH_TESTNET,
+            h256!("0xe12877ebd2c3c364dc46c5c992bcfaf4fee33fa13eebdf82c591fc9825aab769"),
+        )
+    } else {
+        return;
+    };
+
+    let out_point = OutPoint::new(Byte32::from_slice(tx_hash.as_bytes()).unwrap(), 0u32);
+    let cell_dep = CellDep::new_builder().out_point(out_point).build();
+    let script_id = ScriptId::new_type(code_hash);
+    dep_resolver.insert(script_id, cell_dep);
+}
+
 /// The udt issue/transfer receiver
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct UdtTargetReceiver {
@@ -58,7 +88,8 @@ pub struct UdtTargetReceiver {
     /// The amount to issue/transfer
     pub amount: u128,
 
-    /// Only for <xudt data> and only used when action == TransferAction::Create
+    /// Only for <xudt data> and only used when action == TransferAction::Create,
+    /// It's data after amount in output data.
     pub extra_data: Option<Bytes>,
 }
 
@@ -76,6 +107,22 @@ impl UdtTargetReceiver {
             capacity: None,
             amount,
             extra_data: None,
+        }
+    }
+
+    /// Create a TransferAction::Create UdtTargetReceiver receiver,
+    pub fn new_with_create_action(
+        lock_script: Script,
+        amount: u128,
+        capacity: Option<u64>,
+        extra_data: Option<Bytes>,
+    ) -> UdtTargetReceiver {
+        UdtTargetReceiver {
+            action: TransferAction::Create,
+            lock_script,
+            capacity,
+            amount,
+            extra_data,
         }
     }
 

@@ -4,6 +4,7 @@ use ckb_types::{
     core::TransactionView,
     packed::{self, Byte32, BytesOpt, WitnessArgs},
     prelude::*,
+    H256,
 };
 use thiserror::Error;
 
@@ -15,8 +16,15 @@ use super::{
     },
     OmniLockConfig, OmniLockScriptSigner, OmniUnlockMode,
 };
-use crate::traits::{Signer, TransactionDependencyError, TransactionDependencyProvider};
 use crate::types::ScriptGroup;
+use crate::{
+    constants::SIGHASH_TYPE_HASH,
+    traits::{
+        default_impls::SecpCkbRawKeySignerError, SecpCkbRawKeySigner, Signer,
+        TransactionDependencyError, TransactionDependencyProvider,
+    },
+    ScriptId,
+};
 
 const CHEQUE_CLAIM_SINCE: u64 = 0;
 const CHEQUE_WITHDRAW_SINCE: u64 = 0xA000000000000006;
@@ -139,6 +147,22 @@ pub struct SecpSighashUnlocker {
 impl SecpSighashUnlocker {
     pub fn new(signer: SecpSighashScriptSigner) -> SecpSighashUnlocker {
         SecpSighashUnlocker { signer }
+    }
+    pub fn new_with_secret_h256(sign_key: &[H256]) -> Result<Self, SecpCkbRawKeySignerError> {
+        let signer = SecpCkbRawKeySigner::new_with_secret_h256(sign_key)?;
+        let sighash_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+        Ok(sighash_unlocker)
+    }
+
+    pub fn new_with_secret_strs<T: AsRef<str>>(
+        sign_key: &[T],
+    ) -> Result<Self, SecpCkbRawKeySignerError> {
+        let signer = SecpCkbRawKeySigner::new_with_secret_strs(sign_key)?;
+        let sighash_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+        Ok(sighash_unlocker)
+    }
+    pub fn script_id() -> ScriptId {
+        ScriptId::new_type(SIGHASH_TYPE_HASH.clone())
     }
 }
 impl From<Box<dyn Signer>> for SecpSighashUnlocker {

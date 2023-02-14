@@ -47,6 +47,13 @@ pub const ACP_TYPE_HASH_LINA: H256 =
 pub const ACP_TYPE_HASH_AGGRON: H256 =
     h256!("0x3419a1c09eb2567f6552ee7a8ecffd64155cffe0f1796e6e61ec088d740c1356");
 
+/// A SUDT implementation metioned in the RFC:
+/// https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0025-simple-udt/0025-simple-udt.md
+pub const SUDT_CODE_HASH_MAINNET: H256 =
+    h256!("0x5e7a36a77e68eecc013dfa2fe6a23f3b6c344b04005808694ae6dd45eea4cfd5");
+pub const SUDT_CODE_HASH_TESTNET: H256 =
+    h256!("0xc5e5dcf215925f7ef4dfaf5f4b4f105bc321c02776d6e7d52a1db3fcd9d011a4");
+
 /// cheque withdraw since value
 pub const CHEQUE_CELL_SINCE: u64 = 0xA000000000000006;
 

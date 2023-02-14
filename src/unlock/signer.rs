@@ -8,12 +8,17 @@ use ckb_types::{
     error::VerificationError,
     packed::{self, BytesOpt, Script, WitnessArgs},
     prelude::*,
-    H160,
+    H160, H256,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{constants::MULTISIG_TYPE_HASH, types::omni_lock::OmniLockWitnessLock, NetworkType};
+use crate::{
+    constants::MULTISIG_TYPE_HASH,
+    traits::{default_impls::SecpCkbRawKeySignerError, SecpCkbRawKeySigner},
+    types::omni_lock::OmniLockWitnessLock,
+    NetworkType,
+};
 use crate::{
     constants::SIGHASH_TYPE_HASH,
     types::{AddressPayload, CodeHashIndex, ScriptGroup, Since},
@@ -81,6 +86,28 @@ pub struct SecpSighashScriptSigner {
 impl SecpSighashScriptSigner {
     pub fn new(signer: Box<dyn Signer>) -> SecpSighashScriptSigner {
         SecpSighashScriptSigner { signer }
+    }
+
+    /// create a instance with a list of keys, use SecpCkbRawKeySigner
+    /// # Arguments
+    /// * `keys` - h256 keys in hex encode string format, 0x-prefixed or not
+    pub fn new_with_secret_strs<T: AsRef<str>>(
+        keys: &[T],
+    ) -> Result<Self, SecpCkbRawKeySignerError> {
+        let signer = SecpCkbRawKeySigner::new_with_secret_strs(keys)?;
+        Ok(Self {
+            signer: Box::new(signer),
+        })
+    }
+
+    /// create a instance with a list of keys, use SecpCkbRawKeySigner
+    /// # Arguments
+    /// * `keys` - h256 keys
+    pub fn new_with_secret_h256(keys: &[H256]) -> Result<Self, SecpCkbRawKeySignerError> {
+        let signer = SecpCkbRawKeySigner::new_with_secret_h256(keys)?;
+        Ok(Self {
+            signer: Box::new(signer),
+        })
     }
 
     pub fn signer(&self) -> &dyn Signer {
@@ -324,6 +351,31 @@ impl SecpMultisigScriptSigner {
             config_hash,
         }
     }
+
+    /// create a instance with a list of keys, use SecpCkbRawKeySigner
+    /// # Arguments
+    /// * `keys` - h256 keys in hex encode string format, 0x-prefixed or not
+    /// * `config` - multisig config
+    pub fn new_with_secret_strs<T: AsRef<str>>(
+        keys: &[T],
+        config: MultisigConfig,
+    ) -> Result<Self, SecpCkbRawKeySignerError> {
+        let signer = SecpCkbRawKeySigner::new_with_secret_strs(keys)?;
+        Ok(Self::new(Box::new(signer), config))
+    }
+
+    /// create a instance with a list of keys, use SecpCkbRawKeySigner
+    /// # Arguments
+    /// * `keys` - h256 keys
+    /// * `config` - multisig config
+    pub fn new_with_secret_h256(
+        keys: &[H256],
+        config: MultisigConfig,
+    ) -> Result<Self, SecpCkbRawKeySignerError> {
+        let signer = SecpCkbRawKeySigner::new_with_secret_h256(keys)?;
+        Ok(Self::new(Box::new(signer), config))
+    }
+
     pub fn signer(&self) -> &dyn Signer {
         self.signer.as_ref()
     }

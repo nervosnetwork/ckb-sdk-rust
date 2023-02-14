@@ -1,4 +1,7 @@
-use std::{collections::HashSet, ops::DerefMut};
+use std::{
+    collections::HashSet,
+    ops::{Deref, DerefMut},
+};
 
 use super::{
     builder::{BaseTransactionBuilder, CkbTransactionBuilder},
@@ -25,7 +28,6 @@ use ckb_types::{
     prelude::*,
     H256,
 };
-use std::ops::Deref;
 
 /// A builder to build a transaction simply transfer capcity to an address. It
 /// will resolve the type script's cell_dep if given.
@@ -93,13 +95,13 @@ impl DefaultCapacityTransferBuilder {
     }
 
     /// add a sighash unlocker with private key
-    pub fn add_unlocker_from_str(&mut self, key: &str) -> Result<(), TxBuilderError> {
+    pub fn add_sighash_unlocker_from_str(&mut self, key: &str) -> Result<(), TxBuilderError> {
         let sender_key = parse_hex_str(key).map_err(TxBuilderError::KeyFormat)?;
-        self.add_unlocker(sender_key)
+        self.add_sighash_unlocker(sender_key)
     }
 
     /// add a sighash unlocker with private key
-    pub fn add_unlocker(&mut self, sign_key: H256) -> Result<(), TxBuilderError> {
+    pub fn add_sighash_unlocker(&mut self, sign_key: H256) -> Result<(), TxBuilderError> {
         let sender_key = secp256k1::SecretKey::from_slice(sign_key.as_bytes())
             .map_err(|e| TxBuilderError::KeyFormat(e.to_string()))?;
         let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_key]);

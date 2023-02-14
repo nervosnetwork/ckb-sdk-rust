@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::anyhow;
 use ckb_crypto::secp::Pubkey;
@@ -16,14 +15,13 @@ use ckb_types::{
     core::{BlockView, DepType, HeaderView, TransactionView},
     packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction, TransactionReader},
     prelude::*,
-    H160,
+    H160, H256,
 };
 
 use super::{
     offchain_impls::CollectResult, OffchainCellCollector, OffchainCellDepResolver,
     OffchainTransactionDependencyProvider,
 };
-use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
 use crate::rpc::{CkbRpcClient, IndexerRpcClient};
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
@@ -39,6 +37,10 @@ use crate::{
         MULTISIG_TYPE_HASH, SIGHASH_GROUP_OUTPUT_LOC, SIGHASH_OUTPUT_LOC, SIGHASH_TYPE_HASH,
     },
     util::keccak160,
+};
+use crate::{
+    rpc::ckb_indexer::{Order, SearchKey, Tip},
+    util::parse_hex_str,
 };
 use ckb_resource::{
     CODE_HASH_DAO, CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
@@ -199,6 +201,10 @@ impl DefaultCellDepResolver {
 impl CellDepResolver for DefaultCellDepResolver {
     fn resolve(&self, script: &Script) -> Option<CellDep> {
         self.offchain.resolve(script)
+    }
+
+    fn insert(&mut self, script_id: ScriptId, cell_dep: CellDep) {
+        self.offchain.insert(script_id, cell_dep);
     }
 }
 
@@ -552,6 +558,14 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
     }
 }
 
+#[derive(Error, Debug)]
+pub enum SecpCkbRawKeySignerError {
+    #[error("Invalid hex string: `{0}")]
+    InvalidHexString(String),
+    #[error(transparent)]
+    SecrectKey(#[from] secp256k1::Error),
+}
+
 /// A signer use secp256k1 raw key, the id is `blake160(pubkey)`.
 #[derive(Default, Clone)]
 pub struct SecpCkbRawKeySigner {
@@ -569,6 +583,36 @@ impl SecpCkbRawKeySigner {
         }
         signer
     }
+
+    /// create a instance with a list of keys.
+    /// # Arguments
+    /// * `keys` - h256 keys in hex encode string format
+    pub fn new_with_secret_strs<T: AsRef<str>>(
+        keys: &[T],
+    ) -> Result<SecpCkbRawKeySigner, SecpCkbRawKeySignerError> {
+        let mut secrect_keys = Vec::with_capacity(keys.len());
+        for key in keys.iter() {
+            let key_bytes: H256 =
+                parse_hex_str(key.as_ref()).map_err(SecpCkbRawKeySignerError::InvalidHexString)?;
+            secrect_keys.push(key_bytes);
+        }
+        Self::new_with_secret_h256(&secrect_keys)
+    }
+
+    /// create a instance with a list of keys.
+    /// # Arguments
+    /// * `keys` - h256 keys
+    pub fn new_with_secret_h256(
+        keys: &[H256],
+    ) -> Result<SecpCkbRawKeySigner, SecpCkbRawKeySignerError> {
+        let mut secrect_keys = Vec::with_capacity(keys.len());
+        for key in keys.iter() {
+            let secrrect_key = secp256k1::SecretKey::from_slice(key.as_bytes())?;
+            secrect_keys.push(secrrect_key);
+        }
+        Ok(Self::new_with_secret_keys(secrect_keys))
+    }
+
     pub fn add_secret_key(&mut self, key: secp256k1::SecretKey) {
         let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
         let hash160 = H160::from_slice(&blake2b_256(&pubkey.serialize()[..])[0..20])
