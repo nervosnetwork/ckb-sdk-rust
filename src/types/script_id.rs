@@ -2,7 +2,12 @@ use std::convert::TryFrom;
 use std::fmt;
 
 use crate::{constants::TYPE_ID_CODE_HASH, Address};
-use ckb_types::{core::ScriptHashType, packed::Script, prelude::*, H256};
+use ckb_types::{
+    core::ScriptHashType,
+    packed::{Bytes, Script},
+    prelude::*,
+    H256,
+};
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug, Default)]
 pub struct ScriptId {
@@ -34,6 +39,14 @@ impl ScriptId {
         Script::new_builder()
             .code_hash(self.code_hash.pack())
             .hash_type(self.hash_type.into())
+            .build()
+    }
+
+    pub fn build_script(&self, args: Bytes) -> Script {
+        Script::new_builder()
+            .code_hash(self.code_hash.pack())
+            .hash_type(self.hash_type.into())
+            .args(args)
             .build()
     }
 }

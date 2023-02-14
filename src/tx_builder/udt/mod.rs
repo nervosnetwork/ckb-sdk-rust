@@ -21,7 +21,7 @@ use crate::{
     NetworkType,
 };
 
-pub use builder::DefaultUdtIssueBuilder;
+pub use builder::{DefaultUdtIssueBuilder, DefaultUdtTransferBuilder};
 
 /// The udt type
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
