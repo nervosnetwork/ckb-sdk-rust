@@ -1,3 +1,4 @@
+mod builder;
 use std::collections::HashSet;
 
 use anyhow::anyhow;
@@ -15,6 +16,8 @@ use crate::traits::{
 };
 use crate::types::{Since, SinceType};
 use crate::util::{calculate_dao_maximum_withdraw4, minimal_unlock_point};
+
+pub use builder::DefaultDaoDepositBuilder;
 
 /// Deposit target
 #[derive(Debug, Clone)]

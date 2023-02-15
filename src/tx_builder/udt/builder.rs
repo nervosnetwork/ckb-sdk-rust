@@ -161,10 +161,11 @@ impl DefaultUdtTransferBuilder {
 
     pub fn add_sudt_output_str(
         &mut self,
-        receiver: &str,
+        receiver_addr: &str,
         amount: u128,
     ) -> Result<(), TxBuilderError> {
-        let receiver_addr = Address::from_str(receiver).map_err(TxBuilderError::AddressFormat)?;
+        let receiver_addr =
+            Address::from_str(receiver_addr).map_err(TxBuilderError::AddressFormat)?;
         self.add_sudt_output(receiver_addr, amount);
         Ok(())
     }

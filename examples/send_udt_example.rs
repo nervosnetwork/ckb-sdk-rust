@@ -23,9 +23,9 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     // if sender and receiver are not the same address, and called function `add_update_sudt_output_str`, 2 keys must be provided
     // to unlock 2 cells, one is the sender's cell, the other is the receiver's cell that to be updated.
     builder
-        .add_sighash_unlocker_from_str(
-            &["0x0c982052ffd4af5f3bbf232301dcddf468009161fc48ba1426e3ce0929fb59f8"],
-        )
+        .add_sighash_unlocker_from_str(&[
+            "0x0c982052ffd4af5f3bbf232301dcddf468009161fc48ba1426e3ce0929fb59f8",
+        ])
         .unwrap();
 
     let (tx, unsigned_group) = builder.build_balance_unlocked().unwrap();

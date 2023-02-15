@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::{
-    builder::{BaseTransactionBuilder, CkbTransactionBuilder, impl_default_builder},
+    builder::{impl_default_builder, BaseTransactionBuilder, CkbTransactionBuilder},
     TxBuilder, TxBuilderError,
 };
 use crate::{
