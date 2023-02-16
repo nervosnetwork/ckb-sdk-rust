@@ -2,11 +2,11 @@ use ckb_types::core::TransactionView;
 
 use crate::{
     constants::{SUDT_CODE_HASH_MAINNET, SUDT_CODE_HASH_TESTNET},
+    parser::Parser,
     tx_builder::{
         builder::{impl_default_builder, BaseTransactionBuilder, CkbTransactionBuilder},
         TxBuilderError,
     },
-    util::parse_packed_bytes,
     Address, NetworkInfo, NetworkType, ScriptGroup,
 };
 
@@ -113,7 +113,7 @@ impl DefaultUdtTransferBuilder {
             _ => ScriptId::default(),
         };
 
-        let args = parse_packed_bytes(type_script_args)
+        let args = ckb_types::packed::Bytes::parse(type_script_args)
             .map_err(|e| TxBuilderError::InvalidParameter(anyhow!("{}", e)))?;
 
         let type_script = type_script_id.build_script(args);

@@ -9,12 +9,12 @@ use super::{
 };
 use crate::{
     constants::MULTISIG_TYPE_HASH,
+    parser::Parser,
     traits::{
         CellCollector, CellDepResolver, HeaderDepResolver, SecpCkbRawKeySigner,
         TransactionDependencyProvider,
     },
     unlock::{MultisigConfig, ScriptUnlocker, SecpMultisigScriptSigner, SecpMultisigUnlocker},
-    util::parse_hex_str,
     Address, ScriptGroup,
 };
 use crate::{types::ScriptId, NetworkInfo};
@@ -127,7 +127,7 @@ impl DefaultMultisigCapacityTransferBuilder {
     ) -> Result<(), TxBuilderError> {
         let mut sign_keys = vec![];
         for key in keys.iter() {
-            let sender_key = parse_hex_str(key.as_ref()).map_err(TxBuilderError::KeyFormat)?;
+            let sender_key = H256::parse(key.as_ref()).map_err(TxBuilderError::KeyFormat)?;
             sign_keys.push(sender_key);
         }
         self.add_unlocker(sign_keys)

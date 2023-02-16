@@ -39,8 +39,8 @@ use crate::{
     util::keccak160,
 };
 use crate::{
+    parser::Parser,
     rpc::ckb_indexer::{Order, SearchKey, Tip},
-    util::parse_hex_str,
 };
 use ckb_resource::{
     CODE_HASH_DAO, CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
@@ -593,7 +593,7 @@ impl SecpCkbRawKeySigner {
         let mut secrect_keys = Vec::with_capacity(keys.len());
         for key in keys.iter() {
             let key_bytes: H256 =
-                parse_hex_str(key.as_ref()).map_err(SecpCkbRawKeySignerError::InvalidHexString)?;
+                H256::parse(key.as_ref()).map_err(SecpCkbRawKeySignerError::InvalidHexString)?;
             secrect_keys.push(key_bytes);
         }
         Self::new_with_secret_h256(&secrect_keys)

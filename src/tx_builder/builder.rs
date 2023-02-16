@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
+use crate::parser::Parser;
 use crate::unlock::SecpSighashUnlocker;
-use crate::util::parse_hex_str;
 use crate::ScriptGroup;
 use crate::{
     rpc::CkbRpcClient,
@@ -193,8 +193,8 @@ impl BaseTransactionBuilder {
         tx_hash: &str,
         index: u32,
     ) -> Result<(), TxBuilderError> {
-        let code_hash: H256 = parse_hex_str(code_hash).map_err(TxBuilderError::KeyFormat)?;
-        let tx_hash: H256 = parse_hex_str(tx_hash).map_err(TxBuilderError::KeyFormat)?;
+        let code_hash: H256 = H256::parse(code_hash).map_err(TxBuilderError::KeyFormat)?;
+        let tx_hash: H256 = H256::parse(tx_hash).map_err(TxBuilderError::KeyFormat)?;
 
         let out_point = OutPoint::new(Byte32::from_slice(tx_hash.as_bytes()).unwrap(), index);
         let cell_dep = CellDep::new_builder().out_point(out_point).build();
@@ -209,8 +209,7 @@ impl BaseTransactionBuilder {
     ) -> Result<(), TxBuilderError> {
         let mut sign_keys = Vec::with_capacity(keys.len());
         for key in keys.iter() {
-            let sender_key: H256 =
-                parse_hex_str(key.as_ref()).map_err(TxBuilderError::KeyFormat)?;
+            let sender_key: H256 = H256::parse(key.as_ref()).map_err(TxBuilderError::KeyFormat)?;
             sign_keys.push(sender_key);
         }
         self.add_sighash_unlocker(&sign_keys)

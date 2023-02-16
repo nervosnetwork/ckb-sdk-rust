@@ -21,8 +21,8 @@ use crate::{
 };
 use crate::{
     constants::SIGHASH_TYPE_HASH,
+    parser::Parser,
     types::{AddressPayload, CodeHashIndex, ScriptGroup, Since},
-    util::parse_hex_str,
     Address,
 };
 use crate::{
@@ -245,7 +245,7 @@ impl MultisigConfig {
     ) -> Result<MultisigConfig, ScriptSignError> {
         let mut hashes = Vec::with_capacity(sighash_pubhashes.len());
         for hash_str in sighash_pubhashes {
-            let lock_args = parse_hex_str(hash_str.as_ref()).map_err(|e| anyhow!("{}", e))?;
+            let lock_args = H160::parse(hash_str.as_ref()).map_err(|e| anyhow!("{}", e))?;
             hashes.push(lock_args);
         }
         MultisigConfig::new_with(hashes, require_first_n, threshold)

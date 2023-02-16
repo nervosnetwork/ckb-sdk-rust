@@ -1,4 +1,4 @@
-use std::{convert::TryInto, ptr, str::FromStr, sync::atomic};
+use std::{convert::TryInto, ptr, sync::atomic};
 
 use ckb_dao_utils::extract_dao_data;
 use ckb_types::{
@@ -152,41 +152,6 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
     hasher.update(message);
     let r = hasher.finalize();
     H256::from_slice(r.as_slice()).expect("convert_keccak256_hash")
-}
-
-pub fn parse_hex_str<T>(input: &str) -> Result<T, String>
-where
-    T: FromStr,
-    <T as FromStr>::Err: std::fmt::Display,
-{
-    let input = if input.starts_with("0x") || input.starts_with("0X") {
-        &input[2..]
-    } else {
-        input
-    };
-    T::from_str(input).map_err(|e| e.to_string())
-}
-
-/// parse a hex string to a byte vector.
-/// # Arguments
-/// `input`: hex string start with 0x or not
-/// # Errors
-///
-/// This function will return an error if fail to parse the string.
-pub fn parse_byte_arr(input: &str) -> Result<Vec<u8>, String> {
-    let input = if input.starts_with("0x") || input.starts_with("0X") {
-        &input[2..]
-    } else {
-        input
-    };
-    let mut dst = vec![0u8; input.len() / 2];
-    faster_hex::hex_decode(input.as_bytes(), &mut dst).map_err(|err| err.to_string())?;
-    Ok(dst)
-}
-
-pub fn parse_packed_bytes(input: &str) -> Result<ckb_types::packed::Bytes, String> {
-    let bytes_vec = parse_byte_arr(input)?;
-    Ok(bytes_vec.pack())
 }
 
 #[cfg(test)]
