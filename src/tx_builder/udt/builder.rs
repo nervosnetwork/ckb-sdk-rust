@@ -1,4 +1,4 @@
-use ckb_types::{core::TransactionView, H256};
+use ckb_types::core::TransactionView;
 
 use crate::{
     constants::{SUDT_CODE_HASH_MAINNET, SUDT_CODE_HASH_TESTNET},
@@ -6,8 +6,7 @@ use crate::{
         builder::{impl_default_builder, BaseTransactionBuilder, CkbTransactionBuilder},
         TxBuilderError,
     },
-    unlock::{ScriptUnlocker, SecpSighashUnlocker},
-    util::{parse_hex_str, parse_packed_bytes},
+    util::parse_packed_bytes,
     Address, NetworkInfo, NetworkType, ScriptGroup,
 };
 
@@ -69,23 +68,6 @@ impl DefaultUdtIssueBuilder {
 
     pub fn add_sudt_output(&mut self, address: Address, amount: u128) {
         self.receivers.push((address, amount));
-    }
-
-    pub fn add_sighash_unlocker_from_str(&mut self, key: &str) -> Result<(), TxBuilderError> {
-        let sender_key = parse_hex_str(key).map_err(TxBuilderError::KeyFormat)?;
-        self.add_sighash_unlocker(sender_key)
-    }
-
-    /// add a sighash unlocker with private key
-    pub fn add_sighash_unlocker(&mut self, sign_key: H256) -> Result<(), TxBuilderError> {
-        let sighash_unlocker = SecpSighashUnlocker::new_with_secret_h256(&[sign_key])
-            .map_err(|e| TxBuilderError::KeyFormat(e.to_string()))?;
-        let sighash_script_id = SecpSighashUnlocker::script_id();
-        self.unlockers.insert(
-            sighash_script_id,
-            Box::new(sighash_unlocker) as Box<dyn ScriptUnlocker>,
-        );
-        Ok(())
     }
 }
 
@@ -188,31 +170,6 @@ impl DefaultUdtTransferBuilder {
     pub fn add_update_sudt_output(&mut self, address: Address, amount: u128) {
         self.receivers
             .push((TransferAction::Update, address, amount));
-    }
-
-    pub fn add_sighash_unlocker_from_str<T: AsRef<str>>(
-        &mut self,
-        keys: &[T],
-    ) -> Result<(), TxBuilderError> {
-        let mut sign_keys = Vec::with_capacity(keys.len());
-        for key in keys.iter() {
-            let sender_key: H256 =
-                parse_hex_str(key.as_ref()).map_err(TxBuilderError::KeyFormat)?;
-            sign_keys.push(sender_key);
-        }
-        self.add_sighash_unlocker(&sign_keys)
-    }
-
-    /// add a sighash unlocker with private key
-    pub fn add_sighash_unlocker(&mut self, sign_keys: &[H256]) -> Result<(), TxBuilderError> {
-        let sighash_unlocker = SecpSighashUnlocker::new_with_secret_h256(sign_keys)
-            .map_err(|e| TxBuilderError::KeyFormat(e.to_string()))?;
-        let sighash_script_id = SecpSighashUnlocker::script_id();
-        self.unlockers.insert(
-            sighash_script_id,
-            Box::new(sighash_unlocker) as Box<dyn ScriptUnlocker>,
-        );
-        Ok(())
     }
 }
 

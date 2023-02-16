@@ -1,12 +1,11 @@
 use ckb_types::{core::TransactionView, H256};
 
 use crate::{
+    parser::Parser,
     tx_builder::{
         builder::{impl_default_builder, BaseTransactionBuilder, CkbTransactionBuilder},
         TxBuilderError,
     },
-    unlock::{ScriptUnlocker, SecpSighashUnlocker},
-    util::parse_hex_str,
     Address, NetworkInfo, ScriptGroup,
 };
 
@@ -24,8 +23,7 @@ pub struct DefaultDaoDepositBuilder {
 }
 
 impl DefaultDaoDepositBuilder {
-    /// Make a builder with empty reciver list and default type script mentioned in the RFC:
-    /// https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0025-simple-udt/0025-simple-udt.md
+    /// Make a builder with empty reciver list
     pub fn new(network_info: NetworkInfo, sender_addr: &str) -> Result<Self, TxBuilderError> {
         Ok(Self {
             base_builder: BaseTransactionBuilder::new(network_info, sender_addr)?,
@@ -62,23 +60,6 @@ impl DefaultDaoDepositBuilder {
         self.receivers
             .push(DaoDepositReceiver::new(lock_script, capacity));
     }
-
-    pub fn add_sighash_unlocker_from_str(&mut self, key: &str) -> Result<(), TxBuilderError> {
-        let sender_key = parse_hex_str(key).map_err(TxBuilderError::KeyFormat)?;
-        self.add_sighash_unlocker(sender_key)
-    }
-
-    /// add a sighash unlocker with private key
-    pub fn add_sighash_unlocker(&mut self, sign_key: H256) -> Result<(), TxBuilderError> {
-        let sighash_unlocker = SecpSighashUnlocker::new_with_secret_h256(&[sign_key])
-            .map_err(|e| TxBuilderError::KeyFormat(e.to_string()))?;
-        let sighash_script_id = SecpSighashUnlocker::script_id();
-        self.unlockers.insert(
-            sighash_script_id,
-            Box::new(sighash_unlocker) as Box<dyn ScriptUnlocker>,
-        );
-        Ok(())
-    }
 }
 
 impl From<&DefaultDaoDepositBuilder> for DaoDepositBuilder {
@@ -89,3 +70,66 @@ impl From<&DefaultDaoDepositBuilder> for DaoDepositBuilder {
     }
 }
 impl_default_builder!(DefaultDaoDepositBuilder, DaoDepositBuilder);
+
+pub struct DefaultDaoWithdrawPhase1Builder {
+    pub base_builder: BaseTransactionBuilder,
+    pub items: Vec<DaoPrepareItem>,
+}
+
+impl DefaultDaoWithdrawPhase1Builder {
+    /// Make a builder with empty reciver list
+    pub fn new(network_info: NetworkInfo, sender_addr: &str) -> Result<Self, TxBuilderError> {
+        Ok(Self {
+            base_builder: BaseTransactionBuilder::new(network_info, sender_addr)?,
+            items: Default::default(),
+        })
+    }
+
+    pub fn new_with_address(
+        network_info: NetworkInfo,
+        sender_address: Address,
+    ) -> Result<Self, TxBuilderError> {
+        Ok(Self {
+            base_builder: BaseTransactionBuilder::new_with_address(network_info, sender_address)?,
+            items: Default::default(),
+        })
+    }
+
+    pub fn add_simple_input(
+        &mut self,
+        tx_hash: &str,
+        index: u32,
+        lock_script: Option<Script>,
+    ) -> Result<(), TxBuilderError> {
+        let hash =
+            H256::parse(tx_hash).map_err(|e| TxBuilderError::InvalidParameter(anyhow!("{}", e)))?;
+        let out_point = OutPoint::new_builder()
+            .tx_hash(hash.pack())
+            .index(index.pack())
+            .build();
+        let cell_input = CellInput::new_builder().previous_output(out_point).build();
+        self.add_input_item(cell_input, lock_script);
+        Ok(())
+    }
+
+    pub fn add_input_item(&mut self, input: CellInput, lock_script: Option<Script>) {
+        self.items.push(DaoPrepareItem { input, lock_script })
+    }
+
+    pub fn add_item(&mut self, item: DaoPrepareItem) {
+        self.items.push(item);
+    }
+
+    pub fn add_items(&mut self, items: &mut Vec<DaoPrepareItem>) {
+        self.items.append(items);
+    }
+}
+
+impl From<&DefaultDaoWithdrawPhase1Builder> for DaoPrepareBuilder {
+    fn from(val: &DefaultDaoWithdrawPhase1Builder) -> Self {
+        DaoPrepareBuilder {
+            items: val.items.clone(),
+        }
+    }
+}
+impl_default_builder!(DefaultDaoWithdrawPhase1Builder, DaoPrepareBuilder);

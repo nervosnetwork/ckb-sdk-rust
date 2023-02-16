@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
+use crate::unlock::SecpSighashUnlocker;
 use crate::util::parse_hex_str;
 use crate::ScriptGroup;
 use crate::{
@@ -202,6 +203,30 @@ impl BaseTransactionBuilder {
         self.cell_dep_resolver.insert(script_id, cell_dep);
         Ok(())
     }
+    pub fn add_sighash_unlocker_from_str<T: AsRef<str>>(
+        &mut self,
+        keys: &[T],
+    ) -> Result<(), TxBuilderError> {
+        let mut sign_keys = Vec::with_capacity(keys.len());
+        for key in keys.iter() {
+            let sender_key: H256 =
+                parse_hex_str(key.as_ref()).map_err(TxBuilderError::KeyFormat)?;
+            sign_keys.push(sender_key);
+        }
+        self.add_sighash_unlocker(&sign_keys)
+    }
+
+    /// add a sighash unlocker with private keys
+    pub fn add_sighash_unlocker(&mut self, sign_keys: &[H256]) -> Result<(), TxBuilderError> {
+        let sighash_unlocker = SecpSighashUnlocker::new_with_secret_h256(sign_keys)
+            .map_err(|e| TxBuilderError::KeyFormat(e.to_string()))?;
+        let sighash_script_id = SecpSighashUnlocker::script_id();
+        self.unlockers.insert(
+            sighash_script_id,
+            Box::new(sighash_unlocker) as Box<dyn ScriptUnlocker>,
+        );
+        Ok(())
+    }
 
     /// add a built unlocker
     pub fn add_unlocker(&mut self, unlocker: Box<dyn ScriptUnlocker>) {
@@ -265,7 +290,7 @@ macro_rules! impl_default_builder {
                     &self.base_builder.unlockers,
                 )
             }
-
+            /// build a unlocked transaction with transaction fee only from transaction size.
             fn build_unlocked(
                 &mut self,
             ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
@@ -280,6 +305,8 @@ macro_rules! impl_default_builder {
                 )
             }
 
+            /// build a unlocked transaction with cycle limit considered, instead of only calculate transaction fee with size.
+            /// TODO: support transaction with header_deps.
             fn build_balance_unlocked(
                 &mut self,
             ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
