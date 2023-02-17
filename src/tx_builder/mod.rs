@@ -76,6 +76,12 @@ pub enum TxBuilderError {
     Other(anyhow::Error),
 }
 
+impl TxBuilderError {
+    pub fn invalid_param(e: String) -> Self {
+        Self::InvalidParameter(anyhow!("{}", e))
+    }
+}
+
 /// Transaction Builder interface
 pub trait TxBuilder {
     /// Build base transaction

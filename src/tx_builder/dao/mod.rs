@@ -1,5 +1,5 @@
 mod builder;
-use std::collections::HashSet;
+use std::{collections::HashSet, str::FromStr};
 
 use anyhow::anyhow;
 use ckb_types::{
@@ -10,14 +10,17 @@ use ckb_types::{
 };
 
 use super::{TxBuilder, TxBuilderError};
-use crate::constants::DAO_TYPE_HASH;
-use crate::traits::{
-    CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider,
-};
 use crate::types::{Since, SinceType};
 use crate::util::{calculate_dao_maximum_withdraw4, minimal_unlock_point};
+use crate::{constants::DAO_TYPE_HASH, Address};
+use crate::{
+    parser::Parser,
+    traits::{CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider},
+};
 
-pub use builder::{DefaultDaoDepositBuilder, DefaultDaoWithdrawPhase1Builder};
+pub use builder::{
+    DefaultDaoDepositBuilder, DefaultDaoWithdrawPhase1Builder, DefaultDaoWithdrawPhase2Builder,
+};
 
 /// Deposit target
 #[derive(Debug, Clone)]
@@ -209,6 +212,29 @@ pub enum DaoWithdrawReceiver {
         outputs_data: Vec<Bytes>,
     },
 }
+
+impl DaoWithdrawReceiver {
+    pub fn new_lock_script(script: Script, fee_rate: Option<FeeRate>) -> Self {
+        Self::LockScript { script, fee_rate }
+    }
+    pub fn new_lock_script_from_addr(addr: &Address, fee_rate: Option<FeeRate>) -> Self {
+        let script = Script::from(addr);
+        Self::LockScript { script, fee_rate }
+    }
+
+    pub fn new_lock_script_from_str(addr: &str, fee_rate: Option<FeeRate>) -> Result<Self, String> {
+        let addr = Address::from_str(addr)?;
+        Ok(Self::new_lock_script_from_addr(&addr, fee_rate))
+    }
+
+    pub fn new_custom(outputs: Vec<CellOutput>, outputs_data: Vec<Bytes>) -> Self {
+        Self::Custom {
+            outputs,
+            outputs_data,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DaoWithdrawItem {
     /// The cell to withdraw (prepared cell)
@@ -234,6 +260,17 @@ impl DaoWithdrawItem {
             out_point,
             init_witness,
         }
+    }
+    pub fn new_with_str(
+        tx_hash: &str,
+        index: u32,
+        init_witness: Option<WitnessArgs>,
+    ) -> Result<Self, String> {
+        let out_point = OutPoint::parse((tx_hash, index))?;
+        Ok(DaoWithdrawItem {
+            out_point,
+            init_witness,
+        })
     }
 }
 impl DaoWithdrawBuilder {

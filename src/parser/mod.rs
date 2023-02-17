@@ -3,14 +3,14 @@ use std::str::FromStr;
 
 pub mod packed;
 
-pub trait Parser: Sized {
+pub trait Parser<T>: Sized {
     type Error;
-    fn parse(input: &str) -> Result<Self, Self::Error>;
+    fn parse(input: T) -> Result<Self, Self::Error>;
 }
 
 macro_rules! impl_hash_parser {
     ($name:ident) => {
-        impl Parser for $name {
+        impl Parser<&str> for $name {
             type Error = String;
             fn parse(input: &str) -> Result<Self, Self::Error> {
                 let input = if input.starts_with("0x") || input.starts_with("0X") {

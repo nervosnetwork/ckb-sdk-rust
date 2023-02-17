@@ -133,3 +133,66 @@ impl From<&DefaultDaoWithdrawPhase1Builder> for DaoPrepareBuilder {
     }
 }
 impl_default_builder!(DefaultDaoWithdrawPhase1Builder, DaoPrepareBuilder);
+
+pub struct DefaultDaoWithdrawPhase2Builder {
+    pub base_builder: BaseTransactionBuilder,
+    pub items: Vec<DaoWithdrawItem>,
+    pub receiver: DaoWithdrawReceiver,
+}
+
+impl DefaultDaoWithdrawPhase2Builder {
+    /// Make a builder with empty reciver list
+    pub fn new(
+        network_info: NetworkInfo,
+        sender_addr: &str,
+        receiver: DaoWithdrawReceiver,
+    ) -> Result<Self, TxBuilderError> {
+        Ok(Self {
+            base_builder: BaseTransactionBuilder::new(network_info, sender_addr)?,
+            items: Default::default(),
+            receiver,
+        })
+    }
+
+    pub fn new_with_address(
+        network_info: NetworkInfo,
+        sender_address: Address,
+        receiver: DaoWithdrawReceiver,
+    ) -> Result<Self, TxBuilderError> {
+        Ok(Self {
+            base_builder: BaseTransactionBuilder::new_with_address(network_info, sender_address)?,
+            items: Default::default(),
+            receiver,
+        })
+    }
+
+    pub fn add_withdraw_item(
+        &mut self,
+        tx_hash: &str,
+        index: u32,
+        init_witness: Option<WitnessArgs>,
+    ) -> Result<(), TxBuilderError> {
+        let item = DaoWithdrawItem::new_with_str(tx_hash, index, init_witness)
+            .map_err(TxBuilderError::invalid_param)?;
+        self.items.push(item);
+        Ok(())
+    }
+
+    pub fn add_item(&mut self, item: DaoWithdrawItem) {
+        self.items.push(item);
+    }
+
+    pub fn add_items(&mut self, items: &mut Vec<DaoWithdrawItem>) {
+        self.items.append(items);
+    }
+}
+
+impl From<&DefaultDaoWithdrawPhase2Builder> for DaoWithdrawBuilder {
+    fn from(val: &DefaultDaoWithdrawPhase2Builder) -> Self {
+        DaoWithdrawBuilder {
+            items: val.items.clone(),
+            receiver: val.receiver.clone(),
+        }
+    }
+}
+impl_default_builder!(DefaultDaoWithdrawPhase2Builder, DaoWithdrawBuilder);
