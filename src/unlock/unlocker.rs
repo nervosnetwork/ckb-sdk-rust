@@ -16,7 +16,7 @@ use super::{
     },
     OmniLockConfig, OmniLockScriptSigner, OmniUnlockMode,
 };
-use crate::types::ScriptGroup;
+use crate::{constants::MULTISIG_TYPE_HASH, types::ScriptGroup};
 use crate::{
     constants::SIGHASH_TYPE_HASH,
     traits::{
@@ -88,6 +88,16 @@ pub trait ScriptUnlocker {
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError>;
+
+    /// Generate a placehodler witness args, so build base transaction can generate enough transaction fee,
+    /// without to find more cell in the balance step.
+    fn build_placeholder_witness(&self) -> Result<WitnessArgs, UnlockError>;
+}
+
+pub fn build_placeholder_witness(lock_field: Bytes) -> WitnessArgs {
+    WitnessArgs::new_builder()
+        .lock(Some(lock_field).pack())
+        .build()
 }
 
 pub fn fill_witness_lock(
@@ -192,6 +202,10 @@ impl ScriptUnlocker for SecpSighashUnlocker {
     ) -> Result<TransactionView, UnlockError> {
         fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
     }
+
+    fn build_placeholder_witness(&self) -> Result<WitnessArgs, UnlockError> {
+        Ok(build_placeholder_witness(Bytes::from(vec![0u8; 65])))
+    }
 }
 
 pub struct SecpMultisigUnlocker {
@@ -200,6 +214,10 @@ pub struct SecpMultisigUnlocker {
 impl SecpMultisigUnlocker {
     pub fn new(signer: SecpMultisigScriptSigner) -> SecpMultisigUnlocker {
         SecpMultisigUnlocker { signer }
+    }
+
+    pub fn script_id() -> ScriptId {
+        ScriptId::new_type(MULTISIG_TYPE_HASH.clone())
     }
 }
 impl From<(Box<dyn Signer>, MultisigConfig)> for SecpMultisigUnlocker {
@@ -232,6 +250,14 @@ impl ScriptUnlocker for SecpMultisigUnlocker {
         let mut zero_lock = vec![0u8; config_data.len() + 65 * (config.threshold() as usize)];
         zero_lock[0..config_data.len()].copy_from_slice(&config_data);
         fill_witness_lock(tx, script_group, Bytes::from(zero_lock))
+    }
+
+    fn build_placeholder_witness(&self) -> Result<WitnessArgs, UnlockError> {
+        let config = self.signer.config();
+        let config_data = config.to_witness_data();
+        let mut zero_lock = vec![0u8; config_data.len() + 65 * (config.threshold() as usize)];
+        zero_lock[0..config_data.len()].copy_from_slice(&config_data);
+        Ok(build_placeholder_witness(Bytes::from(zero_lock)))
     }
 }
 
@@ -478,6 +504,10 @@ impl ScriptUnlocker for AcpUnlocker {
             fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
         }
     }
+
+    fn build_placeholder_witness(&self) -> Result<WitnessArgs, UnlockError> {
+        Ok(build_placeholder_witness(Bytes::from(vec![0u8; 65])))
+    }
 }
 
 pub struct ChequeUnlocker {
@@ -624,6 +654,10 @@ impl ScriptUnlocker for ChequeUnlocker {
             fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
         }
     }
+
+    fn build_placeholder_witness(&self) -> Result<WitnessArgs, UnlockError> {
+        Ok(build_placeholder_witness(Bytes::from(vec![0u8; 65])))
+    }
 }
 
 pub struct OmniLockUnlocker {
@@ -742,6 +776,12 @@ impl ScriptUnlocker for OmniLockUnlocker {
         let config = self.signer.config();
         let lock_field = config.placeholder_witness_lock(self.signer.unlock_mode())?;
         fill_witness_lock(tx, script_group, lock_field)
+    }
+
+    fn build_placeholder_witness(&self) -> Result<WitnessArgs, UnlockError> {
+        let config = self.signer.config();
+        let lock_field = config.zero_lock(self.signer.unlock_mode())?;
+        Ok(build_placeholder_witness(lock_field))
     }
 }
 #[cfg(test)]

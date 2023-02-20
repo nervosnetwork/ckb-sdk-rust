@@ -185,6 +185,26 @@ impl DefaultDaoWithdrawPhase2Builder {
     pub fn add_items(&mut self, items: &mut Vec<DaoWithdrawItem>) {
         self.items.append(items);
     }
+
+    /// Build init witness for the withdraw item, require that only one unlocker exists.
+    /// Only build the placeholder witness for None ones.
+    pub fn build_item_init_witnesses(&mut self) -> Result<(), TxBuilderError> {
+        if self.unlockers.len() != 1 {
+            return Err(TxBuilderError::Other(anyhow!(
+                "more than 1 unlockers exist, not know which to use"
+            )));
+        };
+        let unlocker = self.base_builder.unlockers.iter().next().unwrap().1;
+        for item in self.items.iter_mut() {
+            if item.init_witness.is_none() {
+                let witness_args = unlocker
+                    .build_placeholder_witness()
+                    .map_err(|e| TxBuilderError::Other(anyhow!("{}", e.to_string())))?;
+                item.init_witness = Some(witness_args);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl From<&DefaultDaoWithdrawPhase2Builder> for DaoWithdrawBuilder {

@@ -54,6 +54,10 @@ impl ScriptUnlocker for CycleUnlocker {
     ) -> Result<TransactionView, UnlockError> {
         Ok(tx.clone())
     }
+
+    fn build_placeholder_witness(&self) -> Result<WitnessArgs, UnlockError> {
+        Ok(WitnessArgs::default())
+    }
 }
 
 pub fn build_args(loops: u64) -> Bytes {

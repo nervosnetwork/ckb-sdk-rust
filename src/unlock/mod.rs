@@ -9,8 +9,8 @@ pub use signer::{
     SecpSighashScriptSigner,
 };
 pub use unlocker::{
-    fill_witness_lock, reset_witness_lock, AcpUnlocker, ChequeUnlocker, OmniLockUnlocker,
-    ScriptUnlocker, SecpMultisigUnlocker, SecpSighashUnlocker, UnlockError,
+    build_placeholder_witness, fill_witness_lock, reset_witness_lock, AcpUnlocker, ChequeUnlocker,
+    OmniLockUnlocker, ScriptUnlocker, SecpMultisigUnlocker, SecpSighashUnlocker, UnlockError,
 };
 
 pub use omni_lock::{IdentityFlag, InfoCellData, OmniLockAcpConfig, OmniLockConfig};
