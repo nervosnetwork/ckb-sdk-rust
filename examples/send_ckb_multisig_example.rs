@@ -26,8 +26,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         multisig_config.to_address(network_info.network_type)
     );
     let mut builder =
-        DefaultMultisigCapacityTransferBuilder::new_with_config(network_info, multisig_config)
-            .unwrap();
+        DefaultMultisigCapacityTransferBuilder::new(network_info, multisig_config).unwrap();
     builder.add_output_raw("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r", 50100000000u64)?;
     builder.add_unlocker_from_str(&[
         "0x4fd809631a6aa6e3bb378dd65eae5d71df895a82c91a615a1e8264741515c79c",

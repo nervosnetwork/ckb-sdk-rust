@@ -82,6 +82,10 @@ impl DefaultCapacityTransferBuilder {
         })
     }
 
+    pub fn new_mainnet(sender: &str) -> Result<Self, TxBuilderError> {
+        Self::new(NetworkInfo::mainnet(), sender)
+    }
+
     pub fn new_with_address(
         network_info: NetworkInfo,
         sender: Address,
@@ -106,7 +110,10 @@ pub struct DefaultMultisigCapacityTransferBuilder {
 }
 
 impl DefaultMultisigCapacityTransferBuilder {
-    pub fn new_with_config(
+    pub fn new_mainnet(multisig_config: MultisigConfig) -> Result<Self, TxBuilderError> {
+        Self::new(NetworkInfo::mainnet(), multisig_config)
+    }
+    pub fn new(
         network_info: NetworkInfo,
         multisig_config: MultisigConfig,
     ) -> Result<Self, TxBuilderError> {

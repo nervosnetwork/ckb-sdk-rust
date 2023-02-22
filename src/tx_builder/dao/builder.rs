@@ -24,6 +24,10 @@ pub struct DefaultDaoDepositBuilder {
 
 impl DefaultDaoDepositBuilder {
     /// Make a builder with empty reciver list
+    pub fn new_mainnet(sender_addr: &str) -> Result<Self, TxBuilderError> {
+        Self::new(NetworkInfo::mainnet(), sender_addr)
+    }
+
     pub fn new(network_info: NetworkInfo, sender_addr: &str) -> Result<Self, TxBuilderError> {
         Ok(Self {
             base_builder: BaseTransactionBuilder::new(network_info, sender_addr)?,
@@ -77,7 +81,10 @@ pub struct DefaultDaoWithdrawPhase1Builder {
 }
 
 impl DefaultDaoWithdrawPhase1Builder {
-    /// Make a builder with empty reciver list
+    pub fn new_mainnet(sender_addr: &str) -> Result<Self, TxBuilderError> {
+        Self::new(NetworkInfo::mainnet(), sender_addr)
+    }
+    /// Make a builder with empty prepare list
     pub fn new(network_info: NetworkInfo, sender_addr: &str) -> Result<Self, TxBuilderError> {
         Ok(Self {
             base_builder: BaseTransactionBuilder::new(network_info, sender_addr)?,
@@ -141,7 +148,13 @@ pub struct DefaultDaoWithdrawPhase2Builder {
 }
 
 impl DefaultDaoWithdrawPhase2Builder {
-    /// Make a builder with empty reciver list
+    pub fn new_mainnet(
+        sender_addr: &str,
+        receiver: DaoWithdrawReceiver,
+    ) -> Result<Self, TxBuilderError> {
+        Self::new(NetworkInfo::mainnet(), sender_addr, receiver)
+    }
+    /// Make a builder with empty item list
     pub fn new(
         network_info: NetworkInfo,
         sender_addr: &str,

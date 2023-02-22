@@ -35,6 +35,11 @@ impl DefaultUdtIssueBuilder {
         };
         Self::new_with_type_script(network_info, sender_addr, type_script)
     }
+
+    pub fn new_mainnet(sender_addr: &str) -> Result<Self, TxBuilderError> {
+        Self::new(NetworkInfo::mainnet(), sender_addr)
+    }
+
     /// create a DefaultUdtIssueBuilder with user specified typescript
     pub fn new_with_type_script(
         network_info: NetworkInfo,
@@ -120,6 +125,9 @@ impl DefaultUdtTransferBuilder {
         Self::new_with_type_script(network_info, sender_addr, type_script)
     }
 
+    pub fn new_mainnet(sender_addr: &str, type_script_args: &str) -> Result<Self, TxBuilderError> {
+        Self::new(NetworkInfo::mainnet(), sender_addr, type_script_args)
+    }
     /// create a DefaultUdtIssueBuilder with user specified typescript
     pub fn new_with_type_script(
         network_info: NetworkInfo,
