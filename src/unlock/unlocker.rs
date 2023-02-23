@@ -276,6 +276,12 @@ impl From<Box<dyn Signer>> for AcpUnlocker {
     }
 }
 
+impl Default for AcpUnlocker {
+    fn default() -> Self {
+        AcpUnlocker::from(Box::new(SecpCkbRawKeySigner::default()) as Box<_>)
+    }
+}
+
 fn acp_is_unlocked(
     tx: &TransactionView,
     script_group: &ScriptGroup,

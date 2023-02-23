@@ -43,9 +43,15 @@ pub const DAO_TYPE_HASH: H256 =
 /// <https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0026-anyone-can-pay/0026-anyone-can-pay.md#notes>
 pub const ACP_TYPE_HASH_LINA: H256 =
     h256!("0xd369597ff47f29fbc0d47d2e3775370d1250b85140c670e4718af712983a2354");
+pub const ACP_TX_HASH_LINA: H256 =
+    h256!("0x4153a2014952d7cac45f285ce9a7c5c0c0e1b21f2d378b82ac1433cb11c25c4d");
+pub const ACP_TX_INDEX_LINA: u32 = 0x0;
 /// anyone can pay script testnet code hash
 pub const ACP_TYPE_HASH_AGGRON: H256 =
     h256!("0x3419a1c09eb2567f6552ee7a8ecffd64155cffe0f1796e6e61ec088d740c1356");
+pub const ACP_TX_HASH_AGGRON: H256 =
+    h256!("0xec26b0f85ed839ece5f11c4c4e837ec359f5adc4420410f6453b1f6b60fb96a6");
+pub const ACP_TX_INDEX_AGGRON: u32 = 0x0;
 
 /// A SUDT implementation metioned in the RFC:
 /// https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0025-simple-udt/0025-simple-udt.md

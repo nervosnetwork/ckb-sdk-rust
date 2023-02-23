@@ -46,15 +46,11 @@ impl DefaultUdtIssueBuilder {
         sender_addr: &str,
         type_script_id: ScriptId,
     ) -> Result<Self, TxBuilderError> {
-        let network_type = network_info.network_type;
-        let mut v = Self {
+        Ok(Self {
             base_builder: BaseTransactionBuilder::new(network_info, sender_addr)?,
             type_script_id,
             receivers: Default::default(),
-        };
-
-        add_default_sudt_dep(v.cell_dep_resolver.as_mut(), network_type);
-        Ok(v)
+        })
     }
 
     pub fn set_type_script_id(&mut self, type_script: ScriptId) {
@@ -134,15 +130,11 @@ impl DefaultUdtTransferBuilder {
         sender_addr: &str,
         type_script: Script,
     ) -> Result<Self, TxBuilderError> {
-        let network_type = network_info.network_type;
-        let mut v = Self {
+        Ok(Self {
             base_builder: BaseTransactionBuilder::new(network_info, sender_addr)?,
             type_script,
             receivers: Default::default(),
-        };
-
-        add_default_sudt_dep(v.cell_dep_resolver.as_mut(), network_type);
-        Ok(v)
+        })
     }
 
     pub fn set_type_script(&mut self, type_script: Script) {

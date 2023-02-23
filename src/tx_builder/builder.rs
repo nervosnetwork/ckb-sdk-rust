@@ -26,6 +26,8 @@ use ckb_types::{
     prelude::*,
 };
 
+use super::acp::add_default_acp_dep;
+use super::udt::add_default_sudt_dep;
 use super::TxBuilderError;
 
 /// base transaction builder
@@ -76,10 +78,13 @@ impl BaseTransactionBuilder {
         sender_address: Address,
     ) -> Result<BaseTransactionBuilder, TxBuilderError> {
         let mut ckb_client = CkbRpcClient::new(network_info.url.as_str());
-        let cell_dep_resolver = {
+        let mut cell_dep_resolver = {
             let genesis_block = ckb_client.get_block_by_number(0.into())?.unwrap();
             DefaultCellDepResolver::from_genesis(&BlockView::from(genesis_block)).unwrap()
         };
+        add_default_sudt_dep(&mut cell_dep_resolver, network_info.network_type);
+        add_default_acp_dep(&mut cell_dep_resolver, network_info.network_type);
+
         let cell_collector = DefaultCellCollector::new(&network_info.url);
         let tx_dep_provider = DefaultTransactionDependencyProvider::new(&network_info.url, 10);
 
@@ -227,14 +232,17 @@ impl BaseTransactionBuilder {
         Ok(())
     }
 
-    /// add a built unlocker
-    pub fn add_unlocker(&mut self, unlocker: Box<dyn ScriptUnlocker>) {
+    /// add a built unlocker for sender, which may not be correct
+    pub fn add_unlocker_for_sender(&mut self, unlocker: Box<dyn ScriptUnlocker>) {
         let address_payload = Script::from(&self.sender);
         let script_id = ScriptId::from(&address_payload);
 
         self.unlockers.insert(script_id, unlocker);
     }
-
+    /// add a built unlocker
+    pub fn add_unlocker(&mut self, script_id: ScriptId, unlocker: Box<dyn ScriptUnlocker>) {
+        self.unlockers.insert(script_id, unlocker);
+    }
     /// send a signed transaction
     pub fn send_transaction(
         &mut self,

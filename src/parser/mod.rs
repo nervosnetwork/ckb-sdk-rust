@@ -1,6 +1,8 @@
 use ckb_types::{H160, H256};
 use std::str::FromStr;
 
+use crate::Address;
+
 pub mod packed;
 
 pub trait Parser<T>: Sized {
@@ -26,3 +28,11 @@ macro_rules! impl_hash_parser {
 
 impl_hash_parser!(H160);
 impl_hash_parser!(H256);
+
+impl Parser<&str> for Address {
+    type Error = String;
+
+    fn parse(input: &str) -> Result<Self, Self::Error> {
+        Address::from_str(input)
+    }
+}
