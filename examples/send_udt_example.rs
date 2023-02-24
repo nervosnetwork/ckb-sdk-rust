@@ -7,7 +7,6 @@ use ckb_sdk::{
 };
 
 fn main() -> Result<(), Box<dyn StdErr>> {
-    // Parse arguments
     let network_info = NetworkInfo::testnet();
     let sender =  "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqdamwzrffgc54ef48493nfd2sd0h4cjnxg4850up";
     let receiver = "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqd0pdquvfuq077aemn447shf4d8u5f4a0glzz2g4";

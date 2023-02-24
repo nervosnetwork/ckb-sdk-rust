@@ -31,7 +31,6 @@ fn create_receiver(sender: &str) -> Address {
 }
 
 fn main() -> Result<(), Box<dyn StdErr>> {
-    // Parse arguments
     let network_info = NetworkInfo::testnet();
     let sender =  "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqdamwzrffgc54ef48493nfd2sd0h4cjnxg4850up";
     let receiver = create_receiver(sender);

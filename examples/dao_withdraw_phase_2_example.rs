@@ -10,7 +10,6 @@ use ckb_sdk::{
 use ckb_types::core::FeeRate;
 
 fn main() -> Result<(), Box<dyn StdErr>> {
-    // Parse arguments
     let network_info = NetworkInfo::testnet();
     let sender =  "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r";
 
