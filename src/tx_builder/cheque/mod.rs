@@ -3,18 +3,26 @@ use std::collections::HashSet;
 use anyhow::anyhow;
 use ckb_types::{
     bytes::Bytes,
-    core::{Capacity, ScriptHashType, TransactionBuilder, TransactionView},
-    packed::{CellInput, CellOutput, OutPoint, Script},
+    core::{Capacity, DepType, ScriptHashType, TransactionBuilder, TransactionView},
+    h256,
+    packed::{Byte32, CellDep, CellInput, CellOutput, OutPoint, Script},
     prelude::*,
+    H256,
 };
 
 use super::{TxBuilder, TxBuilderError};
-use crate::constants::{CHEQUE_CELL_SINCE, SIGHASH_TYPE_HASH};
-use crate::traits::{
-    CellCollector, CellDepResolver, CellQueryOptions, HeaderDepResolver,
-    TransactionDependencyProvider, ValueRangeOption,
+use crate::{
+    constants::{CHEQUE_CELL_SINCE, SIGHASH_TYPE_HASH},
+    NetworkType,
 };
-use crate::types::ScriptId;
+use crate::{parser::Parser, types::ScriptId};
+use crate::{
+    traits::{
+        CellCollector, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+        TransactionDependencyProvider, ValueRangeOption,
+    },
+    Address, AddressPayload,
+};
 
 pub struct ChequeClaimBuilder {
     /// The cheque cells to claim, all cells must have same lock script and same
@@ -360,4 +368,87 @@ impl TxBuilder for ChequeWithdrawBuilder {
             .set_outputs_data(outputs_data)
             .build())
     }
+}
+
+/// A cheque implementation metioned in the RFC:
+/// https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0039-cheque/0039-cheque.md
+pub const CHEQUE_CODE_HASH_MAINNET: H256 =
+    h256!("0xe4d4ecc6e5f9a059bf2f7a82cca292083aebc0c421566a52484fe2ec51a9fb0c");
+pub const CHEQUE_TX_HASH_MAINNET: H256 =
+    h256!("0x04632cc459459cf5c9d384b43dee3e36f542a464bdd4127be7d6618ac6f8d268");
+pub const CHEQUE_TX_INDEX_MAINNET: u32 = 0x0;
+
+pub const CHEQUE_CODE_HASH_TESTNET: H256 =
+    h256!("0x60d5f39efce409c587cb9ea359cefdead650ca128f0bd9cb3855348f98c70d5b");
+pub const CHEQUE_TX_HASH_TESTNET: H256 =
+    h256!("0x7f96858be0a9d584b4a9ea190e0420835156a6010a5fde15ffcdc9d9c721ccab");
+pub const CHEQUE_TX_INDEX_TESTNET: u32 = 0x0;
+
+pub fn build_cheque_address(
+    network_type: NetworkType,
+    sender: Address,
+    receiver: Address,
+) -> Address {
+    let cheque_script_id = get_default_script_id(network_type);
+    let sender_script_hash = Script::from(&sender).calc_script_hash();
+    let receiver_script_hash = Script::from(&receiver).calc_script_hash();
+    let mut script_args = vec![0u8; 40];
+    script_args[0..20].copy_from_slice(&receiver_script_hash.as_slice()[0..20]);
+    script_args[20..40].copy_from_slice(&sender_script_hash.as_slice()[0..20]);
+    let cheque_script = Script::new_builder()
+        .code_hash(cheque_script_id.code_hash.pack())
+        .hash_type(cheque_script_id.hash_type.into())
+        .args(Bytes::from(script_args).pack())
+        .build();
+    let cheque_payload = AddressPayload::from(cheque_script);
+    Address::new(network_type, cheque_payload, true)
+}
+
+pub fn build_cheque_address_str(
+    network_type: NetworkType,
+    sender: &str,
+    receiver: &str,
+) -> Result<String, String> {
+    let sender = Address::parse(sender)?;
+    let receiver = Address::parse(receiver)?;
+    let address = build_cheque_address(network_type, sender, receiver);
+    Ok(address.to_string())
+}
+
+/// Add default cheque cell dependencies, the dependent cells are metioned in the RFC.
+pub fn add_default_cheque_dep(dep_resolver: &mut dyn CellDepResolver, network_type: NetworkType) {
+    let (code_hash, tx_hash, idx) = if network_type == NetworkType::Mainnet {
+        (
+            CHEQUE_CODE_HASH_MAINNET,
+            CHEQUE_TX_HASH_MAINNET,
+            CHEQUE_TX_INDEX_MAINNET,
+        )
+    } else if network_type == NetworkType::Testnet {
+        (
+            CHEQUE_CODE_HASH_TESTNET,
+            CHEQUE_TX_HASH_TESTNET,
+            CHEQUE_TX_INDEX_TESTNET,
+        )
+    } else {
+        return;
+    };
+
+    let out_point = OutPoint::new(Byte32::from_slice(tx_hash.as_bytes()).unwrap(), idx);
+    let cell_dep = CellDep::new_builder()
+        .out_point(out_point)
+        .dep_type(DepType::DepGroup.into())
+        .build();
+    let script_id = ScriptId::new_type(code_hash);
+    dep_resolver.insert(script_id, cell_dep);
+}
+
+pub fn get_default_script_id(network_type: NetworkType) -> ScriptId {
+    let code_hash = if network_type == NetworkType::Mainnet {
+        CHEQUE_CODE_HASH_MAINNET
+    } else if network_type == NetworkType::Testnet {
+        CHEQUE_CODE_HASH_TESTNET
+    } else {
+        panic!("can only handle mainnet and testnet");
+    };
+    ScriptId::new_type(code_hash)
 }
