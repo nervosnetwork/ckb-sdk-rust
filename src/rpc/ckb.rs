@@ -1,11 +1,13 @@
 use ckb_jsonrpc_types::{
-    Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockTemplate, BlockView,
-    CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, EstimateCycles,
+    Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockResponse, BlockTemplate,
+    BlockView, CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, EstimateCycles,
     ExtraLoggerConfig, FeeRateStatics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
     OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState, Timestamp, Transaction,
-    TransactionProof, TransactionWithStatusResponse, TxPoolInfo, Uint64, Version,
+    TransactionProof, TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
 };
-use ckb_types::H256;
+use ckb_types::{core::Cycle, H256};
+
+use super::ResponseFormatGetter;
 
 crate::jsonrpc!(pub struct CkbRpcClient {
     // Chain
@@ -81,3 +83,141 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn update_main_logger(&mut self, config: MainLoggerConfig) -> ();
     pub fn set_extra_logger(&mut self, name: String, config_opt: Option<ExtraLoggerConfig>) -> ();
 });
+
+fn transform_cycles(cycles: Option<Vec<ckb_jsonrpc_types::Cycle>>) -> Vec<Cycle> {
+    cycles
+        .map(|c| c.into_iter().map(Into::into).collect())
+        .unwrap_or_default()
+}
+
+impl CkbRpcClient {
+    pub fn get_packed_block(&mut self, hash: H256) -> Result<Option<JsonBytes>, crate::RpcError> {
+        self.post("get_block", (hash, Some(Uint32::from(0u32))))
+    }
+
+    // turn block response into BlockView and cycle vec
+    fn transform_block_view_with_cycle(
+        opt_resp: Option<BlockResponse>,
+    ) -> Result<Option<(BlockView, Vec<Cycle>)>, crate::rpc::RpcError> {
+        opt_resp
+            .map(|resp| match resp {
+                BlockResponse::Regular(block_view) => Ok((block_view.get_value()?, vec![])),
+                BlockResponse::WithCycles(block_cycles) => {
+                    let cycles = transform_cycles(block_cycles.cycles);
+                    Ok((block_cycles.block.get_value()?, cycles))
+                }
+            })
+            .transpose()
+    }
+    /// Same as get_block except with parameter with_cycles and return BlockResponse
+    pub fn get_block_with_cycles(
+        &mut self,
+        hash: H256,
+    ) -> Result<Option<(BlockView, Vec<Cycle>)>, crate::rpc::RpcError> {
+        let res = self.post::<_, Option<BlockResponse>>("get_block", (hash, None::<u32>, true))?;
+        Self::transform_block_view_with_cycle(res)
+    }
+
+    // turn BlockResponse to JsonBytes and Cycle tuple
+    fn blockresponse2bytes(
+        opt_resp: Option<BlockResponse>,
+    ) -> Result<Option<(JsonBytes, Vec<Cycle>)>, crate::rpc::RpcError> {
+        opt_resp
+            .map(|resp| match resp {
+                BlockResponse::Regular(block_view) => Ok((block_view.get_json_bytes()?, vec![])),
+                BlockResponse::WithCycles(block_cycles) => {
+                    let cycles = transform_cycles(block_cycles.cycles);
+                    Ok((block_cycles.block.get_json_bytes()?, cycles))
+                }
+            })
+            .transpose()
+    }
+
+    pub fn get_packed_block_with_cycles(
+        &mut self,
+        hash: H256,
+    ) -> Result<Option<(JsonBytes, Vec<Cycle>)>, crate::rpc::RpcError> {
+        let res = self.post::<_, Option<BlockResponse>>(
+            "get_block",
+            (hash, Some(Uint32::from(0u32)), true),
+        )?;
+        Self::blockresponse2bytes(res)
+    }
+
+    /// Same as get_block_by_number except with parameter with_cycles and return BlockResponse
+    pub fn get_packed_block_by_number(
+        &mut self,
+        number: BlockNumber,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post("get_block_by_number", (number, Some(Uint32::from(0u32))))
+    }
+
+    pub fn get_block_by_number_with_cycles(
+        &mut self,
+        number: BlockNumber,
+    ) -> Result<Option<(BlockView, Vec<Cycle>)>, crate::rpc::RpcError> {
+        let res = self
+            .post::<_, Option<BlockResponse>>("get_block_by_number", (number, None::<u32>, true))?;
+        Self::transform_block_view_with_cycle(res)
+    }
+
+    pub fn get_packed_block_by_number_with_cycles(
+        &mut self,
+        number: BlockNumber,
+    ) -> Result<Option<(JsonBytes, Vec<Cycle>)>, crate::rpc::RpcError> {
+        let res = self.post::<_, Option<BlockResponse>>(
+            "get_block_by_number",
+            (number, Some(Uint32::from(0u32)), true),
+        )?;
+        Self::blockresponse2bytes(res)
+    }
+
+    pub fn get_packed_header(
+        &mut self,
+        hash: H256,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post::<_, Option<JsonBytes>>("get_header", (hash, Some(Uint32::from(0u32))))
+    }
+
+    pub fn get_packed_header_by_number(
+        &mut self,
+        number: BlockNumber,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post::<_, Option<JsonBytes>>(
+            "get_header_by_number",
+            (number, Some(Uint32::from(0u32))),
+        )
+    }
+    // get transaction with verbosity=0
+    pub fn get_packed_transaction(
+        &mut self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(0u32))),
+        )
+    }
+
+    // get transaction with verbosity=1, so the result transaction field is None
+    pub fn get_transaction_status(
+        &mut self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(1u32))),
+        )
+    }
+
+    pub fn get_packed_tip_header(&mut self) -> Result<JsonBytes, crate::rpc::RpcError> {
+        self.post::<_, JsonBytes>("get_tip_header", (Some(Uint32::from(0u32)),))
+    }
+
+    pub fn get_packed_fork_block(
+        &mut self,
+        block_hash: H256,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post::<_, Option<JsonBytes>>("get_fork_block", (block_hash, Some(Uint32::from(0u32))))
+    }
+}

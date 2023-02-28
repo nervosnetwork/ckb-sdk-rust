@@ -2,8 +2,10 @@ mod ckb;
 pub mod ckb_indexer;
 pub mod ckb_light_client;
 
+use anyhow::anyhow;
 pub use ckb::CkbRpcClient;
 pub use ckb_indexer::IndexerRpcClient;
+use ckb_jsonrpc_types::{JsonBytes, ResponseFormat};
 pub use ckb_light_client::LightClientRpcClient;
 
 use thiserror::Error;
@@ -16,6 +18,8 @@ pub enum RpcError {
     Http(#[from] reqwest::Error),
     #[error("jsonrpc error: `{0}`")]
     Rpc(#[from] jsonrpc_core::Error),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 #[macro_export]
@@ -39,6 +43,33 @@ macro_rules! jsonrpc {
             pub fn new(uri: &str) -> Self {
                 let url = reqwest::Url::parse(uri).expect("ckb uri, e.g. \"http://127.0.0.1:8114\"");
                 $struct_name { url, id: 0, client: reqwest::blocking::Client::new(), }
+            }
+
+            pub fn post<PARAM, RET>(&mut self, method:&str, params: PARAM)->Result<RET, crate::rpc::RpcError>
+            where
+                PARAM:serde::ser::Serialize,
+                RET: serde::de::DeserializeOwned,
+            {
+                let params = serde_json::to_value(params)?;
+                self.id += 1;
+
+                let mut req_json = serde_json::Map::new();
+                req_json.insert("id".to_owned(), serde_json::json!(self.id));
+                req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
+                req_json.insert("method".to_owned(), serde_json::json!(method));
+                req_json.insert("params".to_owned(), params);
+
+                let resp = self.client.post(self.url.clone()).json(&req_json).send()?;
+                let output = resp.json::<jsonrpc_core::response::Output>()?;
+                match output {
+                    jsonrpc_core::response::Output::Success(success) => {
+                        serde_json::from_value(success.result).map_err(Into::into)
+                    },
+                    jsonrpc_core::response::Output::Failure(failure) => {
+                        Err(failure.error.into())
+                    }
+                }
+
             }
 
             $(
@@ -74,6 +105,35 @@ macro_rules! jsonrpc {
 macro_rules! serialize_parameters {
     () => ( serde_json::Value::Null );
     ($($arg_name:ident,)+) => ( serde_json::to_value(($($arg_name,)+))?)
+}
+
+pub trait ResponseFormatGetter<V> {
+    fn get_value(self) -> Result<V, crate::rpc::RpcError>;
+    fn get_json_bytes(self) -> Result<JsonBytes, crate::rpc::RpcError>;
+}
+
+impl<V> ResponseFormatGetter<V> for ResponseFormat<V> {
+    fn get_value(self) -> Result<V, crate::rpc::RpcError> {
+        match self.inner {
+            ckb_jsonrpc_types::Either::Left(v) => Ok(v),
+            ckb_jsonrpc_types::Either::Right(_) => {
+                return Err(crate::rpc::RpcError::Other(anyhow!(
+                    "It's a JsonBytes, can't get the inner value directly"
+                )))
+            }
+        }
+    }
+
+    fn get_json_bytes(self) -> Result<JsonBytes, crate::rpc::RpcError> {
+        match self.inner {
+            ckb_jsonrpc_types::Either::Left(_v) => {
+                return Err(crate::rpc::RpcError::Other(anyhow!(
+                    "It's not a JsonBytes, can't get the json bytes directly"
+                )))
+            }
+            ckb_jsonrpc_types::Either::Right(json_bytes) => Ok(json_bytes),
+        }
+    }
 }
 
 #[cfg(test)]

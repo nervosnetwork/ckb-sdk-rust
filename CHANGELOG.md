@@ -1,3 +1,6 @@
+# 2.4.1
+* Add `get_block_with_cycles` and `get_block_by_number_with_cycles` to support `get_block` and `get_block_by_number` with parameter `with_cycles`.
+
 # 2.4.0
 * Update ckb to 0.106.0
 * Add `TxBuilder::build_balance_unlocked` to support transaction's cycles limitation.
