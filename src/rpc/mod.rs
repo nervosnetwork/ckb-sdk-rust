@@ -75,11 +75,6 @@ macro_rules! jsonrpc {
             $(
                 $(#[$attr])*
                 pub fn $method(&mut $selff $(, $arg_name: $arg_ty)*) -> Result<$return_ty, crate::rpc::RpcError> {
-                    // This method can be implemented by calling the post function
-                    // let method = stringify!($method);
-                    // let params = ($($arg_name,)*);
-                    // $selff.post(method, params)
-
                     let method = String::from(stringify!($method));
                     let params = crate::serialize_parameters!($($arg_name,)*);
                     $selff.id += 1;
@@ -123,7 +118,7 @@ impl<V> ResponseFormatGetter<V> for ResponseFormat<V> {
             ckb_jsonrpc_types::Either::Left(v) => Ok(v),
             ckb_jsonrpc_types::Either::Right(_) => {
                 return Err(crate::rpc::RpcError::Other(anyhow!(
-                    "It's a JsonBytes, can't not get the inner value directly"
+                    "It's a JsonBytes, can't get the inner value directly"
                 )))
             }
         }
@@ -133,7 +128,7 @@ impl<V> ResponseFormatGetter<V> for ResponseFormat<V> {
         match self.inner {
             ckb_jsonrpc_types::Either::Left(_v) => {
                 return Err(crate::rpc::RpcError::Other(anyhow!(
-                    "It's not a JsonBytes, can't not get the json bytes directly"
+                    "It's not a JsonBytes, can't get the json bytes directly"
                 )))
             }
             ckb_jsonrpc_types::Either::Right(json_bytes) => Ok(json_bytes),
