@@ -43,7 +43,8 @@ fn main() -> Result<(), Box<dyn StdErr>> {
 
     println!("unsigned_group len:{}", unsigned_group.len());
     let tx_hash = builder.send_transaction(tx)?;
-    // example : 858d8a2986926085b95812585e949357b92b0a3414e2b811aa68bd34bc66f1c9
+    // example : 858d8a2986926085b95812585e949357b92b0a3414e2b811aa68bd34bc66f1c9 for withdraw
+    // example : e7aa1e0dfe775639c12928a768dff094debcf5fedbb2ceaa0facfaf25d10dbbe for ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqv5dsed9par23x4g58seaw58j3ym5ml2hs8ztche claim
     println!("tx {} sent", tx_hash);
     Ok(())
 }

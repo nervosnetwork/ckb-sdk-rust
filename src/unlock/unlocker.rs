@@ -1,10 +1,14 @@
+use std::collections::HashMap;
+
 use anyhow::anyhow;
+use ckb_crypto::secp::SECP256K1;
+use ckb_hash::blake2b_256;
 use ckb_types::{
     bytes::Bytes,
     core::TransactionView,
     packed::{self, Byte32, BytesOpt, WitnessArgs},
     prelude::*,
-    H256,
+    H160, H256,
 };
 use thiserror::Error;
 
@@ -16,7 +20,7 @@ use super::{
     },
     OmniLockConfig, OmniLockScriptSigner, OmniUnlockMode,
 };
-use crate::{constants::MULTISIG_TYPE_HASH, types::ScriptGroup};
+use crate::{constants::MULTISIG_TYPE_HASH, parser::Parser, types::ScriptGroup};
 use crate::{
     constants::SIGHASH_TYPE_HASH,
     traits::{
@@ -522,6 +526,41 @@ pub struct ChequeUnlocker {
 impl ChequeUnlocker {
     pub fn new(signer: ChequeScriptSigner) -> ChequeUnlocker {
         ChequeUnlocker { signer }
+    }
+    pub fn new_with_secret_h256(keys: &[H256], action: ChequeAction) -> Result<Self, UnlockError> {
+        let mut secrect_keys = HashMap::new();
+        let lock_script_id = SecpSighashUnlocker::script_id();
+        for key in keys.iter() {
+            let secrrect_key = secp256k1::SecretKey::from_slice(key.as_bytes()).map_err(|e| {
+                UnlockError::Other(anyhow!("invalid key {}:{}", key, e.to_string()))
+            })?;
+            let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &secrrect_key);
+            let sighash_args = blake2b_256(&pubkey.serialize()[..])[0..20].pack();
+            let lock_script = lock_script_id.build_script(sighash_args);
+
+            let lock_hash = lock_script.calc_script_hash();
+            let lock_hash_prefix = &lock_hash.as_slice()[0..20];
+            let h160 = H160::from_slice(lock_hash_prefix).map_err(|e| {
+                UnlockError::Other(anyhow!("invalid key {}:{}", key, e.to_string()))
+            })?;
+            secrect_keys.insert(h160, secrrect_key);
+        }
+        let signer = SecpCkbRawKeySigner::new(secrect_keys);
+        let cheque_unlocker = ChequeUnlocker::from((Box::new(signer) as Box<_>, action));
+        Ok(cheque_unlocker)
+    }
+
+    pub fn new_with_secret_strs<T: AsRef<str>>(
+        keys: &[T],
+        action: ChequeAction,
+    ) -> Result<Self, UnlockError> {
+        let mut secrect_keys = Vec::with_capacity(keys.len());
+        for key in keys.iter() {
+            let key_bytes: H256 = H256::parse(key.as_ref())
+                .map_err(|e| UnlockError::Other(anyhow!("invalid key {}:{}", key.as_ref(), e)))?;
+            secrect_keys.push(key_bytes);
+        }
+        Self::new_with_secret_h256(&secrect_keys, action)
     }
 }
 impl From<(Box<dyn Signer>, ChequeAction)> for ChequeUnlocker {

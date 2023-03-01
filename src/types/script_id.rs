@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::{constants::TYPE_ID_CODE_HASH, Address};
+use crate::{constants::TYPE_ID_CODE_HASH, parser::Parser, Address};
 use ckb_types::{
     core::ScriptHashType,
     packed::{Bytes, Script},
@@ -48,6 +48,11 @@ impl ScriptId {
             .hash_type(self.hash_type.into())
             .args(args)
             .build()
+    }
+
+    pub fn build_script_from_arg_str(self, args: &str) -> Result<Script, String> {
+        let bytes = Bytes::parse(args)?;
+        Ok(self.build_script(bytes))
     }
 }
 

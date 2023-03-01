@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use anyhow::anyhow;
 use ckb_types::{
     bytes::Bytes,
-    core::{Capacity, DepType, ScriptHashType, TransactionBuilder, TransactionView},
+    core::{Capacity, DepType, FeeRate, ScriptHashType, TransactionBuilder, TransactionView},
     h256,
-    packed::{Byte32, CellDep, CellInput, CellOutput, OutPoint, Script},
+    packed::{Byte32, CellDep, CellInput, CellOutput, OutPoint, Script, WitnessArgs},
     prelude::*,
     H256,
 };
@@ -23,6 +23,25 @@ use crate::{
     },
     Address, AddressPayload,
 };
+/// this enum defines how the claim should store the output
+#[derive(Debug, Clone)]
+pub enum ClaimReceiverOutput {
+    /// update a already existing cell
+    Update(CellInput),
+    /// create a new cell with cell output and output data, since it's a new create data, it's first 16 bytes muts be 0 for sudt.
+    Create {
+        cell_output: CellOutput,
+        output_data: Bytes,
+    },
+    /// not set yet,
+    None,
+}
+
+impl Default for ClaimReceiverOutput {
+    fn default() -> Self {
+        ClaimReceiverOutput::None
+    }
+}
 
 pub struct ChequeClaimBuilder {
     /// The cheque cells to claim, all cells must have same lock script and same
@@ -31,7 +50,7 @@ pub struct ChequeClaimBuilder {
 
     /// Add all SUDT amount to this cell, the type script must be the same with
     /// `inputs`. The receiver output will keep the lock script, capacity.
-    pub receiver_input: CellInput,
+    pub receiver_input: ClaimReceiverOutput,
 
     /// Sender's lock script, the script hash must match the cheque cell's lock script args.
     pub sender_lock_script: Script,
@@ -45,7 +64,18 @@ impl ChequeClaimBuilder {
     ) -> ChequeClaimBuilder {
         ChequeClaimBuilder {
             inputs,
-            receiver_input,
+            receiver_input: ClaimReceiverOutput::Update(receiver_input),
+            sender_lock_script,
+        }
+    }
+    pub fn new_with_receiver_output(
+        inputs: Vec<CellInput>,
+        receiver_output: ClaimReceiverOutput,
+        sender_lock_script: Script,
+    ) -> ChequeClaimBuilder {
+        ChequeClaimBuilder {
+            inputs,
+            receiver_input: receiver_output,
             sender_lock_script,
         }
     }
@@ -68,12 +98,25 @@ impl TxBuilder for ChequeClaimBuilder {
         #[allow(clippy::mutable_key_type)]
         let mut cell_deps = HashSet::new();
         let mut inputs = self.inputs.clone();
-        inputs.push(self.receiver_input.clone());
+        let (receiver_input_cell, receiver_input_data) = match &self.receiver_input {
+            ClaimReceiverOutput::Update(receiver_input) => {
+                inputs.push(receiver_input.clone());
+                (
+                    tx_dep_provider.get_cell(&receiver_input.previous_output())?,
+                    tx_dep_provider.get_cell_data(&receiver_input.previous_output())?,
+                )
+            }
+            ClaimReceiverOutput::Create {
+                cell_output,
+                output_data,
+            } => (cell_output.clone(), output_data.clone()),
+            ClaimReceiverOutput::None => {
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
+                    "receiver's target cell not set yet"
+                )))
+            }
+        };
 
-        let receiver_input_cell =
-            tx_dep_provider.get_cell(&self.receiver_input.previous_output())?;
-        let receiver_input_data =
-            tx_dep_provider.get_cell_data(&self.receiver_input.previous_output())?;
         let receiver_type_script = receiver_input_cell.type_().to_opt().ok_or_else(|| {
             TxBuilderError::InvalidParameter(anyhow!("receiver input missing type script"))
         })?;
@@ -83,9 +126,9 @@ impl TxBuilder for ChequeClaimBuilder {
                 .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(receiver_input_cell.lock()))?;
         cell_deps.insert(receiver_input_lock_cell_dep);
 
-        if receiver_input_data.len() != 16 {
+        if receiver_input_data.len() < 16 {
             return Err(TxBuilderError::InvalidParameter(anyhow!(
-                "invalid receiver input cell data length, expected: 16, got: {}",
+                "invalid receiver input cell data length, expected at least 16, got: {}",
                 receiver_input_data.len()
             )));
         }
@@ -107,7 +150,7 @@ impl TxBuilder for ChequeClaimBuilder {
             let out_point = input.previous_output();
             let input_cell = tx_dep_provider.get_cell(&out_point)?;
             let input_data = tx_dep_provider.get_cell_data(&out_point)?;
-            let type_script = receiver_input_cell.type_().to_opt().ok_or_else(|| {
+            let type_script = input_cell.type_().to_opt().ok_or_else(|| {
                 TxBuilderError::InvalidParameter(anyhow!(
                     "cheque input missing type script: {}",
                     input
@@ -168,7 +211,9 @@ impl TxBuilder for ChequeClaimBuilder {
         let receiver_output = receiver_input_cell;
         let receiver_output_data = {
             let receiver_output_amount = receiver_input_amount + cheque_total_amount;
-            Bytes::from(receiver_output_amount.to_le_bytes().to_vec())
+            let mut new_data = receiver_input_data.as_ref().to_vec();
+            new_data[0..16].copy_from_slice(&receiver_output_amount.to_le_bytes()[..]);
+            Bytes::from(new_data)
         };
         let sender_output = CellOutput::new_builder()
             .lock(self.sender_lock_script.clone())
@@ -199,6 +244,9 @@ pub struct ChequeWithdrawBuilder {
 
     /// If `acp_script_id` provided, will withdraw to anyone-can-pay address
     pub acp_script_id: Option<ScriptId>,
+    /// * `fee_rate`: If fee_rate is given, the fee is from withdraw capacity so
+    /// that no additional input and change cell is needed.
+    pub fee_rate: Option<FeeRate>,
 }
 
 impl ChequeWithdrawBuilder {
@@ -211,7 +259,11 @@ impl ChequeWithdrawBuilder {
             out_points,
             sender_lock_script,
             acp_script_id,
+            fee_rate: None,
         }
+    }
+    pub fn set_fee_rate(&mut self, fee_rate: Option<FeeRate>) {
+        self.fee_rate = fee_rate;
     }
 }
 
@@ -351,15 +403,45 @@ impl TxBuilder for ChequeWithdrawBuilder {
                 )
             };
 
-        let sender_output = CellOutput::new_builder()
+        let mut sender_output = CellOutput::new_builder()
             .lock(sender_lock)
             .type_(Some(type_script).pack())
             .capacity(total_capacity.pack())
             .build();
         let sender_output_data = Bytes::from(total_amount.to_le_bytes().to_vec());
+        let outputs_data = vec![sender_output_data.pack()];
+
+        if let Some(fee_rate) = self.fee_rate {
+            let occupied_capacity = sender_output
+                .occupied_capacity(Capacity::zero())
+                .unwrap()
+                .as_u64();
+            let placeholder_witness = WitnessArgs::new_builder()
+                .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+                .build();
+            let tmp_tx = TransactionBuilder::default()
+                .set_cell_deps(cell_deps.clone().into_iter().collect())
+                .set_inputs(inputs.clone())
+                .set_outputs(vec![sender_output.clone()])
+                .set_outputs_data(outputs_data.clone())
+                .set_witnesses(vec![placeholder_witness.as_bytes().pack()])
+                .build();
+
+            let tx_size = tmp_tx.data().as_reader().serialized_size_in_block();
+            let tx_fee = fee_rate.fee(tx_size as u64).as_u64();
+            let capacity = if total_capacity > tx_fee {
+                total_capacity - tx_fee
+            } else {
+                total_capacity
+            };
+            let final_capacity = std::cmp::max(occupied_capacity, capacity);
+            sender_output = sender_output
+                .as_builder()
+                .capacity(final_capacity.pack())
+                .build();
+        }
 
         let outputs = vec![sender_output];
-        let outputs_data = vec![sender_output_data.pack()];
 
         Ok(TransactionBuilder::default()
             .set_cell_deps(cell_deps.into_iter().collect())
@@ -452,3 +534,7 @@ pub fn get_default_script_id(network_type: NetworkType) -> ScriptId {
     };
     ScriptId::new_type(code_hash)
 }
+
+mod builder;
+
+pub use builder::{DefaultChequeClaimBuilder, DefaultChequeWithdrawBuilder};

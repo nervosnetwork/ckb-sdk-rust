@@ -58,6 +58,7 @@ impl fmt::Display for NetworkType {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct NetworkInfo {
     pub network_type: NetworkType,
     pub url: String,

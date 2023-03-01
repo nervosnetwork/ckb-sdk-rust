@@ -27,6 +27,7 @@ use ckb_types::{
 };
 
 use super::acp::add_default_acp_dep;
+use super::cheque::add_default_cheque_dep;
 use super::udt::add_default_sudt_dep;
 use super::TxBuilderError;
 
@@ -36,6 +37,7 @@ pub struct BaseTransactionBuilder {
     pub sender: Address,
     pub outputs: Vec<(CellOutput, Bytes)>,
     pub cell_deps: HashSet<CellDep>,
+    pub network_info: NetworkInfo,
 
     pub cell_collector: Box<dyn CellCollector>,
     pub cell_dep_resolver: Box<dyn CellDepResolver>,
@@ -84,6 +86,7 @@ impl BaseTransactionBuilder {
         };
         add_default_sudt_dep(&mut cell_dep_resolver, network_info.network_type);
         add_default_acp_dep(&mut cell_dep_resolver, network_info.network_type);
+        add_default_cheque_dep(&mut cell_dep_resolver, network_info.network_type);
 
         let cell_collector = DefaultCellCollector::new(&network_info.url);
         let tx_dep_provider = DefaultTransactionDependencyProvider::new(&network_info.url, 10);
@@ -99,6 +102,7 @@ impl BaseTransactionBuilder {
             sender: sender_address,
             outputs: vec![],
             cell_deps: HashSet::new(),
+            network_info: network_info.clone(),
             cell_collector: Box::new(cell_collector),
             cell_dep_resolver: Box::new(cell_dep_resolver),
             header_dep_resolver: Box::new(DefaultHeaderDepResolver::new(&network_info.url)),
