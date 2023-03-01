@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     builder.add_sighash_unlocker_from_str(&[
         "0x6c9ed03816e3111e49384b8d180174ad08e29feb1393ea1b51cef1c505d4e36a",
     ])?;
-    let (tx, _unsigned_group) = builder.build_balance_unlocked().unwrap();
+    let (tx, _unsigned_group) = builder.build_unlocked().unwrap();
 
     let tx_hash = builder.send_transaction(tx)?;
     // example tx_hash: caf1fa259764a207ebdc0531a0ede37b3d2a31f16378f249a9eb7449392867d1

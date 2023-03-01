@@ -30,7 +30,6 @@ fn main() -> Result<(), Box<dyn StdErr>> {
 
     builder.build_item_init_witnesses().unwrap();
     let (tx, unsigned_group) = builder.build_unlocked().unwrap();
-    // let (tx, unsigned_group) = builder.build_balance_unlocked().unwrap();
 
     println!(
         "> tx: {}",

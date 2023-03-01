@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         ])
         .unwrap();
 
-    let (tx, unsigned_group) = builder.build_balance_unlocked().unwrap();
+    let (tx, unsigned_group) = builder.build_unlocked().unwrap();
 
     println!(
         "> tx: {}",

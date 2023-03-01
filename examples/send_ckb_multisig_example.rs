@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         "0x4fd809631a6aa6e3bb378dd65eae5d71df895a82c91a615a1e8264741515c79c",
         "0x7438f7b35c355e3d2fb9305167a31a72d22ddeafb80a21cc99ff6329d92e8087",
     ])?;
-    let (tx, unsigned_group) = builder.build_balance_unlocked().unwrap();
+    let (tx, unsigned_group) = builder.build_unlocked().unwrap();
     println!("unsigned group len: {}", unsigned_group.len());
 
     let tx_hash = builder.send_transaction(tx)?;
