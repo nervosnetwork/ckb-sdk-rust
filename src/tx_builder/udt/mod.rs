@@ -11,7 +11,6 @@ use ckb_types::{
 use std::collections::HashSet;
 
 use super::{TransferAction, TxBuilder, TxBuilderError};
-use crate::types::ScriptId;
 use crate::{
     constants,
     traits::{
@@ -20,6 +19,7 @@ use crate::{
     },
     NetworkType,
 };
+use crate::{traits::LiveCell, types::ScriptId};
 
 pub use builder::{DefaultUdtIssueBuilder, DefaultUdtTransferBuilder};
 
@@ -314,6 +314,38 @@ pub struct UdtTransferBuilder {
     pub receivers: Vec<UdtTargetReceiver>,
 }
 
+impl UdtTransferBuilder {
+    fn find_sender_cell(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        output_total: u128,
+    ) -> Result<LiveCell, TxBuilderError> {
+        let sender_query = {
+            let mut query = CellQueryOptions::new_lock(self.sender.clone());
+            query.secondary_script = Some(self.type_script.clone());
+            query.data_len_range = Some(ValueRangeOption::new_min(16));
+            query
+        };
+
+        loop {
+            let (sender_cells, _) = cell_collector.collect_live_cells(&sender_query, true)?;
+            if sender_cells.is_empty() {
+                return Err(TxBuilderError::Other(anyhow!(
+                    "qualified sender cell not found"
+                )));
+            }
+            let mut amount_bytes = [0u8; 16];
+            let sender_cell = &sender_cells[0];
+            amount_bytes.copy_from_slice(&sender_cell.output_data.as_ref()[0..16]);
+
+            let input_amount = u128::from_le_bytes(amount_bytes);
+            if input_amount > output_total {
+                return Ok(sender_cell.clone());
+            }
+        }
+    }
+}
+
 impl TxBuilder for UdtTransferBuilder {
     fn build_base(
         &self,
@@ -322,17 +354,9 @@ impl TxBuilder for UdtTransferBuilder {
         _header_dep_resolver: &dyn HeaderDepResolver,
         _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError> {
-        let sender_query = {
-            let mut query = CellQueryOptions::new_lock(self.sender.clone());
-            query.secondary_script = Some(self.type_script.clone());
-            query.data_len_range = Some(ValueRangeOption::new_min(16));
-            query
-        };
-        let (sender_cells, _) = cell_collector.collect_live_cells(&sender_query, true)?;
-        if sender_cells.is_empty() {
-            return Err(TxBuilderError::Other(anyhow!("sender cell not found")));
-        }
-        let sender_cell = &sender_cells[0];
+        let output_total: u128 = self.receivers.iter().map(|receiver| receiver.amount).sum();
+
+        let sender_cell = self.find_sender_cell(cell_collector, output_total)?;
 
         let sender_cell_dep = cell_dep_resolver
             .resolve(&self.sender)
@@ -348,14 +372,6 @@ impl TxBuilder for UdtTransferBuilder {
         let mut amount_bytes = [0u8; 16];
         amount_bytes.copy_from_slice(&sender_cell.output_data.as_ref()[0..16]);
         let input_total = u128::from_le_bytes(amount_bytes);
-        let output_total: u128 = self.receivers.iter().map(|receiver| receiver.amount).sum();
-        if input_total < output_total {
-            return Err(TxBuilderError::Other(anyhow!(
-                "sender udt amount not enough, expected at least: {}, actual: {}",
-                output_total,
-                input_total
-            )));
-        }
 
         let sender_output_data = {
             let new_amount = input_total - output_total;

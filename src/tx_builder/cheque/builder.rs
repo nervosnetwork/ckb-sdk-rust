@@ -36,6 +36,9 @@ pub struct DefaultChequeClaimBuilder {
 
     /// Sender's lock script, the script hash must match the cheque cell's lock script args.
     pub sender_lock_script: Script,
+    /// If fee_rate is given, the fee is from receiver's capacity so
+    /// that no additional input and change cell is needed.
+    fee_rate: Option<FeeRate>,
 }
 
 impl DefaultChequeClaimBuilder {
@@ -56,14 +59,15 @@ impl DefaultChequeClaimBuilder {
         network_info: NetworkInfo,
         capacity_provider_addr: Address,
     ) -> Result<Self, TxBuilderError> {
+        let base_builder =
+            BaseTransactionBuilder::new_with_address(network_info, capacity_provider_addr)?;
+        let fee_rate = Some(base_builder.balancer.fee_rate);
         Ok(Self {
-            base_builder: BaseTransactionBuilder::new_with_address(
-                network_info,
-                capacity_provider_addr,
-            )?,
+            base_builder,
             inputs: Vec::new(),
             receiver_target: ClaimReceiverOutput::default(),
             sender_lock_script: Script::default(),
+            fee_rate,
         })
     }
 
@@ -112,6 +116,7 @@ impl DefaultChequeClaimBuilder {
     pub fn build_sudt_receiver_target(
         &mut self,
         receiver_addr: &Address,
+        capacity: Option<u64>,
     ) -> Result<(), TxBuilderError> {
         if self.inputs.is_empty() {
             return Err(TxBuilderError::InvalidParameter(anyhow!(
@@ -123,11 +128,22 @@ impl DefaultChequeClaimBuilder {
         let input_cell = self.base_builder.tx_dep_provider.get_cell(&out_point)?;
         let type_script = input_cell.type_();
         let mp_fun = |e: CapacityError| TxBuilderError::Other(anyhow!(e.to_string()));
-        let cell_output = CellOutput::new_builder()
+        let mut cell_output = CellOutput::new_builder()
             .lock(lock_script)
             .type_(type_script)
             .build_exact_capacity(Capacity::bytes(16).map_err(mp_fun)?)
             .map_err(mp_fun)?;
+        if let Some(capacity) = capacity {
+            let mini_capacity: u64 = cell_output.capacity().unpack();
+            if capacity < mini_capacity {
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
+                    "provided capacity {} is smaller than the minimum capacity{}",
+                    capacity,
+                    mini_capacity
+                )));
+            }
+            cell_output = cell_output.as_builder().capacity(capacity.pack()).build();
+        }
 
         let output_data = Bytes::from(vec![0u8; 16]);
         self.receiver_target = ClaimReceiverOutput::Create {
@@ -138,13 +154,18 @@ impl DefaultChequeClaimBuilder {
         Ok(())
     }
 
+    /// build an sudt receiver target by address string
+    /// # Arguments
+    /// `receiver_addr` receiver address
+    /// `capacity` the target capacity, if is none, it will be minimum capacity it need.
     pub fn build_sudt_receiver_target_by_addr_str(
         &mut self,
         receiver_addr: &str,
+        capacity: Option<u64>,
     ) -> Result<(), TxBuilderError> {
         let receiver_addr = Address::parse(receiver_addr)
             .map_err(|e| TxBuilderError::InvalidParameter(anyhow!("can't parse address {}", e)))?;
-        self.build_sudt_receiver_target(&receiver_addr)
+        self.build_sudt_receiver_target(&receiver_addr, capacity)
     }
 
     // find a cell for receiver for update
@@ -233,11 +254,13 @@ impl DefaultChequeClaimBuilder {
 
 impl From<&DefaultChequeClaimBuilder> for ChequeClaimBuilder {
     fn from(val: &DefaultChequeClaimBuilder) -> Self {
-        ChequeClaimBuilder::new_with_receiver_output(
+        let mut ret = ChequeClaimBuilder::new_with_receiver_output(
             val.inputs.clone(),
             val.receiver_target.clone(),
             val.sender_lock_script.clone(),
-        )
+        );
+        ret.set_fee_rate(val.fee_rate);
+        ret
     }
 }
 

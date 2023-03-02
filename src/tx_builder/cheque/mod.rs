@@ -37,6 +37,21 @@ pub enum ClaimReceiverOutput {
     None,
 }
 
+impl ClaimReceiverOutput {
+    pub fn is_update(&self) -> bool {
+        matches!(*self, Self::Update(_))
+    }
+    pub fn is_create(&self) -> bool {
+        matches!(
+            self,
+            Self::Create {
+                cell_output: _,
+                output_data: _
+            }
+        )
+    }
+}
+
 impl Default for ClaimReceiverOutput {
     fn default() -> Self {
         ClaimReceiverOutput::None
@@ -54,6 +69,10 @@ pub struct ChequeClaimBuilder {
 
     /// Sender's lock script, the script hash must match the cheque cell's lock script args.
     pub sender_lock_script: Script,
+
+    /// If fee_rate is given, the fee is from receiver's capacity so
+    /// that no additional input and change cell is needed.
+    pub fee_rate: Option<FeeRate>,
 }
 
 impl ChequeClaimBuilder {
@@ -66,6 +85,7 @@ impl ChequeClaimBuilder {
             inputs,
             receiver_input: ClaimReceiverOutput::Update(receiver_input),
             sender_lock_script,
+            fee_rate: None,
         }
     }
     pub fn new_with_receiver_output(
@@ -77,7 +97,11 @@ impl ChequeClaimBuilder {
             inputs,
             receiver_input: receiver_output,
             sender_lock_script,
+            fee_rate: None,
         }
+    }
+    pub fn set_fee_rate(&mut self, fee_rate: Option<FeeRate>) {
+        self.fee_rate = fee_rate;
     }
 }
 
@@ -208,27 +232,74 @@ impl TxBuilder for ChequeClaimBuilder {
             )));
         }
 
-        let receiver_output = receiver_input_cell;
+        let mut receiver_output = receiver_input_cell;
         let receiver_output_data = {
             let receiver_output_amount = receiver_input_amount + cheque_total_amount;
             let mut new_data = receiver_input_data.as_ref().to_vec();
             new_data[0..16].copy_from_slice(&receiver_output_amount.to_le_bytes()[..]);
             Bytes::from(new_data)
         };
+
         let sender_output = CellOutput::new_builder()
             .lock(self.sender_lock_script.clone())
             .capacity(cheque_total_capacity.pack())
             .build();
         let sender_output_data = Bytes::new();
 
-        let outputs = vec![receiver_output, sender_output];
+        let mut outputs = vec![receiver_output.clone(), sender_output];
         let outputs_data = vec![receiver_output_data.pack(), sender_output_data.pack()];
+        let mut witness = vec![ckb_types::packed::Bytes::default(); self.inputs.len() + 1];
+        let placeholder_witness = WitnessArgs::new_builder()
+            .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+            .build()
+            .as_bytes()
+            .pack();
+        witness[self.inputs.len()] = placeholder_witness.clone();
+        let receiver_lock_hash = receiver_output.lock().calc_script_hash();
+        if receiver_lock_hash.as_slice()[0..20] != cheque_lock_args.as_ref()[0..20] {
+            witness[0] = placeholder_witness.clone();
+        }
+
+        if let Some(fee_rate) = self.fee_rate {
+            if self.receiver_input.is_update() {
+                let occupied_capacity = receiver_output
+                    .occupied_capacity(Capacity::bytes(receiver_output_data.len()).unwrap())
+                    .unwrap()
+                    .as_u64();
+
+                let tmp_tx = TransactionBuilder::default()
+                    .set_cell_deps(cell_deps.clone().into_iter().collect())
+                    .set_inputs(inputs.clone())
+                    .set_outputs(outputs.clone())
+                    .set_outputs_data(outputs_data.clone())
+                    .set_witnesses(witness.clone())
+                    .build();
+
+                let tx_size = tmp_tx.data().as_reader().serialized_size_in_block();
+                let tx_fee = fee_rate.fee(tx_size as u64).as_u64();
+                let original_capacity: u64 = receiver_output.capacity().unpack();
+                let capacity = if original_capacity > tx_fee {
+                    original_capacity - tx_fee
+                } else {
+                    original_capacity
+                };
+                let final_capacity = std::cmp::max(occupied_capacity, capacity);
+                if final_capacity != original_capacity {
+                    receiver_output = receiver_output
+                        .as_builder()
+                        .capacity(final_capacity.pack())
+                        .build();
+                    outputs[0] = receiver_output;
+                }
+            }
+        }
 
         Ok(TransactionBuilder::default()
             .set_cell_deps(cell_deps.into_iter().collect())
             .set_inputs(inputs)
             .set_outputs(outputs)
             .set_outputs_data(outputs_data)
+            .set_witnesses(witness)
             .build())
     }
 }

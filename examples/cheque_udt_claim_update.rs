@@ -6,6 +6,8 @@ use ckb_sdk::{
     NetworkInfo,
 };
 
+// This example shows when receiver not exist, this transaction will query a target cell, and update the sudt data in it.
+// So if the target cell contains enough capacity for target cell and transaction fee, no additional cell will be added to input list.
 fn main() -> Result<(), Box<dyn StdErr>> {
     let network_info = NetworkInfo::testnet();
     let capacity_provider_addr =  "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqv5dsed9par23x4g58seaw58j3ym5ml2hs8ztche";
@@ -13,7 +15,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let mut builder = DefaultChequeClaimBuilder::new(network_info, capacity_provider_addr).unwrap();
     builder
         .add_cheque_output_cell_str(
-            "e7aa1e0dfe775639c12928a768dff094debcf5fedbb2ceaa0facfaf25d10dbbe",
+            "c76a9f64a2d095ba5363df05cdacb1cf9dbb506d39af3bb9b1d79c201777b1ac",
             1,
         )
         .unwrap();
@@ -23,7 +25,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
             "d2d1e192b341ccb9fe94f68fae1e687e2916eb6edd92039522088468dd7582d6",
         ])
         .unwrap();
-    builder.build_sudt_receiver_target_by_addr_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqv5dsed9par23x4g58seaw58j3ym5ml2hs8ztche", None).unwrap();
+    builder.query_sudt_receiver_target_by_addr_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqv5dsed9par23x4g58seaw58j3ym5ml2hs8ztche").unwrap();
     let sender_lock_script = SecpSighashUnlocker::script_id()
         .build_script_from_arg_str("0xbddb8434a518a5729a9ea58cd2d541afbd712999")
         .unwrap();
@@ -39,7 +41,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
 
     println!("unsigned_group len:{}", unsigned_group.len());
     let tx_hash = builder.send_transaction(tx)?;
-    // example :74227f5c816f316871f06c35c572d2c093c8edee0c5c1b9f76135544cb165368
+    // example : f6f6f34ce59989ff693c25cb46f9c254f2db55b585944afe0c61027c0029ef25
     println!("tx {} sent", tx_hash);
     Ok(())
 }
