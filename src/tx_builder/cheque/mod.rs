@@ -257,7 +257,7 @@ impl TxBuilder for ChequeClaimBuilder {
         witness[self.inputs.len()] = placeholder_witness.clone();
         let receiver_lock_hash = receiver_output.lock().calc_script_hash();
         if receiver_lock_hash.as_slice()[0..20] != cheque_lock_args.as_ref()[0..20] {
-            witness[0] = placeholder_witness.clone();
+            witness[0] = placeholder_witness;
         }
 
         if let Some(fee_rate) = self.fee_rate {
