@@ -3,6 +3,7 @@ use std::error::Error as StdErr;
 use ckb_sdk::{
     tx_builder::{
         builder::CkbTransactionBuilder,
+        send_transaction,
         transfer::{
             sign_mutisig_tx_with_str_keys, DefaultMultisigCapacityTransferBuilder,
             MultisigTransactionInfo,
@@ -55,8 +56,9 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         serde_json::to_string_pretty(&ckb_jsonrpc_types::TransactionView::from(tx.clone()))
             .unwrap()
     );
-    let tx_hash = builder.send_transaction(tx)?;
+    let tx_hash = send_transaction(tx, &network_info.url)?;
     // example tx hash: 6fc4d63c5be5b1101b9bca416da872402c3f3466f5e993f9bfb920eaca7798c6
+    // example tx hash: f01c355bd3f69671b0d6f131dae97789384b7c1a4e08b3ce3acde3e5be0222f2
     println!("tx {} sent", tx_hash);
     Ok(())
 }
