@@ -7,7 +7,7 @@ use ckb_sdk::{
 };
 
 // This example shows when receiver not exist, this transaction will query a target cell, and update the sudt data in it.
-// So if the target cell contains enough capacity for target cell and transaction fee, no additional cell will be added to input list.
+// If the target cell contains enough capacity for target cell and transaction fee, no additional cell will be added to input list.
 fn main() -> Result<(), Box<dyn StdErr>> {
     let network_info = NetworkInfo::testnet();
     let capacity_provider_addr =  "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqv5dsed9par23x4g58seaw58j3ym5ml2hs8ztche";

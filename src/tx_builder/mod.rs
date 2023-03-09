@@ -19,13 +19,14 @@ use ckb_types::{
     },
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
+    H256,
 };
 
-use crate::constants::DAO_TYPE_HASH;
 use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::calculate_dao_maximum_withdraw4;
+use crate::{constants::DAO_TYPE_HASH, CkbRpcClient};
 use crate::{
     traits::{
         CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
@@ -1052,6 +1053,18 @@ pub fn unlock_tx(
         }
     }
     Ok((tx, not_unlocked))
+}
+
+pub fn send_transaction(
+    transaction: TransactionView,
+    ckb_url: &str,
+) -> Result<H256, crate::rpc::RpcError> {
+    // Send transaction
+    let json_tx = ckb_jsonrpc_types::TransactionView::from(transaction);
+    let outputs_validator = Some(ckb_jsonrpc_types::OutputsValidator::Passthrough);
+    let mut ckb_client = CkbRpcClient::new(ckb_url);
+    let tx_hash = ckb_client.send_transaction(json_tx.inner, outputs_validator)?;
+    Ok(tx_hash)
 }
 
 #[cfg(test)]
