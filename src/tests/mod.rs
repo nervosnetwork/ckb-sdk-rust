@@ -1085,6 +1085,7 @@ fn test_udt_transfer() {
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 
+pub mod ckb_indexer_rpc;
 pub mod ckb_rpc;
 pub mod cycle;
 pub mod omni_lock;
