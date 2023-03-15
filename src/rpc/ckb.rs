@@ -7,7 +7,9 @@ use ckb_jsonrpc_types::{
 };
 use ckb_types::{core::Cycle, H256};
 
-use super::ResponseFormatGetter;
+use super::{ckb_indexer::CellsCapacity, ResponseFormatGetter};
+
+pub use super::ckb_indexer::{Cell, Order, Pagination, SearchKey, Tip, Tx};
 
 crate::jsonrpc!(pub struct CkbRpcClient {
     // Chain
@@ -34,6 +36,12 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_block_economic_state(&mut self, block_hash: H256) -> Option<BlockEconomicState>;
     pub fn estimate_cycles(&mut self, tx: Transaction)-> EstimateCycles;
     pub fn get_fee_rate_statics(&mut self, tartet:Option<Uint64>)->FeeRateStatics;
+
+    // Indexer
+    pub fn get_indexer_tip(&mut self) -> Option<Tip>;
+    pub fn get_cells(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
+    pub fn get_transactions(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
+    pub fn get_cells_capacity(&mut self, search_key: SearchKey) -> Option<CellsCapacity>;
 
     // Net
     pub fn get_banned_addresses(&mut self) -> Vec<BannedAddr>;
