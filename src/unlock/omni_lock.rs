@@ -118,7 +118,7 @@ impl Identity {
     pub fn to_smt_key(&self) -> [u8; 32] {
         let mut ret = [0u8; 32];
         ret[0] = self.flag as u8;
-        (&mut ret[1..21]).copy_from_slice(self.auth_content.as_ref());
+        ret[1..21].copy_from_slice(self.auth_content.as_ref());
         ret
     }
 

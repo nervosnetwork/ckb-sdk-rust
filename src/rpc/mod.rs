@@ -45,7 +45,7 @@ macro_rules! jsonrpc {
                 $struct_name { url, id: 0, client: reqwest::blocking::Client::new(), }
             }
 
-            pub fn post<PARAM, RET>(&mut self, method:&str, params: PARAM)->Result<RET, crate::rpc::RpcError>
+            pub fn post<PARAM, RET>(&mut self, method:&str, params: PARAM)->Result<RET, $crate::rpc::RpcError>
             where
                 PARAM:serde::ser::Serialize,
                 RET: serde::de::DeserializeOwned,
@@ -74,9 +74,9 @@ macro_rules! jsonrpc {
 
             $(
                 $(#[$attr])*
-                pub fn $method(&mut $selff $(, $arg_name: $arg_ty)*) -> Result<$return_ty, crate::rpc::RpcError> {
+                pub fn $method(&mut $selff $(, $arg_name: $arg_ty)*) -> Result<$return_ty, $crate::rpc::RpcError> {
                     let method = String::from(stringify!($method));
-                    let params = crate::serialize_parameters!($($arg_name,)*);
+                    let params = $crate::serialize_parameters!($($arg_name,)*);
                     $selff.id += 1;
 
                     let mut req_json = serde_json::Map::new();

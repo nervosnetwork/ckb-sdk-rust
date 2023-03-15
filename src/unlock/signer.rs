@@ -192,7 +192,7 @@ impl MultisigConfig {
 
     pub fn hash160(&self) -> H160 {
         let witness_data = self.to_witness_data();
-        let params_hash = blake2b_256(&witness_data);
+        let params_hash = blake2b_256(witness_data);
         H160::from_slice(&params_hash[0..20]).unwrap()
     }
 

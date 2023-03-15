@@ -211,7 +211,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         }
         Commands::Send { tx_file, ckb_rpc } => {
             // Send transaction
-            let tx_info: TxInfo = serde_json::from_slice(&fs::read(&tx_file)?)?;
+            let tx_info: TxInfo = serde_json::from_slice(&fs::read(tx_file)?)?;
             println!("> tx: {}", serde_json::to_string_pretty(&tx_info.tx)?);
             let outputs_validator = Some(json_types::OutputsValidator::Passthrough);
             let _tx_hash = CkbRpcClient::new(ckb_rpc.as_str())

@@ -154,6 +154,7 @@ where
     }
 
     /// if topic is empty, return Ok, else Err
+    #[allow(clippy::result_large_err)]
     pub fn try_into(self) -> Result<Client<T>, Self> {
         if self.topic_list.is_empty() {
             Ok(Client {
