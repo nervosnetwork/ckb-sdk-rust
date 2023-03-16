@@ -339,7 +339,7 @@ fn test_transfer_to_acp() {
     let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
     let signer1 = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
     let sighash_unlocker = AcpUnlocker::from(Box::new(signer1) as Box<_>);
-    let acp_unlocker = AcpUnlocker::from(Box::new(SecpCkbRawKeySigner::default()) as Box<_>);
+    let acp_unlocker = AcpUnlocker::from(Box::<SecpCkbRawKeySigner>::default() as Box<_>);
     let mut unlockers: HashMap<ScriptId, Box<dyn ScriptUnlocker>> = HashMap::default();
     unlockers.insert(
         ScriptId::new_type(SIGHASH_TYPE_HASH),
@@ -1042,7 +1042,7 @@ fn test_udt_transfer() {
     let account1_key = secp256k1::SecretKey::from_slice(ACCOUNT1_KEY.as_bytes()).unwrap();
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![account1_key]);
     let script_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
-    let acp_unlocker = AcpUnlocker::from(Box::new(SecpCkbRawKeySigner::default()) as Box<_>);
+    let acp_unlocker = AcpUnlocker::from(Box::<SecpCkbRawKeySigner>::default() as Box<_>);
     let mut unlockers: HashMap<ScriptId, Box<dyn ScriptUnlocker>> = HashMap::default();
     unlockers.insert(
         ScriptId::new_type(SIGHASH_TYPE_HASH.clone()),

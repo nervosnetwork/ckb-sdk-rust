@@ -32,7 +32,7 @@ impl FromStr for HumanCapacity {
         let parts = input.trim().split('.').collect::<Vec<_>>();
         let mut capacity = ONE_CKB
             * parts
-                .get(0)
+                .first()
                 .ok_or_else(|| "Missing input".to_owned())?
                 .parse::<u64>()
                 .map_err(|err| err.to_string())?;

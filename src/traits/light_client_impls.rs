@@ -268,7 +268,7 @@ impl CellCollector for LightClientCellCollector {
                     limit *= 2;
                 }
             }
-            cells = ret_cells.into_iter().map(|(_k, v)| v).collect();
+            cells = ret_cells.into_values().collect();
         }
         if apply_changes {
             self.offchain.live_cells = rest_cells;
