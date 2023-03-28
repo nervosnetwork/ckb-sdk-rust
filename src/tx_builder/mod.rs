@@ -1,4 +1,5 @@
 pub mod acp;
+pub mod builder;
 pub mod cheque;
 pub mod dao;
 pub mod omni_lock;
@@ -18,13 +19,13 @@ use ckb_types::{
     },
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
+    H256,
 };
 
-use crate::constants::DAO_TYPE_HASH;
-use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::calculate_dao_maximum_withdraw4;
+use crate::{constants::DAO_TYPE_HASH, CkbRpcClient};
 use crate::{
     traits::{
         CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
@@ -32,6 +33,7 @@ use crate::{
     },
     RpcError,
 };
+use crate::{types::ScriptGroup, unlock::omni_lock::ConfigError};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
@@ -63,8 +65,25 @@ pub enum TxBuilderError {
     #[error("build_balance_unlocked exceed max loop times, current is: `{0}`")]
     ExceedCycleMaxLoopTimes(u32),
 
+    #[error(transparent)]
+    RpcError(#[from] RpcError),
+
+    #[error("parse address error: `{0}`")]
+    AddressFormat(String),
+    #[error("parse key error: `{0}`")]
+    KeyFormat(String),
+
+    #[error("configuration error: `{0}`")]
+    ConfigError(#[from] ConfigError),
+
     #[error("other error: `{0}`")]
     Other(anyhow::Error),
+}
+
+impl TxBuilderError {
+    pub fn invalid_param(e: String) -> Self {
+        Self::InvalidParameter(anyhow!("{}", e))
+    }
 }
 
 /// Transaction Builder interface
@@ -204,7 +223,7 @@ pub trait TxBuilder {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub enum TransferAction {
     /// This action will crate a new cell, typecial lock script: cheque, sighash, multisig
     Create,
@@ -319,7 +338,7 @@ impl Default for SinceSource {
 ///
 /// The cells collected by `lock_script` will filter out those have type script
 /// or data length is not `0` or is not mature.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CapacityProvider {
     /// The lock scripts provider capacity. The second field of the tuple is the
     /// placeholder witness of the lock script.
@@ -339,6 +358,16 @@ impl CapacityProvider {
             .map(|(script, witness)| (script, witness, SinceSource::default()))
             .collect();
         CapacityProvider { lock_scripts }
+    }
+
+    pub fn set_witness(&mut self, script: Script, witness: WitnessArgs) {
+        let idx = self.lock_scripts.iter().position(|ls| ls.0 == script);
+        if let Some(idx) = idx {
+            self.lock_scripts[idx].1 = witness;
+        } else {
+            self.lock_scripts
+                .push((script, witness, SinceSource::default()));
+        }
     }
 }
 
@@ -400,6 +429,17 @@ pub struct CapacityBalancer {
     /// transaction capacity, force the addition capacity as fee, the value is
     /// actual maximum transaction fee.
     pub force_small_change_as_fee: Option<u64>,
+}
+
+impl Default for CapacityBalancer {
+    fn default() -> Self {
+        Self {
+            fee_rate: FeeRate::from_u64(1000),
+            capacity_provider: Default::default(),
+            change_lock_script: Default::default(),
+            force_small_change_as_fee: Default::default(),
+        }
+    }
 }
 
 impl CapacityBalancer {
@@ -1016,6 +1056,18 @@ pub fn unlock_tx(
         }
     }
     Ok((tx, not_unlocked))
+}
+
+pub fn send_transaction(
+    transaction: TransactionView,
+    ckb_url: &str,
+) -> Result<H256, crate::rpc::RpcError> {
+    // Send transaction
+    let json_tx = ckb_jsonrpc_types::TransactionView::from(transaction);
+    let outputs_validator = Some(ckb_jsonrpc_types::OutputsValidator::Passthrough);
+    let mut ckb_client = CkbRpcClient::new(ckb_url);
+    let tx_hash = ckb_client.send_transaction(json_tx.inner, outputs_validator)?;
+    Ok(tx_hash)
 }
 
 #[cfg(test)]

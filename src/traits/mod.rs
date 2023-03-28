@@ -34,7 +34,7 @@ use ckb_types::{
     prelude::*,
 };
 
-use crate::{rpc::ckb_indexer::ScriptSearchMode, util::is_mature};
+use crate::{rpc::ckb_indexer::ScriptSearchMode, util::is_mature, ScriptId};
 
 /// Signer errors
 #[derive(Error, Debug)]
@@ -405,6 +405,7 @@ pub trait CellCollector {
 pub trait CellDepResolver {
     /// Resolve cell dep by script
     fn resolve(&self, script: &Script) -> Option<CellDep>;
+    fn insert(&mut self, _script_id: ScriptId, _cell_dep: CellDep) {}
 }
 pub trait HeaderDepResolver {
     /// Resolve header dep by trancation hash

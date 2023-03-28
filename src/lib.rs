@@ -1,4 +1,5 @@
 pub mod constants;
+pub mod parser;
 pub mod pubsub;
 pub mod rpc;
 pub mod traits;
@@ -16,8 +17,8 @@ mod tests;
 
 pub use rpc::{CkbRpcClient, IndexerRpcClient, RpcError};
 pub use types::{
-    Address, AddressPayload, AddressType, CodeHashIndex, HumanCapacity, NetworkType, OldAddress,
-    OldAddressFormat, ScriptGroup, ScriptGroupType, ScriptId, Since, SinceType,
+    Address, AddressPayload, AddressType, CodeHashIndex, HumanCapacity, NetworkInfo, NetworkType,
+    OldAddress, OldAddressFormat, ScriptGroup, ScriptGroupType, ScriptId, Since, SinceType,
 };
 
 pub use ckb_crypto::secp::SECP256K1;
