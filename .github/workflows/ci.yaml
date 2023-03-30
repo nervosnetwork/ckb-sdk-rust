@@ -21,6 +21,8 @@ jobs:
         os: [ ubuntu-latest, macos-latest, windows-2019 ]
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: recursive
     - if: matrix.os == 'windows-2019'
       name: Windows Dependencies
       run: |
@@ -39,6 +41,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: recursive
     - name: Linters
       run: |
         cargo fmt --version || rustup component add rustfmt
@@ -50,6 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: recursive
     - name: Security Audit & Licenses
       run: |
         rustup toolchain install nightly --allow-downgrade --profile minimal
