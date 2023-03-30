@@ -1,0 +1,4 @@
+[submodule "deps/quantum-resistant-lock-script"]
+	path = deps/quantum-resistant-lock-script
+	url = git@github.com:cryptape/quantum-resistant-lock-script.git
+	branch = main
