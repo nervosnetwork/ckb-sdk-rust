@@ -17,5 +17,6 @@ pub use unlocker::{
 pub use omni_lock::{IdentityFlag, InfoCellData, OmniLockAcpConfig, OmniLockConfig};
 
 pub use sphincsplus::{
-    signer::SphincsPlusSigner, unlocker::SphincsPlusUnlocker, SphincsPlus, SphincsPlusRawKeysSigner,
+    signer::SphincsPlusSigner, unlocker::SphincsPlusUnlocker, SphincsPlus, SphincsPlusPrivateKey,
+    SphincsPlusPublicKey, SphincsPlusRawKeysSigner,
 };

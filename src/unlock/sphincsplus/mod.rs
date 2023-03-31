@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ffi::c_ulonglong};
 
 use anyhow::anyhow;
 use bytes::Bytes;
@@ -46,6 +46,9 @@ extern "C" {
     // int crypto_sign_seed_keypair(unsigned char *pk, unsigned char *sk,
     //     const unsigned char *seed)
     fn crypto_sign_seed_keypair(pk: *mut u8, sk: *mut u8, seed: *const u8) -> i32;
+
+    // unsigned long long crypto_sign_seedbytes(void);
+    fn crypto_sign_seedbytes() -> c_ulonglong;
 }
 
 pub struct SphincsPlus;
@@ -63,6 +66,10 @@ impl SphincsPlus {
     /// get signature length
     pub fn sign_len() -> usize {
         unsafe { sphincs_plus_get_sign_size() as usize }
+    }
+    /// get seed bytes length, include sk.seed, sk.prf, pk.seed
+    pub fn seed_len() -> usize {
+        unsafe { crypto_sign_seedbytes() as usize }
     }
 
     /// get lock length in witness
