@@ -21,6 +21,16 @@ fn get_hash_info() -> (&'static str, Vec<&'static str>) {
     )
 }
 
+fn get_os_specic_src_files() -> Vec<&'static str> {
+    let mut files = vec![];
+
+    if !cfg!(windows) {
+        files.push("../deps/sphincsplus/ref/randombytes.c");
+    }
+
+    files
+}
+
 fn main() {
     let mut source_list = vec![
         "../deps/sphincsplus/ref/address.c",
@@ -31,13 +41,13 @@ fn main() {
         "../deps/sphincsplus/ref/utilsx1.c",
         "../deps/sphincsplus/ref/fors.c",
         "../deps/sphincsplus/ref/sign.c",
-        "../deps/sphincsplus/ref/randombytes.c",
         "ckb-sphincsplus.c",
     ];
 
     let (hash_name, mut hash_src_files) = get_hash_info();
 
     source_list.append(&mut hash_src_files);
+    source_list.append(&mut get_os_specic_src_files());
     let define_param = format!(
         "sphincs-{}-{}{}",
         hash_name,

@@ -51,6 +51,18 @@ extern "C" {
     fn crypto_sign_seedbytes() -> c_ulonglong;
 }
 
+// extern void randombytes(unsigned char * x,unsigned long long xlen);
+/// # Safety
+///
+/// This function should not be called in a rust code, only for c code.
+#[cfg(target_os = "windows")]
+#[no_mangle]
+pub unsafe extern "C" fn randombytes(x: *mut u8, xlen: c_ulonglong) {
+    use rand::Rng;
+    let buf = unsafe { std::slice::from_raw_parts_mut(x, xlen as usize) };
+    rand::thread_rng().fill(buf);
+}
+
 pub struct SphincsPlus;
 
 impl SphincsPlus {
