@@ -1,3 +1,4 @@
+mod manager;
 pub(crate) mod omni_lock;
 pub mod rc_data;
 mod signer;
@@ -14,3 +15,7 @@ pub use unlocker::{
 };
 
 pub use omni_lock::{IdentityFlag, InfoCellData, OmniLockAcpConfig, OmniLockConfig};
+
+pub use manager::{
+    get_unlock_handler, ContextFactory, UnlockContext, UnlockHandler, UnlockerManager,
+};

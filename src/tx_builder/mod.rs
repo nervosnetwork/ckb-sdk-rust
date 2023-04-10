@@ -1,4 +1,5 @@
 pub mod acp;
+pub mod builder;
 pub mod cheque;
 pub mod dao;
 pub mod omni_lock;
@@ -20,11 +21,10 @@ use ckb_types::{
     prelude::*,
 };
 
-use crate::constants::DAO_TYPE_HASH;
-use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::calculate_dao_maximum_withdraw4;
+use crate::{constants::DAO_TYPE_HASH, ScriptGroupType};
 use crate::{
     traits::{
         CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
@@ -32,6 +32,7 @@ use crate::{
     },
     RpcError,
 };
+use crate::{types::ScriptGroup, unlock::omni_lock::ConfigError};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
@@ -62,6 +63,17 @@ pub enum TxBuilderError {
 
     #[error("build_balance_unlocked exceed max loop times, current is: `{0}`")]
     ExceedCycleMaxLoopTimes(u32),
+
+    #[error(transparent)]
+    RpcError(#[from] RpcError),
+
+    #[error("parse address error: `{0}`")]
+    AddressFormat(String),
+    #[error("parse key error: `{0}`")]
+    KeyFormat(String),
+
+    #[error("configuration error: `{0}`")]
+    OmnilockConfigError(#[from] ConfigError),
 
     #[error("other error: `{0}`")]
     Other(anyhow::Error),
@@ -339,6 +351,17 @@ impl CapacityProvider {
             .map(|(script, witness)| (script, witness, SinceSource::default()))
             .collect();
         CapacityProvider { lock_scripts }
+    }
+
+    /// change the witness to new one according to script.
+    pub fn set_witness(&mut self, script: Script, witness: WitnessArgs) {
+        let idx = self.lock_scripts.iter().position(|ls| ls.0 == script);
+        if let Some(idx) = idx {
+            self.lock_scripts[idx].1 = witness;
+        } else {
+            self.lock_scripts
+                .push((script, witness, SinceSource::default()));
+        }
     }
 }
 
@@ -915,7 +938,7 @@ fn rebalance_tx_capacity(
         }
     }
 }
-
+#[derive(Clone)]
 pub struct ScriptGroups {
     pub lock_groups: HashMap<Byte32, ScriptGroup>,
     pub type_groups: HashMap<Byte32, ScriptGroup>,
@@ -954,6 +977,80 @@ pub fn gen_script_groups(
         lock_groups,
         type_groups,
     })
+}
+
+#[derive(Clone)]
+pub struct TransactionWithScriptGroups {
+    pub tx_view: TransactionView,
+    pub script_groups: ScriptGroups,
+}
+
+/// This is a mirror struct of the `TransactionWithScriptGroups`, which is used to do json serialization/deserialization.
+#[derive(serde_derive::Serialize, serde_derive::Deserialize)]
+struct JsonTransactionWithScriptGroups {
+    tx_view: ckb_jsonrpc_types::TransactionView,
+    script_groups: Vec<ScriptGroup>,
+}
+
+impl From<JsonTransactionWithScriptGroups> for TransactionWithScriptGroups {
+    fn from(value: JsonTransactionWithScriptGroups) -> Self {
+        let mut script_groups = ScriptGroups {
+            lock_groups: HashMap::new(),
+            type_groups: HashMap::new(),
+        };
+
+        for group in value.script_groups {
+            match group.group_type {
+                ScriptGroupType::Lock => script_groups
+                    .lock_groups
+                    .insert(group.script.calc_script_hash(), group),
+                ScriptGroupType::Type => script_groups
+                    .type_groups
+                    .insert(group.script.calc_script_hash(), group),
+            };
+        }
+
+        Self {
+            tx_view: ckb_types::packed::Transaction::from(value.tx_view.inner).into_view(),
+            script_groups,
+        }
+    }
+}
+
+impl From<TransactionWithScriptGroups> for JsonTransactionWithScriptGroups {
+    fn from(value: TransactionWithScriptGroups) -> Self {
+        let script_groups: Vec<_> = value
+            .script_groups
+            .lock_groups
+            .into_values()
+            .chain(value.script_groups.type_groups.into_values())
+            .collect();
+        Self {
+            tx_view: value.tx_view.into(),
+            script_groups,
+        }
+    }
+}
+
+impl serde::Serialize for TransactionWithScriptGroups {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let tx_with_groups = JsonTransactionWithScriptGroups::from(self.clone());
+        serializer.serialize_newtype_struct("TransactionWithScriptGroups", &tx_with_groups)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for TransactionWithScriptGroups {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let json_script_group = JsonTransactionWithScriptGroups::deserialize(deserializer)?;
+        let script_group = TransactionWithScriptGroups::from(json_script_group);
+        Ok(script_group)
+    }
 }
 
 /// Fill placeholder lock script witnesses

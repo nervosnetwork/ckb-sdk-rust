@@ -3,15 +3,17 @@ use std::collections::HashSet;
 use ckb_types::{
     bytes::Bytes,
     core::{TransactionBuilder, TransactionView},
-    packed::CellOutput,
+    packed::{CellOutput, WitnessArgs},
     prelude::*,
 };
 
-use super::{TxBuilder, TxBuilderError};
-use crate::traits::{
-    CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider,
-};
+use super::{builder::BaseTransactionBuilder, TxBuilder, TxBuilderError};
 use crate::types::ScriptId;
+use crate::{
+    impl_default_builder,
+    traits::{CellCollector, CellDepResolver, HeaderDepResolver, TransactionDependencyProvider},
+    Address, NetworkInfo,
+};
 
 /// A builder to build a transaction simply transfer capcity to an address. It
 /// will resolve the type script's cell_dep if given.
@@ -57,3 +59,35 @@ impl TxBuilder for CapacityTransferBuilder {
             .build())
     }
 }
+
+pub struct DefaultCapacityTransferBuilder {
+    pub base_builder: BaseTransactionBuilder,
+}
+
+impl DefaultCapacityTransferBuilder {
+    pub fn new_mainnet(sender: Address) -> Result<Self, TxBuilderError> {
+        Self::new_with_address(&NetworkInfo::mainnet(), sender)
+    }
+
+    pub fn new_with_address(
+        network_info: &NetworkInfo,
+        sender: Address,
+    ) -> Result<Self, TxBuilderError> {
+        let mut ret = Self {
+            base_builder: BaseTransactionBuilder::new(network_info, sender)?,
+        };
+        let placeholder_witness = WitnessArgs::new_builder()
+            .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+            .build();
+        ret.set_sender_placeholder_witness(placeholder_witness);
+        Ok(ret)
+    }
+}
+
+impl From<&DefaultCapacityTransferBuilder> for CapacityTransferBuilder {
+    fn from(val: &DefaultCapacityTransferBuilder) -> Self {
+        CapacityTransferBuilder::new(val.base_builder.outputs.clone())
+    }
+}
+
+impl_default_builder!(DefaultCapacityTransferBuilder, CapacityTransferBuilder);

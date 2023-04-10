@@ -200,6 +200,10 @@ impl CellDepResolver for DefaultCellDepResolver {
     fn resolve(&self, script: &Script) -> Option<CellDep> {
         self.offchain.resolve(script)
     }
+
+    fn insert(&mut self, script_id: ScriptId, cell_dep: CellDep) {
+        self.offchain.insert(script_id, cell_dep);
+    }
 }
 
 /// A header_dep resolver use ckb jsonrpc client as backend

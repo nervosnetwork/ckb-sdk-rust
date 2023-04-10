@@ -57,3 +57,30 @@ impl fmt::Display for NetworkType {
         write!(f, "{}", self.to_str())
     }
 }
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct NetworkInfo {
+    pub network_type: NetworkType,
+    pub url: String,
+}
+
+impl NetworkInfo {
+    /// Creates a new network info, this should be used for a self hosted node.
+    pub fn new(network_type: NetworkType, url: String) -> Self {
+        Self { network_type, url }
+    }
+    /// get the mainnet information
+    pub fn mainnet() -> Self {
+        Self {
+            network_type: NetworkType::Mainnet,
+            url: "https://mainnet.ckb.dev".to_string(),
+        }
+    }
+    /// get the test net work information, https://testnet.ckb.dev is for testing purposes only.
+    pub fn testnet() -> Self {
+        Self {
+            network_type: NetworkType::Testnet,
+            url: "https://testnet.ckb.dev".to_string(),
+        }
+    }
+}

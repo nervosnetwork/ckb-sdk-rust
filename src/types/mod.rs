@@ -14,7 +14,7 @@ pub use address::{
     Address, AddressPayload, AddressType, CodeHashIndex, OldAddress, OldAddressFormat,
 };
 pub use human_capacity::HumanCapacity;
-pub use network_type::NetworkType;
+pub use network_type::{NetworkInfo, NetworkType};
 pub use script_group::{ScriptGroup, ScriptGroupType};
 pub use script_id::ScriptId;
 pub use since::{Since, SinceType};

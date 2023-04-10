@@ -15,7 +15,9 @@ use super::{
     },
     OmniLockConfig, OmniLockScriptSigner, OmniUnlockMode,
 };
-use crate::traits::{Signer, TransactionDependencyError, TransactionDependencyProvider};
+use crate::traits::{
+    SecpCkbRawKeySigner, Signer, TransactionDependencyError, TransactionDependencyProvider,
+};
 use crate::types::ScriptGroup;
 
 const CHEQUE_CLAIM_SINCE: u64 = 0;
@@ -34,7 +36,8 @@ pub enum UnlockError {
 
     #[error("there is an configuration error: `{0}`")]
     InvalidConfig(#[from] ConfigError),
-
+    #[error("context cast error: `{0}`")]
+    InvalidContext(String),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -139,6 +142,12 @@ pub struct SecpSighashUnlocker {
 impl SecpSighashUnlocker {
     pub fn new(signer: SecpSighashScriptSigner) -> SecpSighashUnlocker {
         SecpSighashUnlocker { signer }
+    }
+
+    pub fn new_with_secret_keys(keys: Vec<secp256k1::SecretKey>) -> Self {
+        let signer = SecpCkbRawKeySigner::new_with_secret_keys(keys);
+
+        SecpSighashUnlocker::from(Box::new(signer) as Box<_>)
     }
 }
 impl From<Box<dyn Signer>> for SecpSighashUnlocker {
