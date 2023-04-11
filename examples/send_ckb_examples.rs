@@ -4,13 +4,14 @@ use ckb_sdk::{
     constants::ONE_CKB,
     tx_builder::{builder::CkbTransactionBuilder, transfer::DefaultCapacityTransferBuilder},
     unlock::{get_unlock_handler, ContextFactory},
-    Address, NetworkInfo,
+    Address, CkbRpcClient, NetworkInfo,
 };
 use ckb_types::h256;
 
 fn main() -> Result<(), Box<dyn StdErr>> {
     let network_info = NetworkInfo::testnet();
     let sender =  Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r")?;
+    // this should be another address
     let receiver = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r")?;
     let mut builder = DefaultCapacityTransferBuilder::new_with_address(&network_info, sender)?;
 
@@ -31,5 +32,12 @@ fn main() -> Result<(), Box<dyn StdErr>> {
 
     let signed_tx_json = serde_json::to_string_pretty(&tx_with_groups)?;
     println!("signed tx_json: {}", signed_tx_json);
+
+    let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.tx_view);
+    let tx_hash = CkbRpcClient::new(network_info.url.as_str())
+        .send_transaction(json_tx.inner, None)
+        .expect("send transaction");
+    // sample tx: 3035453616883f857c0f4170b74f2cfaa01ce86b0c542bb0cd8199d49cb9e28c
+    println!(">>> tx {} sent! <<<", tx_hash);
     Ok(())
 }
