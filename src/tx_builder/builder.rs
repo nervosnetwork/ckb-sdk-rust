@@ -189,14 +189,11 @@ macro_rules! impl_default_builder {
                 &mut self,
             ) -> Result<$crate::tx_builder::TransactionWithScriptGroups, TxBuilderError> {
                 let tx_view = self.build_balanced()?;
-                let script_groups = $crate::tx_builder::gen_script_groups(
-                    &tx_view,
+                let tx_with_groups = $crate::tx_builder::build_transaction_with_script_groups(
+                    tx_view,
                     self.base_builder.tx_dep_provider.as_ref(),
                 )?;
-                Ok($crate::tx_builder::TransactionWithScriptGroups {
-                    tx_view,
-                    script_groups,
-                })
+                Ok(tx_with_groups)
             }
         }
     };

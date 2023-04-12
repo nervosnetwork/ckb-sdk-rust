@@ -24,8 +24,8 @@ use ckb_types::{
 use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::calculate_dao_maximum_withdraw4;
-use crate::{constants::DAO_TYPE_HASH, ScriptGroupType};
 use crate::{
+    constants::DAO_TYPE_HASH,
     traits::{
         CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
         TransactionDependencyError, TransactionDependencyProvider, ValueRangeOption,
@@ -979,12 +979,48 @@ pub fn gen_script_groups(
     })
 }
 
+pub fn build_transaction_with_script_groups(
+    tx_view: TransactionView,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+) -> Result<TransactionWithScriptGroups, TransactionDependencyError> {
+    let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+    let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+    for (i, input) in tx_view.inputs().into_iter().enumerate() {
+        let output = tx_dep_provider.get_cell(&input.previous_output())?;
+        let lock_group_entry = lock_groups
+            .entry(output.calc_lock_hash())
+            .or_insert_with(|| ScriptGroup::from_lock_script(&output.lock()));
+        lock_group_entry.input_indices.push(i);
+        if let Some(t) = &output.type_().to_opt() {
+            let type_group_entry = type_groups
+                .entry(t.calc_script_hash())
+                .or_insert_with(|| ScriptGroup::from_type_script(t));
+            type_group_entry.input_indices.push(i);
+        }
+    }
+    for (i, output) in tx_view.outputs().into_iter().enumerate() {
+        if let Some(t) = &output.type_().to_opt() {
+            let type_group_entry = type_groups
+                .entry(t.calc_script_hash())
+                .or_insert_with(|| ScriptGroup::from_type_script(t));
+            type_group_entry.output_indices.push(i);
+        }
+    }
+    let script_groups: Vec<_> = lock_groups
+        .into_values()
+        .chain(type_groups.into_values())
+        .collect();
+    Ok(TransactionWithScriptGroups {
+        tx_view,
+        script_groups,
+    })
+}
+
 #[derive(Clone)]
 pub struct TransactionWithScriptGroups {
     pub tx_view: TransactionView,
-    pub script_groups: ScriptGroups,
+    pub script_groups: Vec<ScriptGroup>,
 }
-
 /// This is a mirror struct of the `TransactionWithScriptGroups`, which is used to do json serialization/deserialization.
 #[derive(serde_derive::Serialize, serde_derive::Deserialize)]
 struct JsonTransactionWithScriptGroups {
@@ -994,40 +1030,18 @@ struct JsonTransactionWithScriptGroups {
 
 impl From<JsonTransactionWithScriptGroups> for TransactionWithScriptGroups {
     fn from(value: JsonTransactionWithScriptGroups) -> Self {
-        let mut script_groups = ScriptGroups {
-            lock_groups: HashMap::new(),
-            type_groups: HashMap::new(),
-        };
-
-        for group in value.script_groups {
-            match group.group_type {
-                ScriptGroupType::Lock => script_groups
-                    .lock_groups
-                    .insert(group.script.calc_script_hash(), group),
-                ScriptGroupType::Type => script_groups
-                    .type_groups
-                    .insert(group.script.calc_script_hash(), group),
-            };
-        }
-
         Self {
             tx_view: ckb_types::packed::Transaction::from(value.tx_view.inner).into_view(),
-            script_groups,
+            script_groups: value.script_groups,
         }
     }
 }
 
 impl From<TransactionWithScriptGroups> for JsonTransactionWithScriptGroups {
     fn from(value: TransactionWithScriptGroups) -> Self {
-        let script_groups: Vec<_> = value
-            .script_groups
-            .lock_groups
-            .into_values()
-            .chain(value.script_groups.type_groups.into_values())
-            .collect();
         Self {
             tx_view: value.tx_view.into(),
-            script_groups,
+            script_groups: value.script_groups,
         }
     }
 }

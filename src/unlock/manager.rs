@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use ckb_types::packed::Byte32;
-
 use crate::{
     constants::SIGHASH_TYPE_HASH,
     traits::{DefaultTransactionDependencyProvider, TransactionDependencyProvider},
@@ -55,10 +53,13 @@ impl UnlockHandler {
         &self,
         tx_with_groups: &mut TransactionWithScriptGroups,
         ctx: &dyn UnlockContext,
-    ) -> Result<Vec<Byte32>, UnlockError> {
+    ) -> Result<Vec<usize>, UnlockError> {
         let mut signed_lock_hash = Vec::new();
         let tx_dep_provider = self.build_tx_dep_provider();
-        for (key, script_group) in tx_with_groups.script_groups.lock_groups.iter() {
+        for (i, script_group) in tx_with_groups.script_groups.iter().enumerate() {
+            if crate::ScriptGroupType::Lock != script_group.group_type {
+                continue;
+            }
             let script_id = ScriptId::from(&script_group.script);
             let script_args = script_group.script.args().raw_data();
             if let Some(builder) = self.builders.get(&script_id) {
@@ -76,7 +77,7 @@ impl UnlockHandler {
                         script_group,
                         tx_dep_provider.as_ref(),
                     )?;
-                    signed_lock_hash.push(key.clone());
+                    signed_lock_hash.push(i);
                 }
             }
         }
