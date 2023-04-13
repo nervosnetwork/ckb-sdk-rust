@@ -36,8 +36,6 @@ pub enum UnlockError {
 
     #[error("there is an configuration error: `{0}`")]
     InvalidConfig(#[from] ConfigError),
-    #[error("context cast error: `{0}`")]
-    InvalidContext(String),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

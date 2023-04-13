@@ -16,6 +16,4 @@ pub use unlocker::{
 
 pub use omni_lock::{IdentityFlag, InfoCellData, OmniLockAcpConfig, OmniLockConfig};
 
-pub use manager::{
-    get_unlock_handler, ContextFactory, UnlockContext, UnlockHandler, UnlockerManager,
-};
+pub use manager::{get_unlock_handler, Context, UnlockContext, UnlockHandler, UnlockerManager};

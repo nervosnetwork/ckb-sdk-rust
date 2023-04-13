@@ -9,32 +9,41 @@ use crate::{
 
 use super::{ScriptUnlocker, SecpSighashUnlocker, UnlockError};
 
-pub trait UnlockContext: downcast_rs::Downcast {}
-downcast_rs::impl_downcast!(UnlockContext);
+pub trait UnlockContext {
+    type Unloker: ScriptUnlocker;
+    /// Check if this context match the script.
+    fn match_script(&self, script: &SupportScript) -> bool;
 
-pub struct ContextFactory;
-impl ContextFactory {
+    /// build ScriptUnlocker from context
+    fn build(&self) -> Result<Self::Unloker, UnlockError>;
+}
+
+pub struct Context;
+impl Context {
     /// make a default sighash unlock context
-    pub fn make(private_keys: Vec<secp256k1::SecretKey>) -> Box<dyn UnlockContext> {
-        Box::new(SecpSighashUnlockerContext::new(private_keys))
+    pub fn make(private_keys: Vec<secp256k1::SecretKey>) -> impl UnlockContext {
+        SecpSighashUnlockerContext::new(private_keys)
     }
 }
 
-pub trait UnlockBuilder {
-    /// build ScriptUnlocker from context
-    fn build(&self, ctx: &dyn UnlockContext) -> Result<Box<dyn ScriptUnlocker>, UnlockError>;
+/// supported lock script
+pub enum SupportScript {
+    /// default sighash script
+    SigHash,
+    /// script not implemented by this SDK, the internal value act as an id, so user can extend the support script list.
+    Other(u32),
 }
+
 pub struct UnlockHandler {
     network_info: NetworkInfo,
-    builders: HashMap<ScriptId, Box<dyn UnlockBuilder>>,
+    known_scripts: HashMap<ScriptId, SupportScript>,
 }
-unsafe impl Sync for UnlockHandler {}
 
 impl UnlockHandler {
     fn new(network_info: NetworkInfo) -> Self {
         Self {
             network_info,
-            builders: HashMap::new(),
+            known_scripts: HashMap::new(),
         }
     }
 
@@ -45,14 +54,14 @@ impl UnlockHandler {
         ))
     }
 
-    fn register(&mut self, script_id: ScriptId, builder: Box<dyn UnlockBuilder>) {
-        self.builders.insert(script_id, builder);
+    fn register(&mut self, script_id: ScriptId, known_script: SupportScript) {
+        self.known_scripts.insert(script_id, known_script);
     }
 
     pub fn unlock(
         &self,
         tx_with_groups: &mut TransactionWithScriptGroups,
-        ctx: &dyn UnlockContext,
+        ctx: &impl UnlockContext,
     ) -> Result<Vec<usize>, UnlockError> {
         let mut signed_lock_hash = Vec::new();
         let tx_dep_provider = self.build_tx_dep_provider();
@@ -61,9 +70,11 @@ impl UnlockHandler {
                 continue;
             }
             let script_id = ScriptId::from(&script_group.script);
-            let script_args = script_group.script.args().raw_data();
-            if let Some(builder) = self.builders.get(&script_id) {
-                let unlocker = builder.build(ctx)?;
+            if let Some(id) = self.known_scripts.get(&script_id) {
+                if !ctx.match_script(id) {
+                    continue;
+                }
+                let unlocker = ctx.build()?;
                 if unlocker.is_unlocked(
                     &tx_with_groups.tx_view,
                     script_group,
@@ -71,7 +82,7 @@ impl UnlockHandler {
                 )? {
                     tx_with_groups.tx_view = unlocker
                         .clear_placeholder_witness(&tx_with_groups.tx_view, script_group)?;
-                } else if unlocker.match_args(script_args.as_ref()) {
+                } else if unlocker.match_args(script_group.script.args().raw_data().as_ref()) {
                     tx_with_groups.tx_view = unlocker.unlock(
                         &tx_with_groups.tx_view,
                         script_group,
@@ -88,27 +99,26 @@ impl UnlockHandler {
 pub struct UnlockerManager {
     handlers: HashMap<NetworkInfo, UnlockHandler>,
 }
-unsafe impl Sync for UnlockerManager {}
 
 impl UnlockerManager {
     pub fn register(
         &mut self,
         network_info: &NetworkInfo,
         script_id: ScriptId,
-        unlock_builder: Box<dyn UnlockBuilder>,
+        know_script: SupportScript,
     ) {
         self.handlers
             .get_mut(network_info)
             .expect("according handlers must be initialized before registering")
-            .register(script_id, unlock_builder);
+            .register(script_id, know_script);
     }
 
-    fn init(&mut self, network_info: &NetworkInfo) {
+    pub fn init(&mut self, network_info: &NetworkInfo) {
         let mut handler = UnlockHandler::new(network_info.clone());
         // register system builders
         handler.register(
             ScriptId::new_type(SIGHASH_TYPE_HASH.clone()),
-            Box::<SecpSighashUnlockerBuilder>::default(),
+            SupportScript::SigHash,
         );
         self.handlers.insert(network_info.clone(), handler);
     }
@@ -120,28 +130,22 @@ impl UnlockerManager {
 pub struct SecpSighashUnlockerContext {
     private_keys: Vec<secp256k1::SecretKey>,
 }
-impl UnlockContext for SecpSighashUnlockerContext {}
+
+impl UnlockContext for SecpSighashUnlockerContext {
+    type Unloker = SecpSighashUnlocker;
+    fn match_script(&self, script: &SupportScript) -> bool {
+        matches!(script, SupportScript::SigHash)
+    }
+
+    fn build(&self) -> Result<SecpSighashUnlocker, UnlockError> {
+        let sighash_unlocker = SecpSighashUnlocker::new_with_secret_keys(self.private_keys.clone());
+        Ok(sighash_unlocker)
+    }
+}
 
 impl SecpSighashUnlockerContext {
     pub fn new(private_keys: Vec<secp256k1::SecretKey>) -> Self {
         Self { private_keys }
-    }
-}
-
-#[derive(Default)]
-pub struct SecpSighashUnlockerBuilder {}
-
-impl UnlockBuilder for SecpSighashUnlockerBuilder {
-    fn build(&self, ctx: &dyn UnlockContext) -> Result<Box<dyn ScriptUnlocker>, UnlockError> {
-        let sig_ctx =
-            ctx.downcast_ref::<SecpSighashUnlockerContext>()
-                .ok_or(UnlockError::InvalidContext(
-                    "invalid SecpSighashUnlockerContext context".to_string(),
-                ))?;
-
-        let sighash_unlocker =
-            SecpSighashUnlocker::new_with_secret_keys(sig_ctx.private_keys.clone());
-        Ok(Box::new(sighash_unlocker))
     }
 }
 
