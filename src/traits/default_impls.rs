@@ -204,23 +204,24 @@ impl CellDepResolver for DefaultCellDepResolver {
 
 /// A header_dep resolver use ckb jsonrpc client as backend
 pub struct DefaultHeaderDepResolver {
-    ckb_client: Arc<Mutex<CkbRpcClient>>,
+    ckb_client: CkbRpcClient,
 }
 impl DefaultHeaderDepResolver {
     pub fn new(ckb_client: &str) -> DefaultHeaderDepResolver {
-        let ckb_client = Arc::new(Mutex::new(CkbRpcClient::new(ckb_client)));
+        let ckb_client = CkbRpcClient::new(ckb_client);
         DefaultHeaderDepResolver { ckb_client }
     }
 }
 impl HeaderDepResolver for DefaultHeaderDepResolver {
     fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
-        let mut client = self.ckb_client.lock();
-        if let Some(block_hash) = client
+        if let Some(block_hash) = self
+            .ckb_client
             .get_transaction(tx_hash.unpack())
             .map_err(|e| anyhow!(e))?
             .and_then(|tx_with_status| tx_with_status.tx_status.block_hash)
         {
-            Ok(client
+            Ok(self
+                .ckb_client
                 .get_header(block_hash)
                 .map_err(Box::new)?
                 .map(Into::into))
@@ -231,7 +232,6 @@ impl HeaderDepResolver for DefaultHeaderDepResolver {
     fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
         Ok(self
             .ckb_client
-            .lock()
             .get_header_by_number(number.into())
             .map_err(|e| anyhow!(e))?
             .map(Into::into))
@@ -308,7 +308,7 @@ impl CellCollector for DefaultCellCollector {
         query: &CellQueryOptions,
         apply_changes: bool,
     ) -> Result<(Vec<LiveCell>, u64), CellCollectorError> {
-        let max_mature_number = get_max_mature_number(&mut self.ckb_client)
+        let max_mature_number = get_max_mature_number(&self.ckb_client)
             .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?;
 
         self.offchain.max_mature_number = max_mature_number;

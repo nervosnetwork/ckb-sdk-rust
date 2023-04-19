@@ -27,7 +27,7 @@ pub fn zeroize_slice(data: &mut [u8]) {
     }
 }
 
-pub fn get_max_mature_number(rpc_client: &mut CkbRpcClient) -> Result<u64, String> {
+pub fn get_max_mature_number(rpc_client: &CkbRpcClient) -> Result<u64, String> {
     let cellbase_maturity = EpochNumberWithFraction::from_full_value(
         rpc_client
             .get_consensus()
@@ -283,8 +283,8 @@ mod tests {
                     .body(MockRpcResult::new(tip_header).to_json());
             });
 
-            let mut rpc_client = CkbRpcClient::new(server.base_url().as_str());
-            assert_eq!(0, get_max_mature_number(&mut rpc_client).unwrap());
+            let rpc_client = CkbRpcClient::new(server.base_url().as_str());
+            assert_eq!(0, get_max_mature_number(&rpc_client).unwrap());
         }
 
         {
@@ -329,8 +329,8 @@ mod tests {
                 then.status(200).body(MockRpcResult::new(epoch3).to_json());
             });
 
-            let mut rpc_client = CkbRpcClient::new(server.base_url().as_str());
-            assert_eq!(1900, get_max_mature_number(&mut rpc_client).unwrap());
+            let rpc_client = CkbRpcClient::new(server.base_url().as_str());
+            assert_eq!(1900, get_max_mature_number(&rpc_client).unwrap());
         }
 
         {
@@ -375,8 +375,8 @@ mod tests {
                 then.status(200).body(MockRpcResult::new(epoch3).to_json());
             });
 
-            let mut rpc_client = CkbRpcClient::new(server.base_url().as_str());
-            assert_eq!(151500, get_max_mature_number(&mut rpc_client).unwrap());
+            let rpc_client = CkbRpcClient::new(server.base_url().as_str());
+            assert_eq!(151500, get_max_mature_number(&rpc_client).unwrap());
         }
     }
 }

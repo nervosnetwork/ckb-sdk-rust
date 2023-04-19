@@ -279,9 +279,8 @@ fn build_multisig_config(
 }
 
 fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdErr>> {
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
-    let cell =
-        build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let cell = build_omnilock_cell_dep(&ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
 
     let multisig_config =
         build_multisig_config(&args.sighash_address, args.require_first_n, args.threshold)?;
@@ -317,9 +316,8 @@ fn build_transfer_tx(
 ) -> Result<(TransactionView, OmniLockConfig), Box<dyn StdErr>> {
     let multisig_config =
         build_multisig_config(&args.sighash_address, args.require_first_n, args.threshold)?;
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
-    let cell =
-        build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let cell = build_omnilock_cell_dep(&ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
     let omnilock_config = OmniLockConfig::new_multisig(multisig_config);
     // Build CapacityBalancer
     let sender = Script::new_builder()
@@ -335,7 +333,7 @@ fn build_transfer_tx(
     //   * HeaderDepResolver
     //   * CellCollector
     //   * TransactionDependencyProvider
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let genesis_block = ckb_client.get_block_by_number(0.into())?.unwrap();
     let genesis_block = BlockView::from(genesis_block);
     let mut cell_dep_resolver = DefaultCellDepResolver::from_genesis(&genesis_block)?;
@@ -385,7 +383,7 @@ fn build_transfer_tx(
 }
 
 fn build_omnilock_cell_dep(
-    ckb_client: &mut CkbRpcClient,
+    ckb_client: &CkbRpcClient,
     tx_hash: &H256,
     index: usize,
 ) -> Result<OmniLockInfo, Box<dyn StdErr>> {
@@ -432,9 +430,8 @@ fn sign_tx(
     // Unlock transaction
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
 
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
-    let cell =
-        build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let cell = build_omnilock_cell_dep(&ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
 
     let mut _still_locked_groups = None;
     let unlockers = build_omnilock_unlockers(keys, omnilock_config.clone(), cell.type_hash);

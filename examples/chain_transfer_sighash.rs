@@ -100,7 +100,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         &args.receiver0,
         args.capacity.0,
     )?;
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let mut tip_num = ckb_client.get_tip_block_number().unwrap().value();
     cell_collector.apply_tx(tx.data(), tip_num)?;
     tx_dep_provider.apply_tx(tx.data(), tip_num)?;
@@ -167,7 +167,7 @@ fn build_transfer_tx(
     //   * HeaderDepResolver
     //   * CellCollector
     //   * TransactionDependencyProvider
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let cell_dep_resolver = {
         let genesis_block = ckb_client.get_block_by_number(0.into())?.unwrap();
         DefaultCellDepResolver::from_genesis(&BlockView::from(genesis_block))?

@@ -18,7 +18,7 @@ const ARGS: [u8; 32] = [
 ];
 #[test]
 fn test_get_indexer_tip() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let indexer_tip = ckb_client.get_indexer_tip().unwrap().unwrap();
     let tip_block_number = ckb_client.get_tip_block_number().unwrap().value();
     assert!(indexer_tip.block_number.value() - tip_block_number <= 1);
@@ -26,7 +26,7 @@ fn test_get_indexer_tip() {
 
 #[test]
 fn test_cells_search_mode_default_partitial() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     // default with partitial args
@@ -49,7 +49,7 @@ fn test_cells_search_mode_default_partitial() {
 }
 #[test]
 fn test_cells_search_mode_prefix_partitial() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     // prefix with partitial args
@@ -72,7 +72,7 @@ fn test_cells_search_mode_prefix_partitial() {
 }
 #[test]
 fn test_cells_search_mode_exact_partitial() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
@@ -94,7 +94,7 @@ fn test_cells_search_mode_exact_partitial() {
 }
 #[test]
 fn test_cells_search_mode_exact() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
@@ -117,7 +117,7 @@ fn test_cells_search_mode_exact() {
 
 #[test]
 fn test_get_transactions_search_mode_default() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
@@ -140,7 +140,7 @@ fn test_get_transactions_search_mode_default() {
 
 #[test]
 fn test_get_transactions_search_mode_prefix_partial() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
@@ -162,7 +162,7 @@ fn test_get_transactions_search_mode_prefix_partial() {
 }
 #[test]
 fn test_get_transactions_search_mode_exact_partitial() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
@@ -184,7 +184,7 @@ fn test_get_transactions_search_mode_exact_partitial() {
 }
 #[test]
 fn test_get_transactions_search_mode_exact_full() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     // exact search
@@ -207,7 +207,7 @@ fn test_get_transactions_search_mode_exact_full() {
 }
 #[test]
 fn test_get_cells_capacity_search_mode_default() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
@@ -228,7 +228,7 @@ fn test_get_cells_capacity_search_mode_default() {
 
 #[test]
 fn test_get_cells_capacity_search_mode_prefix_partial() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
@@ -249,7 +249,7 @@ fn test_get_cells_capacity_search_mode_prefix_partial() {
 
 #[test]
 fn test_get_cells_capacity_search_mode_exact_partital() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
@@ -270,7 +270,7 @@ fn test_get_cells_capacity_search_mode_exact_partital() {
 
 #[test]
 fn test_get_cells_capacity_search_mode_exact() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
 
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
