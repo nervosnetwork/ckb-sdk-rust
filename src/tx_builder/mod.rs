@@ -41,6 +41,8 @@ pub enum TxBuilderError {
 
     #[error("transaction dependency provider error: `{0}`")]
     TxDep(#[from] TransactionDependencyError),
+    #[error("ChangeIndex alread set: `{0}`")]
+    ChangeIndex(usize),
 
     #[error("cell collector error: `{0}`")]
     CellCollector(#[from] CellCollectorError),
