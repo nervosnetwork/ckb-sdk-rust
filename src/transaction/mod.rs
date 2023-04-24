@@ -1,4 +1,4 @@
-use crate::NetworkInfo;
+use crate::{tx_builder::TxBuilderError, NetworkInfo};
 
 use self::{builder::FeeCalculator, handler::ScriptHandler};
 
@@ -13,25 +13,28 @@ pub struct TransactionBuilderConfiguration {
 }
 
 impl TransactionBuilderConfiguration {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, TxBuilderError> {
         Self::new_with_network(NetworkInfo::mainnet())
     }
-    pub fn new_testnet() -> Self {
+    pub fn new_testnet() -> Result<Self, TxBuilderError> {
         Self::new_with_network(NetworkInfo::testnet())
     }
 
-    fn new_with_network(network: NetworkInfo) -> Self {
-        let script_handlers = Self::generate_system_handlers(&network);
-        Self {
+    fn new_with_network(network: NetworkInfo) -> Result<Self, TxBuilderError> {
+        let script_handlers = Self::generate_system_handlers(&network)?;
+        Ok(Self {
             network,
             script_handlers,
             fee_rate: 1000,
-        }
+        })
     }
-    pub fn generate_system_handlers(network: &NetworkInfo) -> Vec<Box<dyn ScriptHandler>> {
-        vec![Box::new(
-            handler::sighash::Secp256k1Blake160SighashAllScriptHandler::new_with_network(network),
-        ) as Box<_>]
+    pub fn generate_system_handlers(
+        network: &NetworkInfo,
+    ) -> Result<Vec<Box<dyn ScriptHandler>>, TxBuilderError> {
+        let ret = vec![Box::new(
+            handler::sighash::Secp256k1Blake160SighashAllScriptHandler::new_with_network(network)?,
+        ) as Box<_>];
+        Ok(ret)
     }
 
     #[inline]

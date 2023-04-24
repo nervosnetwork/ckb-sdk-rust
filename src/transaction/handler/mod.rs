@@ -1,6 +1,8 @@
 use std::any::Any;
 
-use crate::{NetworkType, ScriptGroup};
+use crate::{tx_builder::TxBuilderError, NetworkInfo, ScriptGroup};
+
+use self::sighash::Secp256k1Blake160SighashAllScriptContext;
 
 use super::builder::tx_data::TxData;
 
@@ -12,9 +14,9 @@ pub trait ScriptHandler {
         tx_data: &mut TxData,
         script_group: &ScriptGroup,
         context: &dyn HandlerContext,
-    ) -> Result<bool, String>;
+    ) -> Result<bool, TxBuilderError>;
 
-    fn init(&mut self, network: NetworkType);
+    fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError>;
 }
 
 pub trait Type2Any: 'static {
@@ -29,7 +31,14 @@ impl<T: 'static> Type2Any for T {
 
 pub trait HandlerContext: Type2Any {}
 
-#[derive(Default)]
 pub struct HandlerContexts {
     pub contexts: Vec<Box<dyn HandlerContext>>,
+}
+
+impl Default for HandlerContexts {
+    fn default() -> Self {
+        Self {
+            contexts: vec![Box::new(Secp256k1Blake160SighashAllScriptContext {})],
+        }
+    }
 }

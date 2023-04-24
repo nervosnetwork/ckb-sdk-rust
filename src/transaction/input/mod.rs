@@ -35,7 +35,7 @@ impl InputIterator {
         network_info: &NetworkInfo,
     ) -> Result<Self, String> {
         let lock_sripts: Result<Vec<packed::Script>, String> = address
-            .into_iter()
+            .iter()
             .map(|adr_str| Address::from_str(adr_str.as_ref()))
             .map(|ad_r| ad_r.map(|t| Into::<packed::Script>::into(&t)))
             .collect();
@@ -96,8 +96,8 @@ impl Iterator for InputIterator {
             }
 
             let status = self.collect_live_cells();
-            if status.is_err() {
-                return Some(Err(status.unwrap_err()));
+            if let Err(status) = status {
+                return Some(Err(status));
             }
             if !status.unwrap() {
                 return None;

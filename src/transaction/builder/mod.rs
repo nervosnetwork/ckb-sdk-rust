@@ -184,7 +184,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             if let Some(t) = &output.type_().to_opt() {
                 let script_group = type_groups
                     .entry(t.calc_script_hash())
-                    .or_insert_with(|| ScriptGroup::from_type_script(&t));
+                    .or_insert_with(|| ScriptGroup::from_type_script(t));
                 script_group.output_indices.push(i);
                 Self::handle_script(&mut self.tx, &self.configuration, script_group, contexts)?;
             }
@@ -288,11 +288,13 @@ impl BalanceState {
         matches!(self, BalanceState::Success)
     }
 }
-impl Into<BalanceTxCapacityError> for BalanceState {
-    fn into(self) -> BalanceTxCapacityError {
-        BalanceTxCapacityError::CapacityNotEnough(self.to_string())
+
+impl From<BalanceState> for BalanceTxCapacityError {
+    fn from(val: BalanceState) -> Self {
+        BalanceTxCapacityError::CapacityNotEnough(val.to_string())
     }
 }
+
 impl ToString for BalanceState {
     fn to_string(&self) -> String {
         match self {
