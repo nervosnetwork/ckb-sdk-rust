@@ -21,7 +21,7 @@ pub struct InputIterator {
 }
 
 impl InputIterator {
-    pub fn new(lock_scripts: Vec<packed::Script>, network_info: NetworkInfo) -> Self {
+    pub fn new(lock_scripts: Vec<packed::Script>, network_info: &NetworkInfo) -> Self {
         Self {
             buffer_inputs: vec![],
             buffer_index: 0,
@@ -32,7 +32,7 @@ impl InputIterator {
     }
     pub fn new_with_address<T: AsRef<str>>(
         address: &[T],
-        network_info: NetworkInfo,
+        network_info: &NetworkInfo,
     ) -> Result<Self, String> {
         let lock_sripts: Result<Vec<packed::Script>, String> = address
             .into_iter()
@@ -74,9 +74,10 @@ impl InputIterator {
                 &mut self.buffer_index,
                 script,
             )?;
-            self.script_index += 1;
             if got {
                 return Ok(true);
+            } else {
+                self.script_index += 1;
             }
         }
         Ok(false)

@@ -12,7 +12,7 @@ pub struct TransactionWithScriptGroups {
 }
 
 impl TransactionWithScriptGroups {
-    pub fn new(tx_view: TransactionView, script_groups: Vec<ScriptGroup>)-> Self {
+    pub fn new(tx_view: TransactionView, script_groups: Vec<ScriptGroup>) -> Self {
         Self {
             tx_view,
             script_groups,
