@@ -39,6 +39,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let tx_hash = CkbRpcClient::new(network_info.url.as_str())
         .send_transaction(json_tx.inner, outputs_validator)
         .expect("send transaction");
+    // example tx: 18b97d9531b6413690ca976d9bba8961cd8e1f65f3df5f8b212fb3b8886192a0
     println!(">>> tx {} sent! <<<", tx_hash);
 
     Ok(())
