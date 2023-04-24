@@ -79,6 +79,10 @@ impl SimpleTransactionBuilder {
             reward: 0,
         }
     }
+    pub fn set_change_addr(&mut self, change_addr: Address) {
+        self.change_addr = Some(change_addr);
+    }
+
     pub fn set_outputs(&mut self, outputs: Vec<CellOutput>, outputs_data: Vec<packed::Bytes>) {
         self.tx.set_outputs(outputs);
         self.tx.set_outputs_data(outputs_data);
@@ -87,6 +91,14 @@ impl SimpleTransactionBuilder {
     pub fn add_output(&mut self, output: CellOutput, data: packed::Bytes) {
         self.tx.add_output(output);
         self.tx.add_output_data(data);
+    }
+
+    pub fn add_output_from_addr(&mut self, addr: &Address, capacity: Capacity) {
+        let output = CellOutput::new_builder()
+            .capacity(capacity.pack())
+            .lock(addr.into())
+            .build();
+        self.add_output(output, packed::Bytes::default());
     }
 
     pub fn set_change_output(

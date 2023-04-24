@@ -1,6 +1,6 @@
 use ckb_types::packed::Script;
 
-use crate::{transaction::builder::tx_data::TxData, NetworkType, ScriptGroup};
+use crate::{transaction::builder::tx_data::TxData, NetworkInfo, NetworkType, ScriptGroup};
 
 use super::{HandlerContext, ScriptHandler};
 
@@ -14,7 +14,7 @@ impl Secp256k1Blake160SighashAllScriptHandler {
     pub fn is_match(&self, _script: &Script) -> bool {
         true
     }
-    pub fn new_with_network(_network: NetworkType) -> Self {
+    pub fn new_with_network(_network: &NetworkInfo) -> Self {
         Self {}
     }
 }
