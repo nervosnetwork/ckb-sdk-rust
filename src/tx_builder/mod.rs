@@ -20,11 +20,11 @@ use ckb_types::{
     prelude::*,
 };
 
-use crate::constants::DAO_TYPE_HASH;
 use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::calculate_dao_maximum_withdraw4;
+use crate::{constants::DAO_TYPE_HASH, NetworkType};
 use crate::{
     traits::{
         CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
@@ -64,6 +64,10 @@ pub enum TxBuilderError {
 
     #[error("build_balance_unlocked exceed max loop times, current is: `{0}`")]
     ExceedCycleMaxLoopTimes(u32),
+    #[error("witness idx `{0}` is out of bound `{1}")]
+    WitnessOutOfBound(usize, usize),
+    #[error("unsupported networktype `{0}")]
+    UnsupportedNetworkType(NetworkType),
 
     #[error("other error: `{0}`")]
     Other(anyhow::Error),

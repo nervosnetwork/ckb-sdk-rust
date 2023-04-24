@@ -4,6 +4,8 @@ use ckb_types::{
     prelude::*,
 };
 
+use crate::tx_builder::TxBuilderError;
+
 #[derive(Default)]
 pub struct TxData {
     version: u32,
@@ -54,6 +56,15 @@ impl TxData {
         self.witnesses.push(witness);
     }
 
+    pub fn set_witnesses(
+        &mut self,
+        i: usize,
+        witness: packed::Bytes,
+    ) -> Result<(), TxBuilderError> {
+        self.witnesses[i] = witness;
+        Ok(())
+    }
+
     #[inline]
     pub fn build_tx_view(&self) -> core::TransactionView {
         TransactionBuilder::default()
@@ -65,5 +76,9 @@ impl TxData {
             .set_outputs_data(self.outputs_data.clone())
             .set_witnesses(self.witnesses.clone())
             .build()
+    }
+
+    pub fn add_cell_deps(&mut self, cell_deps: Vec<CellDep>) {
+        self.cell_deps.extend(cell_deps);
     }
 }
