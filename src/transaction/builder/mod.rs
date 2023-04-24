@@ -209,25 +209,30 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             let fee = calculator.fee_with_tx_data(&self.tx);
             let change_capacity =
                 (inputs_capacity + self.reward).checked_sub(outputs_capacity + fee);
-            if let Some(change_capacity) = change_capacity {
+            if let Some(mut change_capacity) = change_capacity {
                 // it's already balanced, no need to add change output cell
                 if change_capacity == 0 {
                     state = BalanceState::Success;
                     break;
                 }
                 if self.change_output_index.is_none() {
-                    // TODO after change output is set, we should check if it's enough for change
                     InitChangeOutputViewer {
                         tx: &mut self.tx,
                         change_output_index: &mut self.change_output_index,
                         change_addr: &self.change_addr,
                     }
                     .init_change_output()?;
+                    let new_fee = calculator.fee_with_tx_data(&self.tx);
+                    if let Some(new_change) =
+                        (inputs_capacity + self.reward).checked_sub(outputs_capacity + new_fee)
+                    {
+                        change_capacity = new_change;
+                    }
                 }
                 let change_require_capacity =
                     Self::get_change_occupied_capacity(&self.change_output_index, &self.tx);
                 if change_capacity >= change_require_capacity {
-                    self.set_change_output_capacity(change_capacity);
+                    self.set_change_output_capacity(0);
                     state = BalanceState::Success;
                     break;
                 } else {
