@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use ckb_types::{
     core::{self, TransactionBuilder},
     packed::{self, CellDep, CellInput, CellOutput},
@@ -9,7 +11,7 @@ use crate::tx_builder::TxBuilderError;
 #[derive(Default)]
 pub struct TxData {
     version: u32,
-    pub cell_deps: Vec<CellDep>,
+    pub cell_deps: HashSet<CellDep>,
     pub header_deps: Vec<packed::Byte32>,
     pub inputs: Vec<CellInput>,
     pub outputs: Vec<CellOutput>,
@@ -69,7 +71,7 @@ impl TxData {
     pub fn build_tx_view(&self) -> core::TransactionView {
         TransactionBuilder::default()
             .version(self.version.pack())
-            .set_cell_deps(self.cell_deps.clone())
+            .set_cell_deps(self.cell_deps.clone().into_iter().collect())
             .set_header_deps(self.header_deps.clone())
             .set_inputs(self.inputs.clone())
             .set_outputs(self.outputs.clone())

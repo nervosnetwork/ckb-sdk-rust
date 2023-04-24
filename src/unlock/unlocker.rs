@@ -35,6 +35,9 @@ pub enum UnlockError {
     #[error("there is an configuration error: `{0}`")]
     InvalidConfig(#[from] ConfigError),
 
+    #[error("sign context is incorrect")]
+    SignContextTypeIncorrect,
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

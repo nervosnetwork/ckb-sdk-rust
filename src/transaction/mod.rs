@@ -5,6 +5,7 @@ use self::{builder::FeeCalculator, handler::ScriptHandler};
 pub mod builder;
 pub mod handler;
 pub mod input;
+pub mod signer;
 
 pub struct TransactionBuilderConfiguration {
     network: NetworkInfo,
@@ -20,7 +21,7 @@ impl TransactionBuilderConfiguration {
         Self::new_with_network(NetworkInfo::testnet())
     }
 
-    fn new_with_network(network: NetworkInfo) -> Result<Self, TxBuilderError> {
+    pub fn new_with_network(network: NetworkInfo) -> Result<Self, TxBuilderError> {
         let script_handlers = Self::generate_system_handlers(&network)?;
         Ok(Self {
             network,
