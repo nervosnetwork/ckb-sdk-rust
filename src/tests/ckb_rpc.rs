@@ -15,7 +15,7 @@ const BLOCK_NUMBER_NOT_EXIST: u64 = u64::max_value();
 
 #[test]
 fn test_get_block() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_block(BLOCK_HASH.clone()).unwrap();
     let block = block.unwrap();
     // println!("> block: {}", serde_json::to_string_pretty(&block).unwrap());
@@ -52,7 +52,7 @@ fn test_get_block() {
 
 #[test]
 fn test_get_block_with_cycles() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block_cycle = ckb_client.get_block_with_cycles(BLOCK_HASH.clone());
     let block_cycle = block_cycle.unwrap();
     let (block, cycles_0) = block_cycle.unwrap();
@@ -99,7 +99,7 @@ fn test_get_block_with_cycles() {
 
 #[test]
 fn test_get_packed_block_fail() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_packed_block(BLOCK_HASH_NOT_EXIST.clone());
     let block = block.unwrap();
     assert!(block.is_none());
@@ -107,7 +107,7 @@ fn test_get_packed_block_fail() {
 
 #[test]
 fn test_get_block_with_cycles_fail() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_block_with_cycles(BLOCK_HASH_NOT_EXIST.clone());
     let block = block.unwrap();
     assert!(block.is_none());
@@ -115,7 +115,7 @@ fn test_get_block_with_cycles_fail() {
 
 #[test]
 fn test_get_packed_block_with_cycles_fail() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_packed_block_with_cycles(BLOCK_HASH_NOT_EXIST.clone());
     let block = block.unwrap();
     assert!(block.is_none());
@@ -123,7 +123,7 @@ fn test_get_packed_block_with_cycles_fail() {
 
 #[test]
 fn test_get_packed_block_by_number_fail() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_packed_block_by_number(BLOCK_NUMBER_NOT_EXIST.into());
     let block = block.unwrap();
     assert!(block.is_none());
@@ -131,7 +131,7 @@ fn test_get_packed_block_by_number_fail() {
 
 #[test]
 fn test_get_block_by_number_with_cycles_fail() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_block_by_number_with_cycles(BLOCK_NUMBER_NOT_EXIST.into());
     let block = block.unwrap();
     assert!(block.is_none());
@@ -139,7 +139,7 @@ fn test_get_block_by_number_with_cycles_fail() {
 
 #[test]
 fn test_get_packed_block_by_number_with_cycles_fail() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_packed_block_by_number_with_cycles(BLOCK_NUMBER_NOT_EXIST.into());
     let block = block.unwrap();
     assert!(block.is_none());
@@ -147,7 +147,7 @@ fn test_get_packed_block_by_number_with_cycles_fail() {
 
 #[test]
 fn test_get_header() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let header = ckb_client.get_header(BLOCK_HASH.clone());
     let header = header.unwrap();
     let header = header.unwrap();
@@ -171,7 +171,7 @@ fn test_get_header() {
 
 #[test]
 fn test_get_packed_header_fail() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let header = ckb_client.get_header(BLOCK_HASH_NOT_EXIST.clone());
     let header = header.unwrap();
     assert!(header.is_none());
@@ -179,7 +179,7 @@ fn test_get_packed_header_fail() {
 
 #[test]
 fn test_get_packed_header_by_number_not_exist() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let header = ckb_client.get_packed_header_by_number(BLOCK_NUMBER_NOT_EXIST.into());
     let header = header.unwrap();
     assert!(header.is_none());
@@ -194,7 +194,7 @@ const TRANSACTION_HASH_NOT_EXIST: H256 =
 
 #[test]
 fn test_get_packed_transaction() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let trans_resp0 = ckb_client.get_transaction(TRANSACTION_HASH.clone());
     let trans_resp0 = trans_resp0.unwrap();
     let trans_resp0 = trans_resp0.unwrap();
@@ -216,7 +216,7 @@ fn test_get_packed_transaction() {
 
 #[test]
 fn test_get_packed_transaction_not_exist() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let transaction = ckb_client.get_packed_transaction(TRANSACTION_HASH_NOT_EXIST.clone());
     let transaction = transaction.unwrap();
     assert!(transaction.transaction.is_none());
@@ -231,7 +231,7 @@ fn test_get_packed_transaction_not_exist() {
 
 #[test]
 fn test_get_packed_transaction_verbosity_1() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let trans_resp0 = ckb_client.get_transaction(TRANSACTION_HASH.clone());
     let trans_resp0 = trans_resp0.unwrap();
     let trans_resp0 = trans_resp0.unwrap();
@@ -247,7 +247,7 @@ fn test_get_packed_transaction_verbosity_1() {
 
 #[test]
 fn test_get_packed_transaction_verbosity_1_not_exist() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let transaction = ckb_client.get_transaction_status(TRANSACTION_HASH_NOT_EXIST.clone());
     let transaction = transaction.unwrap();
     assert!(transaction.transaction.is_none());
@@ -262,7 +262,7 @@ fn test_get_packed_transaction_verbosity_1_not_exist() {
 
 #[test]
 fn test_get_tip_header() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let header_bytes = ckb_client.get_packed_tip_header();
     let header_bytes = header_bytes.unwrap();
 
@@ -272,7 +272,7 @@ fn test_get_tip_header() {
 
 #[test]
 fn test_get_packed_fork_block_not_exist() {
-    let mut ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
     let block = ckb_client.get_packed_fork_block(BLOCK_HASH.clone());
     let block = block.unwrap();
     assert!(block.is_none());

@@ -88,30 +88,30 @@ pub struct PeerSyncState {
 
 crate::jsonrpc!(pub struct LightClientRpcClient {
     // BlockFilter
-    pub fn set_scripts(&mut self, scripts: Vec<ScriptStatus>) -> ();
-    pub fn get_scripts(&mut self) -> Vec<ScriptStatus>;
-    pub fn get_cells(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
-    pub fn get_transactions(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
-    pub fn get_cells_capacity(&mut self, search_key: SearchKey) -> CellsCapacity;
+    pub fn set_scripts(&self, scripts: Vec<ScriptStatus>) -> ();
+    pub fn get_scripts(&self) -> Vec<ScriptStatus>;
+    pub fn get_cells(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
+    pub fn get_transactions(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
+    pub fn get_cells_capacity(&self, search_key: SearchKey) -> CellsCapacity;
 
     // Transaction
-    pub fn send_transaction(&mut self, tx: Transaction) -> H256;
+    pub fn send_transaction(&self, tx: Transaction) -> H256;
 
     // Chain
-    pub fn get_tip_header(&mut self) -> HeaderView;
-    pub fn get_genesis_block(&mut self) -> BlockView;
-    pub fn get_header(&mut self, block_hash: H256) -> Option<HeaderView>;
-    pub fn get_transaction(&mut self, tx_hash: H256) -> Option<TransactionWithHeader>;
+    pub fn get_tip_header(&self) -> HeaderView;
+    pub fn get_genesis_block(&self) -> BlockView;
+    pub fn get_header(&self, block_hash: H256) -> Option<HeaderView>;
+    pub fn get_transaction(&self, tx_hash: H256) -> Option<TransactionWithHeader>;
     /// Fetch a header from remote node. If return status is `not_found` will re-sent fetching request immediately.
     ///
     /// Returns: FetchStatus<HeaderView>
-    pub fn fetch_header(&mut self, block_hash: H256) -> FetchStatus<HeaderView>;
+    pub fn fetch_header(&self, block_hash: H256) -> FetchStatus<HeaderView>;
 
     /// Fetch a transaction from remote node. If return status is `not_found` will re-sent fetching request immediately.
     ///
     /// Returns: FetchStatus<TransactionWithHeader>
-    pub fn fetch_transaction(&mut self, tx_hash: H256) -> FetchStatus<TransactionWithHeader>;
+    pub fn fetch_transaction(&self, tx_hash: H256) -> FetchStatus<TransactionWithHeader>;
 
     // Net
-    pub fn get_peers(&mut self) -> Vec<RemoteNode>;
+    pub fn get_peers(&self) -> Vec<RemoteNode>;
 });

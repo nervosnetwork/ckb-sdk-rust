@@ -225,9 +225,8 @@ fn main() -> Result<(), Box<dyn StdErr>> {
 }
 
 fn build_omnilock_addr(args: &BuildOmniLockAddrArgs) -> Result<(), Box<dyn StdErr>> {
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
-    let cell =
-        build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let cell = build_omnilock_cell_dep(&ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
     let privkey = secp256k1::SecretKey::from_slice(args.receiver.as_bytes()).unwrap();
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &privkey);
     println!("pubkey:{:?}", hex_string(&pubkey.serialize()));
@@ -267,9 +266,8 @@ fn build_transfer_tx(
     let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &sender_key);
     println!("pubkey:{:?}", hex_string(&pubkey.serialize()));
     println!("pubkey:{:?}", hex_string(&pubkey.serialize_uncompressed()));
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
-    let cell =
-        build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let cell = build_omnilock_cell_dep(&ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
     let addr = keccak160(Pubkey::from(pubkey).as_ref());
     let omnilock_config = OmniLockConfig::new_ethereum(addr);
     // Build CapacityBalancer
@@ -286,7 +284,7 @@ fn build_transfer_tx(
     //   * HeaderDepResolver
     //   * CellCollector
     //   * TransactionDependencyProvider
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
     let genesis_block = ckb_client.get_block_by_number(0.into())?.unwrap();
     let genesis_block = BlockView::from(genesis_block);
     let mut cell_dep_resolver = DefaultCellDepResolver::from_genesis(&genesis_block)?;
@@ -336,7 +334,7 @@ fn build_transfer_tx(
 }
 
 fn build_omnilock_cell_dep(
-    ckb_client: &mut CkbRpcClient,
+    ckb_client: &CkbRpcClient,
     tx_hash: &H256,
     index: usize,
 ) -> Result<OmniLockInfo, Box<dyn StdErr>> {
@@ -384,9 +382,8 @@ fn sign_tx(
     // Unlock transaction
     let tx_dep_provider = DefaultTransactionDependencyProvider::new(args.ckb_rpc.as_str(), 10);
 
-    let mut ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
-    let cell =
-        build_omnilock_cell_dep(&mut ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
+    let ckb_client = CkbRpcClient::new(args.ckb_rpc.as_str());
+    let cell = build_omnilock_cell_dep(&ckb_client, &args.omnilock_tx_hash, args.omnilock_index)?;
 
     let unlockers = build_omnilock_unlockers(vec![key], omnilock_config.clone(), cell.type_hash);
     let (new_tx, new_still_locked_groups) = unlock_tx(tx.clone(), &tx_dep_provider, &unlockers)?;

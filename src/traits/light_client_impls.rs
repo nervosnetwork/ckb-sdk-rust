@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use anyhow::anyhow;
 use dashmap::DashMap;
-use parking_lot::Mutex;
 
 use ckb_jsonrpc_types as json_types;
 use ckb_types::{
@@ -23,14 +22,14 @@ use crate::traits::{
 };
 
 pub struct LightClientHeaderDepResolver {
-    client: Mutex<LightClientRpcClient>,
+    client: LightClientRpcClient,
     // tx_hash => HeaderView
     headers: DashMap<Byte32, Option<HeaderView>>,
 }
 
 impl LightClientHeaderDepResolver {
     pub fn new(url: &str) -> LightClientHeaderDepResolver {
-        let client = Mutex::new(LightClientRpcClient::new(url));
+        let client = LightClientRpcClient::new(url);
         LightClientHeaderDepResolver {
             client,
             headers: DashMap::new(),
@@ -48,7 +47,7 @@ impl HeaderDepResolver for LightClientHeaderDepResolver {
         if let Some(Some(header)) = self.headers.get(tx_hash).as_ref().map(|pair| pair.value()) {
             return Ok(Some(header.clone()));
         }
-        match self.client.lock().fetch_transaction(tx_hash.unpack())? {
+        match self.client.fetch_transaction(tx_hash.unpack())? {
             FetchStatus::Fetched { data } => {
                 let header: HeaderView = data.header.into();
                 self.headers.insert(tx_hash.clone(), Some(header.clone()));
@@ -76,7 +75,7 @@ impl HeaderDepResolver for LightClientHeaderDepResolver {
 }
 
 pub struct LightClientTransactionDependencyProvider {
-    client: Mutex<LightClientRpcClient>,
+    client: LightClientRpcClient,
     // headers to load
     headers: DashMap<Byte32, Option<HeaderView>>,
     // transactions to load
@@ -86,7 +85,7 @@ pub struct LightClientTransactionDependencyProvider {
 impl LightClientTransactionDependencyProvider {
     pub fn new(url: &str) -> LightClientTransactionDependencyProvider {
         LightClientTransactionDependencyProvider {
-            client: Mutex::new(LightClientRpcClient::new(url)),
+            client: LightClientRpcClient::new(url),
             headers: DashMap::new(),
             txs: DashMap::new(),
         }
@@ -110,7 +109,6 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
         }
         match self
             .client
-            .lock()
             .fetch_transaction(tx_hash.unpack())
             .map_err(|err| TransactionDependencyError::Other(anyhow!(err)))?
         {
@@ -162,7 +160,6 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
         }
         match self
             .client
-            .lock()
             .fetch_header(block_hash.unpack())
             .map_err(|err| TransactionDependencyError::Other(anyhow!(err)))?
         {

@@ -184,8 +184,8 @@ pub struct Pagination<T> {
 }
 
 crate::jsonrpc!(pub struct IndexerRpcClient {
-    pub fn get_indexer_tip(&mut self) -> Option<Tip>;
-    pub fn get_cells(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
-    pub fn get_transactions(&mut self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
-    pub fn get_cells_capacity(&mut self, search_key: SearchKey) -> Option<CellsCapacity>;
+    pub fn get_indexer_tip(&self) -> Option<Tip>;
+    pub fn get_cells(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
+    pub fn get_transactions(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
+    pub fn get_cells_capacity(&self, search_key: SearchKey) -> Option<CellsCapacity>;
 });

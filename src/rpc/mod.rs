@@ -28,7 +28,7 @@ macro_rules! jsonrpc {
         $(#[$struct_attr:meta])*
         pub struct $struct_name:ident {$(
             $(#[$attr:meta])*
-            pub fn $method:ident(&mut $selff:ident $(, $arg_name:ident: $arg_ty:ty)*)
+            pub fn $method:ident(& $selff:ident $(, $arg_name:ident: $arg_ty:ty)*)
                 -> $return_ty:ty;
         )*}
     ) => (
@@ -36,25 +36,25 @@ macro_rules! jsonrpc {
         pub struct $struct_name {
             pub client: reqwest::blocking::Client,
             pub url: reqwest::Url,
-            pub id: u64,
+            pub id: std::sync::atomic::AtomicU64,
         }
 
         impl $struct_name {
             pub fn new(uri: &str) -> Self {
                 let url = reqwest::Url::parse(uri).expect("ckb uri, e.g. \"http://127.0.0.1:8114\"");
-                $struct_name { url, id: 0, client: reqwest::blocking::Client::new(), }
+                $struct_name { url, id: 0.into(), client: reqwest::blocking::Client::new(), }
             }
 
-            pub fn post<PARAM, RET>(&mut self, method:&str, params: PARAM)->Result<RET, $crate::rpc::RpcError>
+            pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->Result<RET, $crate::rpc::RpcError>
             where
                 PARAM:serde::ser::Serialize,
                 RET: serde::de::DeserializeOwned,
             {
                 let params = serde_json::to_value(params)?;
-                self.id += 1;
+                let id = self.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
                 let mut req_json = serde_json::Map::new();
-                req_json.insert("id".to_owned(), serde_json::json!(self.id));
+                req_json.insert("id".to_owned(), serde_json::json!(id));
                 req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
                 req_json.insert("method".to_owned(), serde_json::json!(method));
                 req_json.insert("params".to_owned(), params);
@@ -74,13 +74,13 @@ macro_rules! jsonrpc {
 
             $(
                 $(#[$attr])*
-                pub fn $method(&mut $selff $(, $arg_name: $arg_ty)*) -> Result<$return_ty, $crate::rpc::RpcError> {
+                pub fn $method(&$selff $(, $arg_name: $arg_ty)*) -> Result<$return_ty, $crate::rpc::RpcError> {
                     let method = String::from(stringify!($method));
                     let params = $crate::serialize_parameters!($($arg_name,)*);
-                    $selff.id += 1;
+                    let id = $selff.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
                     let mut req_json = serde_json::Map::new();
-                    req_json.insert("id".to_owned(), serde_json::json!($selff.id));
+                    req_json.insert("id".to_owned(), serde_json::json!(id));
                     req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
                     req_json.insert("method".to_owned(), serde_json::json!(method));
                     req_json.insert("params".to_owned(), params);
