@@ -48,6 +48,11 @@ impl SignContexts {
             contexts: vec![Box::new(sighash_context)],
         })
     }
+
+    #[inline]
+    pub fn add_context(&mut self, context: Box<dyn SignContext>) {
+        self.contexts.push(context);
+    }
 }
 
 pub struct TransactionSigner {
