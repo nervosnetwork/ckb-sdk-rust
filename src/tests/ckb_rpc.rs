@@ -12,6 +12,23 @@ const BLOCK_NUMBER: u64 = 7981482;
 const BLOCK_HASH_NOT_EXIST: H256 =
     h256!("0x626c6f636b5f686173685f746861745f646f65735f6e6f745f65786973740000");
 const BLOCK_NUMBER_NOT_EXIST: u64 = u64::max_value();
+// transaction hash in block 0xd88eb0cf9f6e6f123c733e9aba29dec9cb449965a8adc98216c50d5083b909b1
+lazy_static::lazy_static! {
+    pub static ref TRANSACTION_HASH_VEC : Vec<H256> =
+    vec! [
+        h256!("0x9ecdbaf1ac656c0e48ab66e7c539b43ad6073c85d17fa590d1d3d9e9525767d2"),
+        h256!("0xb8ba38f579b0aeedc7b9dd5c4c14806079bf7c232f63435e6aa08cca1c100826"),
+        h256!("0xd76f85fb9f87cf3e906846bf32eb34a796b5a3c19dbae9fc3bff0b498974c274"),
+        h256!("0x43954e22db24c2b7688440ea76a5998c94080e82151b11067104e739fb0f7fb2"),
+        h256!("0x87748aa45395a3a41c2f30b8d8680fc485d600e24ca716f733ca8515cf8945ea"),
+        h256!("0x95c9589360e23566429dc333efc4cb5caf50c1b309747141b750731e21ea6fbf"),
+        h256!("0xd713b21bbdeae7ae1fe0050be61afcfdd9335a1ccbfbf7f916be4a45d6e5d012"),
+        h256!("0xa4ffe98801e38a5ff928020a82b07066e13d71ed930e90a4f00672626133df6a"),
+        h256!("0xdbcc925afcd73e91c0d91b93943580bbb7a03241d7baef4089d736a1e7b0a4ae"),
+        h256!("0x9f91c8e5c1b6853b5f129eaba6631f5ebb887ef83faae5f5e1801bf2c5515ec0"),
+        h256!("0x56aa6d7ae97c4b2f59790c8856701a75352cd05772155595df07f13682cf5e50"),
+    ];
+}
 
 #[test]
 fn test_get_block() {
@@ -280,4 +297,30 @@ fn test_get_packed_fork_block_not_exist() {
     let block = ckb_client.get_packed_fork_block(BLOCK_HASH_NOT_EXIST.clone());
     let block = block.unwrap();
     assert!(block.is_none());
+}
+
+#[test]
+fn test_get_transaction_and_witness_proof() {
+    let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
+    let txes = TRANSACTION_HASH_VEC.clone();
+    let tx_with_wit_proof =
+        ckb_client.get_transaction_and_witness_proof(txes, Some(BLOCK_HASH.clone()));
+    let tx_with_wit_proof = tx_with_wit_proof.unwrap();
+
+    let tx_with_wit_proof2 =
+        ckb_client.get_transaction_and_witness_proof(TRANSACTION_HASH_VEC.clone(), None);
+    let tx_with_wit_proof2 = tx_with_wit_proof2.unwrap();
+    assert_eq!(tx_with_wit_proof, tx_with_wit_proof2);
+
+    // let json_tx = ckb_jsonrpc_types::TransactionAndWitnessProof::from(tx_with_wit_proof);
+    // println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
+
+    let mut txes_verify = ckb_client
+        .verify_transaction_and_witness_proof(tx_with_wit_proof2)
+        .unwrap();
+    let mut txes_expected = TRANSACTION_HASH_VEC.clone();
+    txes_verify.sort();
+    txes_expected.sort();
+
+    assert_eq!(txes_verify, txes_expected);
 }

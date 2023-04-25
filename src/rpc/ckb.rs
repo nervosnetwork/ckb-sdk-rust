@@ -3,7 +3,8 @@ use ckb_jsonrpc_types::{
     BlockView, CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, EstimateCycles,
     ExtraLoggerConfig, FeeRateStatics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
     OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState, Timestamp, Transaction,
-    TransactionProof, TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
+    TransactionAndWitnessProof, TransactionProof, TransactionWithStatusResponse, TxPoolInfo,
+    Uint32, Uint64, Version,
 };
 use ckb_types::{core::Cycle, H256};
 
@@ -30,6 +31,9 @@ crate::jsonrpc!(pub struct CkbRpcClient {
         block_hash: Option<H256>
     ) -> TransactionProof;
     pub fn verify_transaction_proof(&self, tx_proof: TransactionProof) -> Vec<H256>;
+    pub fn get_transaction_and_witness_proof(&self, tx_hashes: Vec<H256>,
+        block_hash: Option<H256>) -> TransactionAndWitnessProof;
+    pub fn verify_transaction_and_witness_proof(&self, tx_proof: TransactionAndWitnessProof) -> Vec<H256>;
     pub fn get_fork_block(&self, block_hash: H256) -> Option<BlockView>;
     pub fn get_consensus(&self) -> Consensus;
     pub fn get_block_median_time(&self, block_hash: H256) -> Option<Timestamp>;
