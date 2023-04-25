@@ -145,6 +145,7 @@ impl SimpleTransactionBuilder {
             .build();
         self.tx.outputs[change_index] = change_output;
     }
+
     fn handle_script(
         tx_data: &mut tx_data::TxData,
         configuration: &TransactionBuilderConfiguration,
@@ -248,6 +249,30 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
                     state = BalanceState::Success;
                     break;
                 } else {
+                    match self.configuration.small_change_action {
+                        super::SmallChangeAction::FindMoreInput => {}
+                        super::SmallChangeAction::ToOutput {
+                            ref target,
+                            threshold,
+                        } => {
+                            if change_capacity < threshold {
+                                self.tx.add_output_capacity(target, change_capacity)?;
+
+                                self.tx.remove_output(self.change_output_index.unwrap());
+                                self.change_output_index = None;
+                                state = BalanceState::Success;
+                                break;
+                            }
+                        }
+                        super::SmallChangeAction::AsFee { threshold } => {
+                            if change_capacity < threshold {
+                                self.tx.remove_output(self.change_output_index.unwrap());
+                                self.change_output_index = None;
+                                state = BalanceState::Success;
+                                break;
+                            }
+                        }
+                    }
                     state = BalanceState::CapacityNotEnoughForChange(
                         change_require_capacity,
                         change_capacity,

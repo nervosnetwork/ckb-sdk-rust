@@ -68,6 +68,8 @@ pub enum TxBuilderError {
     WitnessOutOfBound(usize, usize),
     #[error("unsupported networktype `{0}")]
     UnsupportedNetworkType(NetworkType),
+    #[error("can not find specifed output to put small change")]
+    NoOutputForSmallChange,
 
     #[error("other error: `{0}`")]
     Other(anyhow::Error),

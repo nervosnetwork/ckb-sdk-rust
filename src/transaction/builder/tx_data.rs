@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use ckb_types::{
     core::{self, TransactionBuilder},
-    packed::{self, CellDep, CellInput, CellOutput},
+    packed::{self, CellDep, CellInput, CellOutput, Script},
     prelude::*,
 };
 
@@ -67,6 +67,28 @@ impl TxData {
         Ok(())
     }
 
+    pub fn add_output_capacity(
+        &mut self,
+        script: &Script,
+        delta_capacity: u64,
+    ) -> Result<(), TxBuilderError> {
+        let target_script = script.calc_script_hash();
+        let (idx, output) = self
+            .outputs
+            .iter()
+            .enumerate()
+            .find(|(_, output)| target_script == output.lock().calc_script_hash())
+            .ok_or(TxBuilderError::NoOutputForSmallChange)?;
+        let capacity: u64 = output.capacity().unpack();
+        let output = output
+            .clone()
+            .as_builder()
+            .capacity((capacity + delta_capacity).pack())
+            .build();
+        self.outputs[idx] = output;
+        Ok(())
+    }
+
     #[inline]
     pub fn build_tx_view(&self) -> core::TransactionView {
         TransactionBuilder::default()
@@ -82,5 +104,12 @@ impl TxData {
 
     pub fn add_cell_deps(&mut self, cell_deps: Vec<CellDep>) {
         self.cell_deps.extend(cell_deps);
+    }
+
+    pub(crate) fn remove_output(&mut self, index: usize) {
+        if index < self.outputs.len() {
+            self.outputs.swap_remove(index);
+            self.outputs_data.swap_remove(index);
+        }
     }
 }

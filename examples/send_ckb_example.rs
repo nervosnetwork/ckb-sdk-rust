@@ -15,10 +15,15 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let sender = "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r";
 
     let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
+    // set smale change action instead of default
+    // use ckb_sdk::transaction::SmallChangeAction;
+    // configuration.small_change_action = SmallChangeAction::AsFee { threshold: Capacity::bytes(61)?.as_u64() };
+    // configuration.small_change_action = SmallChangeAction::to_output(&sender.parse()?, Capacity::bytes(1)?.as_u64());
+
     let iterator = InputIterator::new_with_address(&[sender], configuration.network_info())?;
     let mut builder = SimpleTransactionBuilder::new(configuration, iterator);
     let addr = Address::from_str(sender)?;
-    builder.add_output_from_addr(&addr, Capacity::shannons(50100000000u64));
+    builder.add_output_from_addr(&addr, Capacity::shannons(510_0000_0000u64));
     builder.set_change_addr(addr);
     let mut tx_with_groups = builder.build(&Default::default())?;
 

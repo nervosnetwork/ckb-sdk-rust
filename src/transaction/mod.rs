@@ -1,4 +1,6 @@
-use crate::{tx_builder::TxBuilderError, NetworkInfo};
+use ckb_types::packed::Script;
+
+use crate::{tx_builder::TxBuilderError, Address, NetworkInfo};
 
 use self::{builder::FeeCalculator, handler::ScriptHandler};
 
@@ -8,9 +10,42 @@ pub mod input;
 pub mod signer;
 
 pub struct TransactionBuilderConfiguration {
-    network: NetworkInfo,
-    script_handlers: Vec<Box<dyn ScriptHandler>>,
-    fee_rate: u64,
+    pub network: NetworkInfo,
+    pub script_handlers: Vec<Box<dyn ScriptHandler>>,
+    pub fee_rate: u64,
+    pub small_change_action: SmallChangeAction,
+}
+
+/// Define what to do when change capacity is to small to create a new cell.
+/// If the change capacity is lower than `threshold` in shannons, it is small.
+pub enum SmallChangeAction {
+    /// Find another input cell, and put it's capacity to change.
+    /// It's the default action.
+    FindMoreInput,
+    /// Put the change capacity to the first output cell with target address.
+    /// If change capacity lower than threshold, add it to output cell,
+    /// or it will act as `FindMoreInput`
+    ToOutput { target: Script, threshold: u64 },
+    /// Put the small change capacity to fee.
+    /// If change capacity lower than threshold, add it to fee, or it will act as `FindMoreInput`.
+    /// *Note*:
+    /// If the threshold is 61CKB (6100000000 shannons) and assume the mimimum capacity for a cell is 61 bytes,
+    /// the transaction fee might bigger than 61 CKBs, because to create a change cell,
+    /// will need extra transaction fee for the change cell.
+    AsFee { threshold: u64 },
+}
+
+impl SmallChangeAction {
+    pub fn to_output(target: &Address, threshold: u64) -> Self {
+        Self::ToOutput {
+            target: target.into(),
+            threshold,
+        }
+    }
+
+    pub fn as_fee(threshold: u64) -> Self {
+        Self::AsFee { threshold }
+    }
 }
 
 impl TransactionBuilderConfiguration {
@@ -27,6 +62,7 @@ impl TransactionBuilderConfiguration {
             network,
             script_handlers,
             fee_rate: 1000,
+            small_change_action: SmallChangeAction::FindMoreInput,
         })
     }
     pub fn generate_system_handlers(
