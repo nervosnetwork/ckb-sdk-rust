@@ -6,18 +6,21 @@ use ckb_types::{
     bytes::{Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
     error::VerificationError,
-    packed::{self, BytesOpt, WitnessArgs},
+    packed::{self, BytesOpt, Script, WitnessArgs},
     prelude::*,
     H160,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::types::{AddressPayload, CodeHashIndex, ScriptGroup, Since};
 use crate::{constants::MULTISIG_TYPE_HASH, types::omni_lock::OmniLockWitnessLock};
 use crate::{
     traits::{Signer, SignerError},
     util::convert_keccak256_hash,
+};
+use crate::{
+    types::{AddressPayload, CodeHashIndex, ScriptGroup, Since},
+    Address, NetworkType,
 };
 
 use super::{
@@ -234,7 +237,23 @@ impl MultisigConfig {
             .lock(Some(Bytes::from(zero_lock)).pack())
             .build()
     }
+
+    pub fn to_address(&self, network: NetworkType, since_absolute_epoch: Option<u64>) -> Address {
+        let payload = self.to_address_payload(since_absolute_epoch);
+        Address::new(network, payload, true)
+    }
 }
+
+impl From<&MultisigConfig> for Script {
+    fn from(value: &MultisigConfig) -> Self {
+        Script::new_builder()
+            .code_hash(MULTISIG_TYPE_HASH.pack())
+            .hash_type(ScriptHashType::Type.into())
+            .args(Bytes::from(value.hash160().as_bytes().to_vec()).pack())
+            .build()
+    }
+}
+
 /// Signer for secp256k1 multisig all lock script
 pub struct SecpMultisigScriptSigner {
     // Can be: SecpCkbRawKeySigner, HardwareWalletSigner
