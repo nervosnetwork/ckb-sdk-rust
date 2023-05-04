@@ -61,9 +61,18 @@ impl TransactionBuilderConfiguration {
     fn generate_system_handlers(
         network: &NetworkInfo,
     ) -> Result<Vec<Box<dyn ScriptHandler>>, TxBuilderError> {
-        let ret = vec![Box::new(
-            handler::sighash::Secp256k1Blake160SighashAllScriptHandler::new_with_network(network)?,
-        ) as Box<_>];
+        let ret = vec![
+            Box::new(
+                handler::sighash::Secp256k1Blake160SighashAllScriptHandler::new_with_network(
+                    network,
+                )?,
+            ) as Box<_>,
+            Box::new(
+                handler::multisig::Secp256k1Blake160MultisigAllScriptHandler::new_with_network(
+                    network,
+                )?,
+            ) as Box<_>,
+        ];
         Ok(ret)
     }
 

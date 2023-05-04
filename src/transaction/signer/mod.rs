@@ -2,12 +2,15 @@ use ckb_types::{core, H256};
 use std::collections::HashMap;
 
 use crate::{
-    constants, unlock::UnlockError, NetworkInfo, ScriptGroup, ScriptId, TransactionWithScriptGroups,
+    constants,
+    unlock::{MultisigConfig, UnlockError},
+    NetworkInfo, ScriptGroup, ScriptId, TransactionWithScriptGroups,
 };
 
 use self::sighash::Secp256k1Blake160SighashAllSigner;
 
 use super::handler::Type2Any;
+pub mod multisig;
 pub mod sighash;
 
 pub trait CKBScriptSigner {
@@ -49,6 +52,22 @@ impl SignContexts {
         })
     }
 
+    pub fn new_multisig(key: secp256k1::SecretKey, multisig_config: MultisigConfig) -> Self {
+        let multisig_context =
+            multisig::Secp256k1Blake160MultisigAllSignerContext::new(vec![key], multisig_config);
+        Self {
+            contexts: vec![Box::new(multisig_context)],
+        }
+    }
+
+    pub fn new_multisig_h256(
+        key: &H256,
+        multisig_config: MultisigConfig,
+    ) -> Result<Self, secp256k1::Error> {
+        let key = secp256k1::SecretKey::from_slice(key.as_bytes())?;
+        Ok(Self::new_multisig(key, multisig_config))
+    }
+
     #[inline]
     pub fn add_context(&mut self, context: Box<dyn SignContext>) {
         self.contexts.push(context);
@@ -68,6 +87,12 @@ impl TransactionSigner {
             sighash_script_id,
             Box::new(Secp256k1Blake160SighashAllSigner {}) as Box<_>,
         );
+
+        unlockers.insert(
+            ScriptId::new_type(constants::MULTISIG_TYPE_HASH.clone()),
+            Box::new(multisig::Secp256k1Blake160MultisigAllSigner {}) as Box<_>,
+        );
+
         Self { unlockers }
     }
 

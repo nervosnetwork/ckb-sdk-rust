@@ -1,9 +1,13 @@
 use std::any::Any;
 
-use crate::{core::TransactionBuilder, tx_builder::TxBuilderError, NetworkInfo, ScriptGroup};
+use crate::{
+    core::TransactionBuilder, tx_builder::TxBuilderError, unlock::MultisigConfig, NetworkInfo,
+    ScriptGroup,
+};
 
 use self::sighash::Secp256k1Blake160SighashAllScriptContext;
 
+pub mod multisig;
 pub mod sighash;
 
 pub trait ScriptHandler {
@@ -41,5 +45,25 @@ impl Default for HandlerContexts {
         Self {
             contexts: vec![Box::new(Secp256k1Blake160SighashAllScriptContext {})],
         }
+    }
+}
+
+impl HandlerContexts {
+    pub fn new_sighash() -> Self {
+        Self {
+            contexts: vec![Box::new(Secp256k1Blake160SighashAllScriptContext {})],
+        }
+    }
+
+    pub fn new_multisig(config: MultisigConfig) -> Self {
+        Self {
+            contexts: vec![Box::new(
+                multisig::Secp256k1Blake160MultisigAllScriptContext::new(config),
+            )],
+        }
+    }
+
+    pub fn add_context(mut self, context: Box<dyn HandlerContext>) {
+        self.contexts.push(context);
     }
 }
