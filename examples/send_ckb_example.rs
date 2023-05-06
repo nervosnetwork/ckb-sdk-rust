@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let sender = "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r";
 
     let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
-    // set smale change action instead of default
+    // set small change action instead of default
     // use ckb_sdk::transaction::SmallChangeAction;
     // configuration.small_change_action = SmallChangeAction::AsFee { threshold: Capacity::bytes(61)?.as_u64() };
     // configuration.small_change_action = SmallChangeAction::to_output(&sender.parse()?, Capacity::bytes(1)?.as_u64());
@@ -40,9 +40,8 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.tx_view);
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
 
-    let outputs_validator = Some(ckb_jsonrpc_types::OutputsValidator::Passthrough);
     let tx_hash = CkbRpcClient::new(network_info.url.as_str())
-        .send_transaction(json_tx.inner, outputs_validator)
+        .send_transaction(json_tx.inner, None)
         .expect("send transaction");
     // example tx: 18b97d9531b6413690ca976d9bba8961cd8e1f65f3df5f8b212fb3b8886192a0
     println!(">>> tx {} sent! <<<", tx_hash);
