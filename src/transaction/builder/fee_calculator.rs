@@ -2,7 +2,7 @@ use ckb_types::core::FeeRate;
 
 use crate::tx_builder::bytes_per_cycle;
 
-use super::tx_data::TxData;
+use super::patch::TransactionBuilder;
 
 pub struct FeeCalculator {
     fee_rate: u64,
@@ -22,9 +22,10 @@ impl FeeCalculator {
         self.fee(tx_size)
     }
 
-    pub fn fee_with_tx_data(&self, tx_data: &TxData) -> u64 {
+    pub fn fee_with_tx_data(&self, tx_data: &TransactionBuilder) -> u64 {
         let tx_size = tx_data
-            .build_tx_view()
+            .clone()
+            .build()
             .data()
             .as_reader()
             .serialized_size_in_block();

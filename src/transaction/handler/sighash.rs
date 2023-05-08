@@ -6,8 +6,8 @@ use ckb_types::{
 };
 
 use crate::{
-    constants, transaction::builder::tx_data::TxData, tx_builder::TxBuilderError, NetworkInfo,
-    NetworkType, ScriptGroup,
+    constants, transaction::builder::patch::TransactionBuilder, tx_builder::TxBuilderError,
+    NetworkInfo, NetworkType, ScriptGroup,
 };
 
 use super::{HandlerContext, ScriptHandler};
@@ -34,7 +34,7 @@ impl Secp256k1Blake160SighashAllScriptHandler {
 impl ScriptHandler for Secp256k1Blake160SighashAllScriptHandler {
     fn build_transaction(
         &self,
-        tx_data: &mut TxData,
+        tx_data: &mut TransactionBuilder,
         script_group: &ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError> {
@@ -45,12 +45,12 @@ impl ScriptHandler for Secp256k1Blake160SighashAllScriptHandler {
             .as_any()
             .downcast_ref::<Secp256k1Blake160SighashAllScriptContext>()
         {
-            tx_data.add_cell_deps(self.cell_deps.clone());
+            tx_data.dedup_cell_deps(self.cell_deps.clone());
             let index = script_group.input_indices.first().unwrap();
             let witness = WitnessArgs::new_builder()
                 .lock(Some(bytes::Bytes::from(vec![0u8; 65])).pack())
                 .build();
-            tx_data.set_witnesses(*index, witness.as_bytes().pack())?;
+            tx_data.set_witness(*index, witness.as_bytes().pack());
             Ok(true)
         } else {
             Ok(false)
