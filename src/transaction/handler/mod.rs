@@ -4,7 +4,7 @@ use crate::{tx_builder::TxBuilderError, NetworkInfo, ScriptGroup};
 
 use self::sighash::Secp256k1Blake160SighashAllScriptContext;
 
-use super::builder::tx_data::TxData;
+use super::builder::patch::TransactionBuilder;
 
 pub mod sighash;
 
@@ -16,7 +16,7 @@ pub trait ScriptHandler {
     /// and the out side loop can be stopped, or return false to indicate try next match.
     fn build_transaction(
         &self,
-        tx_data: &mut TxData,
+        tx_data: &mut TransactionBuilder,
         script_group: &ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError>;
