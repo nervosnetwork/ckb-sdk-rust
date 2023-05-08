@@ -40,7 +40,8 @@ impl InputIterator {
     }
 
     fn collect_live_cells_by_lock(
-        &mut self,
+        cell_collector: &mut DefaultCellCollector,
+        buffer_inputs: &mut Vec<TransactionInput>,
         lock_script: &packed::Script,
     ) -> Result<bool, CellCollectorError> {
         let base_query = {
@@ -49,8 +50,8 @@ impl InputIterator {
             query.data_len_range = Some(ValueRangeOption::new_exact(0));
             query
         };
-        let (live_cells, capacity) = self.cell_collector.collect_live_cells(&base_query, true)?;
-        self.buffer_inputs = live_cells
+        let (live_cells, capacity) = cell_collector.collect_live_cells(&base_query, true)?;
+        *buffer_inputs = live_cells
             .into_iter()
             .rev() // reverse the iter, so that the first cell will be consumed while pop
             .map(|live_cell| TransactionInput::new(live_cell, 0))
@@ -59,10 +60,15 @@ impl InputIterator {
     }
 
     fn collect_live_cells(&mut self) -> Result<bool, CellCollectorError> {
-        while let Some(script) = self.lock_scripts.pop() {
-            if self.collect_live_cells_by_lock(&script)? {
+        while let Some(script) = self.lock_scripts.last() {
+            if Self::collect_live_cells_by_lock(
+                &mut self.cell_collector,
+                &mut self.buffer_inputs,
+                script,
+            )? {
                 return Ok(true);
             }
+            self.lock_scripts.pop();
         }
         Ok(false)
     }
