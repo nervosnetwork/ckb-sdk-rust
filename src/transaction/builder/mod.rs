@@ -28,7 +28,7 @@ pub trait CkbTransactionBuilder {
 
 pub struct SimpleTransactionBuilder {
     change_output_index: Option<usize>,
-    change_addr: Option<Address>,
+    change_lock: Option<Script>,
     configuration: TransactionBuilderConfiguration,
     transaction_inputs: Vec<TransactionInput>,
     input_iter: InputIterator,
@@ -40,7 +40,7 @@ impl SimpleTransactionBuilder {
     pub fn new(configuration: TransactionBuilderConfiguration, input_iter: InputIterator) -> Self {
         Self {
             change_output_index: None,
-            change_addr: None,
+            change_lock: None,
             configuration,
             transaction_inputs: vec![],
             input_iter,
@@ -48,8 +48,12 @@ impl SimpleTransactionBuilder {
             reward: 0,
         }
     }
-    pub fn set_change_addr(&mut self, change_addr: Address) {
-        self.change_addr = Some(change_addr);
+    pub fn set_change_addr(&mut self, change_addr: &Address) {
+        self.change_lock = Some(change_addr.into());
+    }
+
+    pub fn set_change_lock(&mut self, lock_script: Script) {
+        self.change_lock = Some(lock_script);
     }
 
     pub fn set_outputs(&mut self, outputs: Vec<CellOutput>, outputs_data: Vec<packed::Bytes>) {
@@ -63,9 +67,13 @@ impl SimpleTransactionBuilder {
     }
 
     pub fn add_output_from_addr(&mut self, addr: &Address, capacity: Capacity) {
+        self.add_output_from_script(addr.into(), capacity);
+    }
+
+    pub fn add_output_from_script(&mut self, lock_script: Script, capacity: Capacity) {
         let output = CellOutput::new_builder()
             .capacity(capacity.pack())
-            .lock(addr.into())
+            .lock(lock_script)
             .build();
         self.add_output(output, packed::Bytes::default());
     }
@@ -218,7 +226,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
                         // init change
                         let change_output = CellOutput::new_builder()
                             .capacity(Capacity::bytes(0).unwrap().pack())
-                            .lock(self.change_addr.as_ref().unwrap().into())
+                            .lock(self.change_lock.as_ref().unwrap().clone())
                             .build();
                         let change_output_data = packed::Bytes::default();
                         mini_change_capacity = change_output

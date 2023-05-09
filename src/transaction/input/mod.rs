@@ -1,6 +1,4 @@
 pub mod transaction_input;
-use std::str::FromStr;
-
 use ckb_types::packed;
 pub use transaction_input::TransactionInput;
 
@@ -15,7 +13,7 @@ use crate::{
 pub struct InputIterator {
     buffer_inputs: Vec<TransactionInput>,
     lock_scripts: Vec<packed::Script>,
-    cell_collector: DefaultCellCollector,
+    cell_collector: Box<dyn CellCollector>,
 }
 
 impl InputIterator {
@@ -25,22 +23,30 @@ impl InputIterator {
         Self {
             buffer_inputs: vec![],
             lock_scripts,
-            cell_collector: DefaultCellCollector::new(&network_info.url),
+            cell_collector: Box::new(DefaultCellCollector::new(&network_info.url)),
         }
     }
-    pub fn new_with_address<T: AsRef<str>>(
-        address: &[T],
-        network_info: &NetworkInfo,
-    ) -> Result<Self, String> {
-        address
-            .iter()
-            .map(|adr_str| Address::from_str(adr_str.as_ref()).map(|ref addr| addr.into()))
-            .collect::<Result<Vec<_>, _>>()
-            .map(|lock_scripts| Self::new(lock_scripts, network_info))
+
+    pub fn new_with_cell_collector(
+        lock_scripts: Vec<packed::Script>,
+        cell_collector: Box<dyn CellCollector>,
+    ) -> Self {
+        let mut lock_scripts = lock_scripts;
+        lock_scripts.reverse();
+        Self {
+            buffer_inputs: vec![],
+            lock_scripts,
+            cell_collector,
+        }
+    }
+
+    pub fn new_with_address(address: &[Address], network_info: &NetworkInfo) -> Self {
+        let lock_scripts = address.iter().map(|addr| addr.into()).collect::<Vec<_>>();
+        Self::new(lock_scripts, network_info)
     }
 
     fn collect_live_cells_by_lock(
-        cell_collector: &mut DefaultCellCollector,
+        cell_collector: &mut Box<dyn CellCollector>,
         buffer_inputs: &mut Vec<TransactionInput>,
         lock_script: &packed::Script,
     ) -> Result<bool, CellCollectorError> {

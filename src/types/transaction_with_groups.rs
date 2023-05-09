@@ -7,8 +7,8 @@ use ckb_types::{
 use crate::ScriptGroup;
 
 pub struct TransactionWithScriptGroups {
-    pub tx_view: TransactionView,
-    pub script_groups: Vec<ScriptGroup>,
+    pub(crate) tx_view: TransactionView,
+    pub(crate) script_groups: Vec<ScriptGroup>,
 }
 
 impl TransactionWithScriptGroups {

@@ -1,6 +1,6 @@
 use ckb_types::packed::Script;
 
-use crate::{tx_builder::TxBuilderError, Address, NetworkInfo};
+use crate::{tx_builder::TxBuilderError, NetworkInfo};
 
 use self::{builder::FeeCalculator, handler::ScriptHandler};
 
@@ -36,11 +36,8 @@ pub enum SmallChangeAction {
 }
 
 impl SmallChangeAction {
-    pub fn to_output(target: &Address, threshold: u64) -> Self {
-        Self::ToOutput {
-            target: target.into(),
-            threshold,
-        }
+    pub fn to_output(target: Script, threshold: u64) -> Self {
+        Self::ToOutput { target, threshold }
     }
 
     pub fn as_fee(threshold: u64) -> Self {
