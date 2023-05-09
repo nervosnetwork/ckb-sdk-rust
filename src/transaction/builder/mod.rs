@@ -5,6 +5,7 @@ use super::{
     input::{InputIterator, TransactionInput},
 };
 use crate::{
+    core::TransactionBuilder,
     traits::CellCollectorError,
     transaction::TransactionBuilderConfiguration,
     tx_builder::{BalanceTxCapacityError, TxBuilderError},
@@ -12,11 +13,10 @@ use crate::{
 };
 use ckb_types::{
     core::{Capacity, HeaderView},
-    packed::{self, Byte32, CellOutput},
+    packed::{self, Byte32, CellOutput, Script},
     prelude::{Builder, Entity, Pack, Unpack},
 };
 pub mod fee_calculator;
-pub mod patch;
 pub use fee_calculator::FeeCalculator;
 
 pub trait CkbTransactionBuilder {
@@ -32,7 +32,7 @@ pub struct SimpleTransactionBuilder {
     configuration: TransactionBuilderConfiguration,
     transaction_inputs: Vec<TransactionInput>,
     input_iter: InputIterator,
-    tx: patch::TransactionBuilder,
+    tx: TransactionBuilder,
     reward: u64,
 }
 
@@ -44,7 +44,7 @@ impl SimpleTransactionBuilder {
             configuration,
             transaction_inputs: vec![],
             input_iter,
-            tx: patch::TransactionBuilder::default(),
+            tx: TransactionBuilder::default(),
             reward: 0,
         }
     }
@@ -90,7 +90,7 @@ impl SimpleTransactionBuilder {
     }
 
     fn handle_script(
-        tx_data: &mut patch::TransactionBuilder,
+        tx_data: &mut TransactionBuilder,
         configuration: &TransactionBuilderConfiguration,
         script_group: &ScriptGroup,
         contexts: &HandlerContexts,
@@ -103,6 +103,28 @@ impl SimpleTransactionBuilder {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn add_output_capacity(
+        tx_data: &mut TransactionBuilder,
+        script: &Script,
+        delta_capacity: u64,
+    ) -> Result<(), TxBuilderError> {
+        let target_script = script.calc_script_hash();
+        let (idx, output) = tx_data
+            .get_outputs()
+            .iter()
+            .enumerate()
+            .find(|(_, output)| target_script == output.lock().calc_script_hash())
+            .ok_or(TxBuilderError::NoOutputForSmallChange)?;
+        let capacity: u64 = output.capacity().unpack();
+        let output = output
+            .clone()
+            .as_builder()
+            .capacity((capacity + delta_capacity).pack())
+            .build();
+        tx_data.set_output(idx, output);
         Ok(())
     }
 }
@@ -180,7 +202,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
                             threshold,
                         } => {
                             if change_capacity < threshold {
-                                self.tx.add_output_capacity(target, change_capacity)?;
+                                Self::add_output_capacity(&mut self.tx, target, change_capacity)?;
                                 state = BalanceState::Success;
                                 break;
                             }

@@ -6,8 +6,8 @@ use ckb_types::{
 };
 
 use crate::{
-    constants, transaction::builder::patch::TransactionBuilder, tx_builder::TxBuilderError,
-    NetworkInfo, NetworkType, ScriptGroup,
+    constants, core::TransactionBuilder, tx_builder::TxBuilderError, NetworkInfo, NetworkType,
+    ScriptGroup,
 };
 
 use super::{HandlerContext, ScriptHandler};
