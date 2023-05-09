@@ -1,4 +1,5 @@
 pub mod constants;
+pub mod core;
 pub mod pubsub;
 pub mod rpc;
 pub mod traits;

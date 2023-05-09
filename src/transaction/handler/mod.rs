@@ -1,10 +1,8 @@
 use std::any::Any;
 
-use crate::{tx_builder::TxBuilderError, NetworkInfo, ScriptGroup};
+use crate::{core::TransactionBuilder, tx_builder::TxBuilderError, NetworkInfo, ScriptGroup};
 
 use self::sighash::Secp256k1Blake160SighashAllScriptContext;
-
-use super::builder::patch::TransactionBuilder;
 
 pub mod sighash;
 

@@ -1,8 +1,6 @@
 use ckb_types::core::FeeRate;
 
-use crate::tx_builder::bytes_per_cycle;
-
-use super::patch::TransactionBuilder;
+use crate::{core::TransactionBuilder, tx_builder::bytes_per_cycle};
 
 pub struct FeeCalculator {
     fee_rate: u64,
