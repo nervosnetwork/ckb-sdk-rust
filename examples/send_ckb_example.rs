@@ -20,11 +20,12 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     // configuration.small_change_action = SmallChangeAction::AsFee { threshold: Capacity::bytes(61)?.as_u64() };
     // configuration.small_change_action = SmallChangeAction::to_output(&sender.parse()?, Capacity::bytes(1)?.as_u64());
 
-    let iterator = InputIterator::new_with_address(&[sender], configuration.network_info())?;
+    let addr = Address::from_str(sender)?;
+    let iterator = InputIterator::new_with_address(&[addr], configuration.network_info());
     let mut builder = SimpleTransactionBuilder::new(configuration, iterator);
     let addr = Address::from_str(sender)?;
     builder.add_output_from_addr(&addr, Capacity::shannons(510_0000_0000u64));
-    builder.set_change_addr(addr);
+    builder.set_change_addr(&addr);
     let mut tx_with_groups = builder.build(&Default::default())?;
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
@@ -37,7 +38,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         )])?,
     )?;
 
-    let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.tx_view);
+    let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
 
     let tx_hash = CkbRpcClient::new(network_info.url.as_str())

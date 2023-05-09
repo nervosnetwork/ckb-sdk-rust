@@ -115,6 +115,7 @@ fn build_multisig_unlockers(
 }
 
 fn init_context(contracts: Vec<(&[u8], bool)>, live_cells: Vec<(Script, Option<u64>)>) -> Context {
+    // ckb-cli --url https://testnet.ckb.dev rpc get_block_by_number --number 0 --output-format json --raw-data > genensis_block.json
     let genesis_block: json_types::BlockView = serde_json::from_str(GENESIS_JSON).unwrap();
     let genesis_block: BlockView = genesis_block.into();
     let mut ctx = Context::new(&genesis_block, contracts);
@@ -1090,3 +1091,4 @@ pub mod ckb_rpc;
 pub mod cycle;
 pub mod omni_lock;
 pub mod omni_lock_util;
+pub mod transaction;
