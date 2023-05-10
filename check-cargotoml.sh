@@ -25,7 +25,7 @@ esac
 
 function check_package_name() {
     local regex_to_cut_pkgname='s/^\[\(package\)\]\nname\(\|[ ]\+\)=\(\|[ ]\+\)"\(.\+\)"/\4/p'
-    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*'); do
+    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*' -not -path './deps/*'); do
         local pkgname=$(${SED} -n -e N -e "${regex_to_cut_pkgname}" "${cargo_toml}")
         if [ -z "${pkgname}" ]; then
             printf "Error: No package name in <%s>\n" "${cargo_toml}"
@@ -43,7 +43,7 @@ function check_package_name() {
 function check_version() {
     local regex_to_cut_version='s/^version = "\(.*\)"$/\1/p'
     local expected=$(${SED} -n "${regex_to_cut_version}" "${SRC_ROOT}/Cargo.toml")
-    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*'); do
+    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*' -not -path './deps/*'); do
         local tmp=$(${SED} -n "${regex_to_cut_version}" "${cargo_toml}")
         if [ "${expected}" != "${tmp}" ]; then
             printf "Error: Version in <%s> is not right (expect: '%s', actual: '%s')\n" \
@@ -62,7 +62,7 @@ function check_version() {
 function check_license() {
     local regex_to_cut_license='s/^license = "\(.*\)"$/\1/p'
     local expected=$(${SED} -n "${regex_to_cut_license}" "${SRC_ROOT}/Cargo.toml")
-    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*'); do
+    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*' -not -path './deps/*'); do
         local tmp=$(${SED} -n "${regex_to_cut_license}" "${cargo_toml}")
         if [ "${expected}" != "${tmp}" ]; then
             printf "Error: License in <%s> is not right (expect: '%s', actual: '%s')\n" \
@@ -73,7 +73,7 @@ function check_license() {
 }
 
 function check_cargo_publish() {
-    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*'); do
+    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*' -not -path './deps/*'); do
         if ! grep -q '^description =' "${cargo_toml}"; then
             echo "Error: Require description in <${cargo_toml}>"
             ERRCNT=$((ERRCNT + 1))
@@ -115,7 +115,7 @@ function search_crate() {
 
 function check_dependencies_for() {
     local deptype="$1"
-    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*'); do
+    for cargo_toml in $(find "${SRC_ROOT}" -type f -name "Cargo.toml" -not -path '*/target/*' -not -path './deps/*'); do
         local pkgroot=$(dirname "${cargo_toml}")
         for dependency_original in $(${SED} -n "/^\[${deptype}\]/,/^\[/p" "${cargo_toml}" \
                 | { ${GREP} -v "^\(\[\|[ ]*$\|[ ]*#\)" || true; } \

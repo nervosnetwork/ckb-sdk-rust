@@ -1,6 +1,7 @@
 pub(crate) mod omni_lock;
 pub mod rc_data;
 mod signer;
+pub mod sphincsplus;
 mod unlocker;
 
 pub use signer::{
@@ -14,3 +15,8 @@ pub use unlocker::{
 };
 
 pub use omni_lock::{IdentityFlag, InfoCellData, OmniLockAcpConfig, OmniLockConfig};
+
+pub use sphincsplus::{
+    signer::SphincsPlusSigner, unlocker::SphincsPlusUnlocker, SphincsPlus, SphincsPlusPrivateKey,
+    SphincsPlusPublicKey, SphincsPlusRawKeysSigner,
+};
