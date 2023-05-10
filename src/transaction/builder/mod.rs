@@ -132,6 +132,25 @@ impl SimpleTransactionBuilder {
             .capacity((capacity + delta_capacity).pack())
             .build();
         tx_builder.set_output(idx, output);
+
+        Ok(())
+    }
+
+    fn prepare_transaction(
+        transaction_inputs: &mut Vec<TransactionInput>,
+        tx_builder: &mut crate::core::TransactionBuilder,
+        configuration: &TransactionBuilderConfiguration,
+        contexts: &HandlerContexts,
+    ) -> Result<(), TxBuilderError> {
+        for handler in configuration.get_script_handlers() {
+            for context in &contexts.contexts {
+                if let Ok(true) =
+                    handler.prepare_transaction(transaction_inputs, tx_builder, context.as_ref())
+                {
+                    break;
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -148,6 +167,12 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
         &mut self,
         contexts: &HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
+        Self::prepare_transaction(
+            &mut self.transaction_inputs,
+            &mut self.tx,
+            &self.configuration,
+            contexts,
+        )?;
         let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
         let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
         let mut outputs_capacity = 0u64;
