@@ -9,9 +9,7 @@ pub mod sighash;
 pub trait ScriptHandler {
     /// Try to build transaction with the given script_group and context.
     ///
-    /// Return true if script in script_group is matched and context with correct concrete type,
-    /// so the work try to match handler and according context will be done,
-    /// and the out side loop can be stopped, or return false to indicate try next match.
+    /// Return true if script_group and context are matched, otherwise return false.
     fn build_transaction(
         &self,
         tx_data: &mut TransactionBuilder,

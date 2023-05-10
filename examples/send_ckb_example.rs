@@ -33,11 +33,12 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
 
+    let private_keys = vec![h256!(
+        "0x6c9ed03816e3111e49384b8d180174ad08e29feb1393ea1b51cef1c505d4e36a"
+    )];
     TransactionSigner::new(&network_info).sign_transaction(
         &mut tx_with_groups,
-        &SignContexts::new_sighash_h256(vec![h256!(
-            "0x6c9ed03816e3111e49384b8d180174ad08e29feb1393ea1b51cef1c505d4e36a"
-        )])?,
+        &SignContexts::new_sighash_h256(private_keys)?,
     )?;
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
