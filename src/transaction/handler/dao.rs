@@ -62,10 +62,22 @@ pub struct WithdrawPhrase1Context {
 
 impl WithdrawPhrase1Context {
     /// add input.
-    /// If `lock_script` is `None` copy the lock script from input with same
+    /// If `receiver_lock` is `None` copy the lock script from input with same
     /// index, otherwise replace the lock script with the given script.
-    pub fn add_input(&mut self, input: CellInput, lock_script: Option<Script>) {
-        self.items.push(DaoPrepareItem { input, lock_script });
+    pub fn add_input(&mut self, input: CellInput, receiver_lock: Option<Script>) {
+        self.items.push(DaoPrepareItem {
+            input,
+            lock_script: receiver_lock,
+        });
+    }
+
+    pub fn add_input_outpoint(&mut self, input_outpoint: OutPoint, receiver_lock: Option<Script>) {
+        self.items.push(DaoPrepareItem {
+            input: CellInput::new_builder()
+                .previous_output(input_outpoint)
+                .build(),
+            lock_script: receiver_lock,
+        });
     }
 
     pub fn new(rpc_url: String) -> Self {
@@ -136,7 +148,7 @@ impl DaoScriptHandler {
             transaction_inputs.push(transaction_input);
 
             tx_data.dedup_header_dep(deposit_header.hash());
-            tx_data.input(input.clone());
+
             tx_data.output(output);
             tx_data.output_data(output_data.pack());
         }
@@ -207,6 +219,9 @@ impl ScriptHandler for DaoScriptHandler {
                     .build();
                 tx_data.set_witness(*index, witness.as_bytes().pack());
             }
+            Ok(true)
+        } else if let Some(_args) = context.as_any().downcast_ref::<WithdrawPhrase1Context>() {
+            tx_data.dedup_cell_deps(self.cell_deps.clone());
             Ok(true)
         } else {
             Ok(false)
