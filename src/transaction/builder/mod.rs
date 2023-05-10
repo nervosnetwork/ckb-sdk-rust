@@ -105,8 +105,7 @@ impl SimpleTransactionBuilder {
     ) -> Result<(), TxBuilderError> {
         for handler in configuration.get_script_handlers() {
             for context in &contexts.contexts {
-                if let Ok(true) = handler.build_transaction(tx_data, script_group, context.as_ref())
-                {
+                if handler.build_transaction(tx_data, script_group, context.as_ref())? {
                     break;
                 }
             }

@@ -16,8 +16,8 @@ pub struct TransactionBuilderConfiguration {
     pub small_change_action: SmallChangeAction,
 }
 
-/// Define what to do when change capacity is to small to create a new cell.
-/// If the change capacity is lower than `threshold` in shannons, it is small.
+/// Define what to do when change capacity is too small to create a new cell.
+/// If the change capacity is lower than `threshold` in shannons, it is considered small.
 pub enum SmallChangeAction {
     /// Find another input cell, and put it's capacity to change.
     /// It's the default action.
@@ -28,10 +28,6 @@ pub enum SmallChangeAction {
     ToOutput { target: Script, threshold: u64 },
     /// Put the small change capacity to fee.
     /// If change capacity lower than threshold, add it to fee, or it will act as `FindMoreInput`.
-    /// *Note*:
-    /// If the threshold is 61CKB (6100000000 shannons) and assume the mimimum capacity for a cell is 61 bytes,
-    /// the transaction fee might bigger than 61 CKBs, because to create a change cell,
-    /// will need extra transaction fee for the change cell.
     AsFee { threshold: u64 },
 }
 
@@ -62,7 +58,7 @@ impl TransactionBuilderConfiguration {
             small_change_action: SmallChangeAction::FindMoreInput,
         })
     }
-    pub fn generate_system_handlers(
+    fn generate_system_handlers(
         network: &NetworkInfo,
     ) -> Result<Vec<Box<dyn ScriptHandler>>, TxBuilderError> {
         let ret = vec![Box::new(
