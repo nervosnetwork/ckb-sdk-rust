@@ -55,8 +55,8 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
         {
             tx_builder.dedup_cell_deps(self.cell_deps.clone());
             let index = script_group.input_indices.first().unwrap();
-            let witness = args.multisig_config.placeholder_witness();
-            tx_builder.set_witness(*index, witness.as_bytes().pack());
+            let witness_lock = args.multisig_config.placeholder_witness_lock();
+            tx_builder.set_witness_lock(*index, witness_lock);
             Ok(true)
         } else {
             Ok(false)

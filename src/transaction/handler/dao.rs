@@ -1,32 +1,39 @@
+use std::collections::HashMap;
+
 use anyhow::anyhow;
 use ckb_types::{
-    core::{DepType, ScriptHashType},
+    core::{Capacity, DepType, ScriptHashType},
     h256,
-    packed::{CellDep, CellInput, CellOutput, OutPoint, Script, WitnessArgs},
-    prelude::{Builder, Entity, Pack},
+    packed::{CellDep, CellInput, CellOutput, OutPoint, Script},
+    prelude::{Builder, Entity, Pack, Unpack},
 };
 use lazy_static::lazy_static;
 
 use crate::{
     constants,
     traits::{
-        DefaultHeaderDepResolver, DefaultTransactionDependencyProvider, HeaderDepResolver, LiveCell,
+        DefaultHeaderDepResolver, DefaultTransactionDependencyProvider, HeaderDepResolver,
+        LiveCell, TransactionDependencyProvider,
     },
-    transaction::input::TransactionInput,
+    transaction::{builder::PrepareTransactionViewer, input::TransactionInput},
     tx_builder::{
         dao::{DaoDepositReceiver, DaoPrepareItem},
         TxBuilderError,
     },
-    NetworkInfo, NetworkType, ScriptGroup,
+    util::{calculate_dao_maximum_withdraw4, minimal_unlock_point},
+    NetworkInfo, NetworkType, ScriptGroup, Since, SinceType,
 };
 
 use super::{HandlerContext, ScriptHandler};
 
+pub const DAO_DATA_LEN: usize = 8;
 lazy_static! {
     static ref DAO_TYPE_SCRIPT: Script = Script::new_builder()
         .code_hash(constants::DAO_TYPE_HASH.pack())
         .hash_type(ScriptHashType::Type.into())
         .build();
+    static ref DEPOSIT_CELL_DATA: ckb_types::packed::Bytes =
+        bytes::Bytes::from(vec![0u8; DAO_DATA_LEN]).pack();
 }
 
 pub struct DaoScriptHandler {
@@ -90,6 +97,26 @@ impl WithdrawPhrase1Context {
 
 impl HandlerContext for WithdrawPhrase1Context {}
 
+pub struct WithdrawPhrase2Context {
+    /// Withdraw from those out_points (prepared cells)
+    items: Vec<OutPoint>,
+    rpc_url: String,
+    // input_index => deposit_header_index
+    deposit_header_indexes: HashMap<usize, usize>,
+}
+
+impl WithdrawPhrase2Context {
+    pub fn new(items: Vec<OutPoint>, rpc_url: String) -> Self {
+        Self {
+            items,
+            rpc_url,
+            deposit_header_indexes: HashMap::new(),
+        }
+    }
+}
+
+impl HandlerContext for WithdrawPhrase2Context {}
+
 impl DaoScriptHandler {
     pub fn is_match(&self, script: &Script) -> bool {
         script.code_hash() == constants::DAO_TYPE_HASH.pack()
@@ -101,8 +128,7 @@ impl DaoScriptHandler {
     }
 
     pub fn build_phrase1_base(
-        transaction_inputs: &mut Vec<TransactionInput>,
-        tx_data: &mut crate::core::TransactionBuilder,
+        viewer: &mut PrepareTransactionViewer,
         context: &WithdrawPhrase1Context,
     ) -> Result<(), TxBuilderError> {
         if context.items.is_empty() {
@@ -145,19 +171,120 @@ impl DaoScriptHandler {
                 tx_index: u32::MAX, // TODO set correct tx_index
             };
             let transaction_input = TransactionInput::new(live_cell, 0);
-            transaction_inputs.push(transaction_input);
+            viewer.transaction_inputs.push(transaction_input);
 
-            tx_data.dedup_header_dep(deposit_header.hash());
+            viewer.tx.dedup_header_dep(deposit_header.hash());
 
-            tx_data.output(output);
-            tx_data.output_data(output_data.pack());
+            viewer.tx.output(output);
+            viewer.tx.output_data(output_data.pack());
         }
         Ok(())
     }
 
+    pub fn build_phrase2_base(
+        viewer: &mut PrepareTransactionViewer,
+        context: &mut WithdrawPhrase2Context,
+    ) -> Result<(), TxBuilderError> {
+        if context.items.is_empty() {
+            return Err(TxBuilderError::InvalidParameter(anyhow!(
+                "No cell to withdraw"
+            )));
+        }
+
+        let header_dep_resolver = DefaultHeaderDepResolver::new(&context.rpc_url);
+        let tx_dep_provider = DefaultTransactionDependencyProvider::new(&context.rpc_url, 10);
+
+        let mut prepare_block_hashes = Vec::new();
+        for out_point in &context.items {
+            let tx_hash = out_point.tx_hash();
+            let prepare_header = header_dep_resolver
+                .resolve_by_tx(&tx_hash)
+                .map_err(TxBuilderError::Other)?
+                .ok_or_else(|| TxBuilderError::ResolveHeaderDepByTxHashFailed(tx_hash.clone()))?;
+            prepare_block_hashes.push(prepare_header.hash());
+            let input_cell = tx_dep_provider.get_cell(out_point)?;
+            if input_cell.type_().to_opt().as_ref() != Some(&DAO_TYPE_SCRIPT) {
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
+                    "the input cell has invalid type script"
+                )));
+            }
+
+            let data = tx_dep_provider.get_cell_data(out_point)?;
+            if data.len() != DAO_DATA_LEN {
+                return Err(TxBuilderError::InvalidParameter(anyhow!(
+                    "the input cell has invalid data length, expected: 8, got: {}",
+                    data.len()
+                )));
+            }
+
+            let deposit_header = {
+                let deposit_number = {
+                    let mut number_bytes = [0u8; DAO_DATA_LEN];
+                    number_bytes.copy_from_slice(data.as_ref());
+                    u64::from_le_bytes(number_bytes)
+                };
+                header_dep_resolver
+                    .resolve_by_number(deposit_number)
+                    .or_else(|_err| {
+                        // for light client
+                        let prepare_tx = tx_dep_provider.get_transaction(&tx_hash)?;
+                        for input in prepare_tx.inputs() {
+                            let _ = header_dep_resolver
+                                .resolve_by_tx(&input.previous_output().tx_hash())?;
+                        }
+                        header_dep_resolver.resolve_by_number(deposit_number)
+                    })
+                    .map_err(TxBuilderError::Other)?
+                    .ok_or(TxBuilderError::ResolveHeaderDepByNumberFailed(
+                        deposit_number,
+                    ))?
+            };
+
+            // calculate reward
+            {
+                let occupied_capacity = input_cell
+                    .occupied_capacity(Capacity::bytes(data.len()).unwrap())
+                    .unwrap();
+                let input_capacity = calculate_dao_maximum_withdraw4(
+                    &deposit_header,
+                    &prepare_header,
+                    &input_cell,
+                    occupied_capacity.as_u64(),
+                );
+                let tmp_capacity: u64 = input_cell.capacity().unpack();
+                *viewer.reward += input_capacity - tmp_capacity;
+            }
+            // build live cell
+            {
+                let unlock_point = minimal_unlock_point(&deposit_header, &prepare_header);
+                let since = Since::new(
+                    SinceType::EpochNumberWithFraction,
+                    unlock_point.full_value(),
+                    false,
+                );
+                let live_cell = LiveCell {
+                    output: input_cell,
+                    output_data: data,
+                    out_point: out_point.clone(),
+                    block_number: deposit_header.number(),
+                    tx_index: u32::MAX, // TODO set correct tx_index
+                };
+                let transaction_input = TransactionInput::new(live_cell, since.value());
+                viewer.transaction_inputs.push(transaction_input);
+            };
+            let deposit_block_hash = deposit_header.hash();
+            let dep_header_idx = viewer.tx.dedup_header_dep(deposit_block_hash);
+            context
+                .deposit_header_indexes
+                .insert(viewer.transaction_inputs.len() - 1, dep_header_idx);
+        }
+        viewer.tx.dedup_header_deps(prepare_block_hashes);
+
+        Ok(())
+    }
+
     pub fn build_deposit(
-        _transaction_inputs: &mut [TransactionInput],
-        tx_data: &mut crate::core::TransactionBuilder,
+        viewer: &mut PrepareTransactionViewer,
         context: &DepositContext,
     ) -> Result<(), TxBuilderError> {
         if context.receivers.is_empty() {
@@ -165,19 +292,14 @@ impl DaoScriptHandler {
                 "empty dao receivers"
             )));
         }
-        let dao_type_script = Script::new_builder()
-            .code_hash(constants::DAO_TYPE_HASH.pack())
-            .hash_type(ScriptHashType::Type.into())
-            .build();
-
         for receiver in &context.receivers {
             let output = CellOutput::new_builder()
                 .capacity(receiver.capacity.pack())
                 .lock(receiver.lock_script.clone())
-                .type_(Some(dao_type_script.clone()).pack())
+                .type_(Some(DAO_TYPE_SCRIPT.clone()).pack())
                 .build();
-            tx_data.output(output);
-            tx_data.output_data(bytes::Bytes::from(vec![0u8; 8]).pack());
+            viewer.tx.output(output);
+            viewer.tx.output_data(DEPOSIT_CELL_DATA.clone());
         }
 
         Ok(())
@@ -187,15 +309,17 @@ impl DaoScriptHandler {
 impl ScriptHandler for DaoScriptHandler {
     fn prepare_transaction(
         &self,
-        transaction_inputs: &mut Vec<TransactionInput>,
-        tx_data: &mut crate::core::TransactionBuilder,
-        context: &dyn HandlerContext,
+        viewer: &mut PrepareTransactionViewer,
+        context: &mut dyn HandlerContext,
     ) -> Result<bool, TxBuilderError> {
         if let Some(args) = context.as_any().downcast_ref::<DepositContext>() {
-            Self::build_deposit(transaction_inputs, tx_data, args)?;
+            Self::build_deposit(viewer, args)?;
             Ok(true)
         } else if let Some(args) = context.as_any().downcast_ref::<WithdrawPhrase1Context>() {
-            Self::build_phrase1_base(transaction_inputs, tx_data, args)?;
+            Self::build_phrase1_base(viewer, args)?;
+            Ok(true)
+        } else if let Some(args) = context.as_mut().downcast_mut::<WithdrawPhrase2Context>() {
+            Self::build_phrase2_base(viewer, args)?;
             Ok(true)
         } else {
             Ok(false)
@@ -210,18 +334,20 @@ impl ScriptHandler for DaoScriptHandler {
         if !self.is_match(&script_group.script) {
             return Ok(false);
         }
-        if let Some(_args) = context.as_any().downcast_ref::<DepositContext>() {
+        if context.as_any().is::<DepositContext>()
+            || context.as_any().is::<WithdrawPhrase1Context>()
+        {
             tx_data.dedup_cell_deps(self.cell_deps.clone());
-            if !script_group.input_indices.is_empty() {
-                let index = script_group.input_indices.first().unwrap();
-                let witness = WitnessArgs::new_builder()
-                    .lock(Some(bytes::Bytes::from(vec![0u8; 65])).pack())
-                    .build();
-                tx_data.set_witness(*index, witness.as_bytes().pack());
-            }
             Ok(true)
-        } else if let Some(_args) = context.as_any().downcast_ref::<WithdrawPhrase1Context>() {
+        } else if let Some(args) = context.as_any().downcast_ref::<WithdrawPhrase2Context>() {
             tx_data.dedup_cell_deps(self.cell_deps.clone());
+            if let Some(idx) = script_group.input_indices.last() {
+                if let Some(dep_header_idx) = args.deposit_header_indexes.get(idx) {
+                    let idx_data =
+                        bytes::Bytes::from((*dep_header_idx as u64).to_le_bytes().to_vec());
+                    tx_data.set_witness_input(*idx, Some(idx_data));
+                }
+            }
             Ok(true)
         } else {
             Ok(false)

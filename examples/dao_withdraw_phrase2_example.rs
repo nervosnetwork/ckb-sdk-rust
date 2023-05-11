@@ -14,14 +14,23 @@ use std::{error::Error as StdErr, str::FromStr};
 fn main() -> Result<(), Box<dyn StdErr>> {
     let network_info = NetworkInfo::testnet();
     let sender = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r")?;
-    let receiver=Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqv5dsed9par23x4g58seaw58j3ym5ml2hs8ztche")?;
 
     let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
 
     let iterator = InputIterator::new(vec![(&sender).into()], configuration.network_info());
     let mut builder = SimpleTransactionBuilder::new(configuration, iterator);
 
-    let context = dao::DepositContext::new((&receiver).into(), 510_0000_0000u64);
+    let input_outpoint = serde_json::from_str::<ckb_jsonrpc_types::OutPoint>(
+        r#"
+   {
+      "tx_hash": "0x770f930ed3bf35664cb6a112edce3287712f0613c74c1f1176e099ee51268489",
+      "index": "0x0"
+   }
+   "#,
+    )
+    .unwrap();
+    let context =
+        dao::WithdrawPhrase2Context::new(vec![input_outpoint.into()], network_info.url.clone());
     let mut contexts = HandlerContexts::default();
     contexts.add_context(Box::new(context) as Box<_>);
 
@@ -45,7 +54,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let tx_hash = CkbRpcClient::new(network_info.url.as_str())
         .send_transaction(json_tx.inner, None)
         .expect("send transaction");
-    // example tx: 8b7ab7770c821fa8dc70738d5d6ef43da46706541c258b9a02edf66948039798
+    // example tx: 0xaae93c573848a632f06f01c7c444c90aa490253f35b4212d147882266960a267
     println!(">>> tx {} sent! <<<", tx_hash);
 
     Ok(())

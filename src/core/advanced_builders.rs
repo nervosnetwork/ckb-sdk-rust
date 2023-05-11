@@ -1,4 +1,8 @@
-use ckb_types::{constants, core, packed, prelude::*};
+use ckb_types::{
+    constants, core,
+    packed::{self, WitnessArgs},
+    prelude::*,
+};
 use derive_getters::Getters;
 
 /// An advanced builder for [`TransactionView`].
@@ -20,7 +24,7 @@ pub struct TransactionBuilder {
     #[getter(rename = "get_outputs")]
     pub outputs: Vec<packed::CellOutput>,
     #[getter(rename = "get_witnesses")]
-    pub witnesses: Vec<packed::Bytes>,
+    pub witnesses: Vec<WitnessArgs>,
     #[getter(rename = "get_outputs_data")]
     pub outputs_data: Vec<packed::Bytes>,
 }
@@ -138,11 +142,12 @@ macro_rules! def_dedup_setter_for_vector {
         $comment_push:expr, $comment_extend:expr,
     ) => {
         #[doc = $comment_push]
-        pub fn $func_push(&mut self, v: $prefix::$type) -> &mut Self {
-            if !self.$field.contains(&v) {
-                self.$field.push(v);
+        pub fn $func_push(&mut self, v: $prefix::$type) -> usize {
+            if let Some(idx) = self.$field.iter().position(|x| x == &v) {
+                return idx;
             }
-            self
+            self.$field.push(v);
+            self.$field.len() - 1
         }
         #[doc = $comment_extend]
         pub fn $func_extend<T>(&mut self, v: T) -> &mut Self
@@ -207,7 +212,7 @@ impl TransactionBuilder {
     def_setter_for_vector!(
         set_i,
         witnesses,
-        Bytes,
+        WitnessArgs,
         witness,
         witnesses,
         set_witnesses,
@@ -221,6 +226,32 @@ impl TransactionBuilder {
         set_outputs_data
     );
 
+    pub fn set_witness_lock(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
+        self.witnesses[i] = self.witnesses[i]
+            .clone()
+            .as_builder()
+            .lock(v.pack())
+            .build();
+        self
+    }
+
+    pub fn set_witness_input(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
+        self.witnesses[i] = self.witnesses[i]
+            .clone()
+            .as_builder()
+            .input_type(v.pack())
+            .build();
+        self
+    }
+
+    pub fn set_witness_output(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
+        self.witnesses[i] = self.witnesses[i]
+            .clone()
+            .as_builder()
+            .output_type(v.pack())
+            .build();
+        self
+    }
     /// Converts into [`TransactionView`](struct.TransactionView.html).
     pub fn build(self) -> core::TransactionView {
         let Self {
@@ -240,6 +271,10 @@ impl TransactionBuilder {
             .outputs(outputs.pack())
             .outputs_data(outputs_data.pack())
             .build();
+        let witnesses = witnesses
+            .iter()
+            .map(|t| t.as_bytes().pack())
+            .collect::<Vec<_>>();
         let tx = packed::Transaction::new_builder()
             .raw(raw)
             .witnesses(witnesses.pack())

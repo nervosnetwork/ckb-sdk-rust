@@ -22,7 +22,7 @@ pub use fee_calculator::FeeCalculator;
 pub trait CkbTransactionBuilder {
     fn build(
         &mut self,
-        contexts: &HandlerContexts,
+        contexts: &mut HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError>;
 }
 
@@ -34,6 +34,12 @@ pub struct SimpleTransactionBuilder {
     input_iter: InputIterator,
     tx: TransactionBuilder,
     reward: u64,
+}
+
+pub struct PrepareTransactionViewer<'a> {
+    pub(crate) transaction_inputs: &'a mut Vec<TransactionInput>,
+    pub(crate) tx: &'a mut TransactionBuilder,
+    pub(crate) reward: &'a mut u64,
 }
 
 impl SimpleTransactionBuilder {
@@ -137,16 +143,13 @@ impl SimpleTransactionBuilder {
     }
 
     fn prepare_transaction(
-        transaction_inputs: &mut Vec<TransactionInput>,
-        tx_builder: &mut crate::core::TransactionBuilder,
+        viewer: &mut PrepareTransactionViewer,
         configuration: &TransactionBuilderConfiguration,
-        contexts: &HandlerContexts,
+        contexts: &mut HandlerContexts,
     ) -> Result<(), TxBuilderError> {
         for handler in configuration.get_script_handlers() {
-            for context in &contexts.contexts {
-                if let Ok(true) =
-                    handler.prepare_transaction(transaction_inputs, tx_builder, context.as_ref())
-                {
+            for context in &mut contexts.contexts {
+                if handler.prepare_transaction(viewer, context.as_mut())? {
                     break;
                 }
             }
@@ -162,17 +165,22 @@ macro_rules! celloutput_capacity {
     }};
 }
 
+macro_rules! prepare_veiwer {
+    ($self:ident) => {
+        PrepareTransactionViewer {
+            transaction_inputs: &mut $self.transaction_inputs,
+            tx: &mut $self.tx,
+            reward: &mut $self.reward,
+        }
+    };
+}
+
 impl CkbTransactionBuilder for SimpleTransactionBuilder {
     fn build(
         &mut self,
-        contexts: &HandlerContexts,
+        contexts: &mut HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
-        Self::prepare_transaction(
-            &mut self.transaction_inputs,
-            &mut self.tx,
-            &self.configuration,
-            contexts,
-        )?;
+        Self::prepare_transaction(&mut prepare_veiwer!(self), &self.configuration, contexts)?;
         let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
         let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
         let mut outputs_capacity = 0u64;
@@ -198,7 +206,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             let input = input?;
             self.tx.input(input.cell_input());
             let previous_output = input.previous_output();
-            self.tx.witness(packed::Bytes::default());
+            self.tx.witness(Default::default());
             let lock_script = previous_output.lock();
             let script_group = lock_groups
                 .entry(lock_script.calc_script_hash())

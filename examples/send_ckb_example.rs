@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let addr = Address::from_str(sender)?;
     builder.add_output_from_addr(&receiver, Capacity::shannons(510_0000_0000u64));
     builder.set_change_addr(&addr);
-    let mut tx_with_groups = builder.build(&Default::default())?;
+    let mut tx_with_groups = builder.build(&mut Default::default())?;
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());

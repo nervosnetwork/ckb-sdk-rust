@@ -7,7 +7,7 @@ use crate::{
 
 use self::sighash::Secp256k1Blake160SighashAllScriptContext;
 
-use super::input::TransactionInput;
+use super::builder::PrepareTransactionViewer;
 
 pub mod dao;
 pub mod multisig;
@@ -16,9 +16,8 @@ pub mod sighash;
 pub trait ScriptHandler {
     fn prepare_transaction(
         &self,
-        _transaction_inputs: &mut Vec<TransactionInput>,
-        _tx_data: &mut TransactionBuilder,
-        _context: &dyn HandlerContext,
+        _viewer: &mut PrepareTransactionViewer,
+        _context: &mut dyn HandlerContext,
     ) -> Result<bool, TxBuilderError> {
         Ok(false)
     }
@@ -38,10 +37,15 @@ pub trait ScriptHandler {
 
 pub trait Type2Any: 'static {
     fn as_any(&self) -> &dyn Any;
+    fn as_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<T: 'static> Type2Any for T {
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut(&mut self) -> &mut dyn Any {
         self
     }
 }
