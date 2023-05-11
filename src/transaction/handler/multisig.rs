@@ -42,7 +42,7 @@ impl Secp256k1Blake160MultisigAllScriptHandler {
 impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
     fn build_transaction(
         &self,
-        tx_data: &mut TransactionBuilder,
+        tx_builder: &mut TransactionBuilder,
         script_group: &ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError> {
@@ -53,10 +53,10 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
             .as_any()
             .downcast_ref::<Secp256k1Blake160MultisigAllScriptContext>()
         {
-            tx_data.dedup_cell_deps(self.cell_deps.clone());
+            tx_builder.dedup_cell_deps(self.cell_deps.clone());
             let index = script_group.input_indices.first().unwrap();
             let witness = args.multisig_config.placeholder_witness();
-            tx_data.set_witness(*index, witness.as_bytes().pack());
+            tx_builder.set_witness(*index, witness.as_bytes().pack());
             Ok(true)
         } else {
             Ok(false)
