@@ -12,7 +12,7 @@ pub trait ScriptHandler {
     /// Return true if script_group and context are matched, otherwise return false.
     fn build_transaction(
         &self,
-        tx_data: &mut TransactionBuilder,
+        tx_builder: &mut TransactionBuilder,
         script_group: &ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError>;

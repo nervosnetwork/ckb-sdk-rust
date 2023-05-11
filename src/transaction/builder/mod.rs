@@ -98,14 +98,14 @@ impl SimpleTransactionBuilder {
     }
 
     fn handle_script(
-        tx_data: &mut TransactionBuilder,
+        tx_builder: &mut TransactionBuilder,
         configuration: &TransactionBuilderConfiguration,
         script_group: &ScriptGroup,
         contexts: &HandlerContexts,
     ) -> Result<(), TxBuilderError> {
         for handler in configuration.get_script_handlers() {
             for context in &contexts.contexts {
-                if handler.build_transaction(tx_data, script_group, context.as_ref())? {
+                if handler.build_transaction(tx_builder, script_group, context.as_ref())? {
                     break;
                 }
             }
@@ -114,12 +114,12 @@ impl SimpleTransactionBuilder {
     }
 
     fn add_output_capacity(
-        tx_data: &mut TransactionBuilder,
+        tx_builder: &mut TransactionBuilder,
         script: &Script,
         delta_capacity: u64,
     ) -> Result<(), TxBuilderError> {
         let target_script = script.calc_script_hash();
-        let (idx, output) = tx_data
+        let (idx, output) = tx_builder
             .get_outputs()
             .iter()
             .enumerate()
@@ -131,7 +131,7 @@ impl SimpleTransactionBuilder {
             .as_builder()
             .capacity((capacity + delta_capacity).pack())
             .build();
-        tx_data.set_output(idx, output);
+        tx_builder.set_output(idx, output);
         Ok(())
     }
 }
@@ -192,7 +192,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             }
             inputs_capacity += celloutput_capacity!(previous_output);
             // check if there is enough capacity for output capacity and change
-            let fee = calculator.fee_with_tx_data(&self.tx);
+            let fee = calculator.fee_with_tx_builder(&self.tx);
             let change_capacity =
                 (inputs_capacity + self.reward).checked_sub(outputs_capacity + fee);
             if let Some(mut change_capacity) = change_capacity {
@@ -236,7 +236,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
                         self.tx.output(change_output);
                         self.tx.output_data(change_output_data);
                     }
-                    let new_fee = calculator.fee_with_tx_data(&self.tx);
+                    let new_fee = calculator.fee_with_tx_builder(&self.tx);
                     if let Some(new_change) =
                         (inputs_capacity + self.reward).checked_sub(outputs_capacity + new_fee)
                     {

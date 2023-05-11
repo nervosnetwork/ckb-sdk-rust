@@ -20,8 +20,8 @@ impl FeeCalculator {
         self.fee(tx_size)
     }
 
-    pub fn fee_with_tx_data(&self, tx_data: &TransactionBuilder) -> u64 {
-        let tx_size = tx_data
+    pub fn fee_with_tx_builder(&self, tx_builder: &TransactionBuilder) -> u64 {
+        let tx_size = tx_builder
             .clone()
             .build()
             .data()
