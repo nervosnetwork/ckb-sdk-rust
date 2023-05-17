@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, vec};
 
 use super::{
     handler::HandlerContexts,
@@ -158,13 +158,13 @@ impl SimpleTransactionBuilder {
     }
 
     fn post_build(
-        script_groups: &[ScriptGroup],
+        type_groups: &HashMap<Byte32, ScriptGroup>,
         configuration: &TransactionBuilderConfiguration,
         tx_builder: &mut TransactionBuilder,
         contexts: &mut HandlerContexts,
     ) -> Result<(), TxBuilderError> {
-        for idx in script_groups
-            .iter()
+        for idx in type_groups
+            .values()
             .flat_map(|group| group.output_indices.iter())
         {
             for handler in configuration.get_script_handlers() {
@@ -176,6 +176,29 @@ impl SimpleTransactionBuilder {
             }
         }
         Ok(())
+    }
+    fn rebuild_type_script_group(
+        tx_builder: &TransactionBuilder,
+        type_groups: HashMap<Byte32, ScriptGroup>,
+    ) -> HashMap<Byte32, ScriptGroup> {
+        let mut ret = HashMap::default();
+        for (key, old_group) in type_groups.into_iter() {
+            if !old_group.input_indices.is_empty() {
+                let new_group = ret
+                    .entry(key)
+                    .or_insert_with(|| ScriptGroup::from_type_script(&old_group.script));
+                new_group.input_indices.extend(old_group.input_indices);
+            }
+            for idx in old_group.output_indices {
+                let output = tx_builder.get_outputs().get(idx).unwrap();
+                let type_ = output.type_().to_opt().unwrap();
+                let new_group = ret
+                    .entry(type_.calc_script_hash())
+                    .or_insert_with(|| ScriptGroup::from_type_script(&type_));
+                new_group.output_indices.push(idx);
+            }
+        }
+        ret
     }
 }
 
@@ -323,17 +346,12 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
         if !state.is_success() {
             return Err(TxBuilderError::BalanceCapacity(state.into()));
         }
-        let lock_group_len = lock_groups.len();
+        Self::post_build(&type_groups, &self.configuration, &mut self.tx, contexts)?;
+        let type_groups = Self::rebuild_type_script_group(&self.tx, type_groups);
         let script_groups: Vec<ScriptGroup> = lock_groups
             .into_values()
             .chain(type_groups.into_values())
             .collect();
-        Self::post_build(
-            &script_groups[lock_group_len..],
-            &self.configuration,
-            &mut self.tx,
-            contexts,
-        )?;
         Ok(TransactionWithScriptGroups::new(
             self.tx.clone().build(),
             script_groups,
