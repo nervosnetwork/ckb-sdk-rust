@@ -156,6 +156,27 @@ impl SimpleTransactionBuilder {
         }
         Ok(())
     }
+
+    fn post_build(
+        script_groups: &[ScriptGroup],
+        configuration: &TransactionBuilderConfiguration,
+        tx_builder: &mut TransactionBuilder,
+        contexts: &mut HandlerContexts,
+    ) -> Result<(), TxBuilderError> {
+        for idx in script_groups
+            .iter()
+            .flat_map(|group| group.output_indices.iter())
+        {
+            for handler in configuration.get_script_handlers() {
+                for context in &mut contexts.contexts {
+                    if handler.post_build(*idx, tx_builder, context.as_mut())? {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 macro_rules! celloutput_capacity {
@@ -302,10 +323,17 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
         if !state.is_success() {
             return Err(TxBuilderError::BalanceCapacity(state.into()));
         }
-        let script_groups = lock_groups
+        let lock_group_len = lock_groups.len();
+        let script_groups: Vec<ScriptGroup> = lock_groups
             .into_values()
             .chain(type_groups.into_values())
             .collect();
+        Self::post_build(
+            &script_groups[lock_group_len..],
+            &self.configuration,
+            &mut self.tx,
+            contexts,
+        )?;
         Ok(TransactionWithScriptGroups::new(
             self.tx.clone().build(),
             script_groups,
