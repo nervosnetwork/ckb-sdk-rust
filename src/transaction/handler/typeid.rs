@@ -43,22 +43,22 @@ impl ScriptHandler for TypeIdHandler {
             return Ok(false);
         }
         if let Some(_args) = context.as_any().downcast_ref::<TypeIdContext>() {
-            let index = *script_group.output_indices.last().unwrap();
-            let output = tx_builder.get_outputs()[index].clone();
-            let type_ = output.type_().to_opt().unwrap();
-            if type_.args().is_empty() {
-                let type_ = type_
-                    .as_builder()
-                    .args(bytes::Bytes::from(vec![0u8; 32]).pack())
-                    .build();
-                let output = output.as_builder().type_(Some(type_).pack()).build();
-                tx_builder.set_output(index, output);
-            }
+            if let Some(index) = script_group.output_indices.last() {
+                let output = tx_builder.get_outputs()[*index].clone();
+                let type_ = output.type_().to_opt().unwrap();
+                if type_.args().is_empty() {
+                    let type_ = type_
+                        .as_builder()
+                        .args(bytes::Bytes::from(vec![0u8; 32]).pack())
+                        .build();
+                    let output = output.as_builder().type_(Some(type_).pack()).build();
+                    tx_builder.set_output(*index, output);
+                }
 
-            Ok(true)
-        } else {
-            Ok(false)
+                return Ok(true);
+            }
         }
+        Ok(false)
     }
 
     fn init(&mut self, _network: &NetworkInfo) -> Result<(), TxBuilderError> {
