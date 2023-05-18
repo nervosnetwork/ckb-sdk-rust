@@ -60,7 +60,7 @@ impl InputIterator {
         *buffer_inputs = live_cells
             .into_iter()
             .rev() // reverse the iter, so that the first cell will be consumed while pop
-            .map(|live_cell| TransactionInput::new(live_cell, 0))
+            .map(TransactionInput::from)
             .collect();
         Ok(capacity > 0)
     }

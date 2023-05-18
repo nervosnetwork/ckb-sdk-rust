@@ -230,12 +230,16 @@ impl MultisigConfig {
     }
 
     pub fn placeholder_witness(&self) -> WitnessArgs {
+        WitnessArgs::new_builder()
+            .lock(self.placeholder_witness_lock().pack())
+            .build()
+    }
+
+    pub fn placeholder_witness_lock(&self) -> Option<bytes::Bytes> {
         let config_data = self.to_witness_data();
         let mut zero_lock = vec![0u8; config_data.len() + 65 * self.threshold() as usize];
         zero_lock[0..config_data.len()].copy_from_slice(config_data.as_ref());
-        WitnessArgs::new_builder()
-            .lock(Some(Bytes::from(zero_lock)).pack())
-            .build()
+        Some(Bytes::from(zero_lock))
     }
 
     pub fn to_address(&self, network: NetworkType, since_absolute_epoch: Option<u64>) -> Address {

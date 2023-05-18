@@ -72,6 +72,7 @@ impl TransactionBuilderConfiguration {
                     network,
                 )?,
             ) as Box<_>,
+            Box::new(handler::dao::DaoScriptHandler::new_with_network(network)?) as Box<_>,
         ];
         Ok(ret)
     }
