@@ -71,6 +71,9 @@ pub enum TxBuilderError {
     #[error("can not find specifed output to put small change")]
     NoOutputForSmallChange,
 
+    #[error("invalid input index: `{0}`")]
+    InvalidInputIndex(usize),
+
     #[error("other error: `{0}`")]
     Other(anyhow::Error),
 }
