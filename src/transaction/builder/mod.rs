@@ -204,7 +204,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             InputView::new(&self.transaction_inputs, &mut self.input_iter).enumerate()
         {
             let input = input?;
-            self.tx.input(input.cell_input());
+            self.tx.input(input.cell_input(0));
             let previous_output = input.previous_output();
             self.tx.witness(Default::default());
             let lock_script = previous_output.lock();

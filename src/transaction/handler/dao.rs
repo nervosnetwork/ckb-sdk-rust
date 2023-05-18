@@ -13,7 +13,7 @@ use crate::{
     constants,
     traits::{
         DefaultHeaderDepResolver, DefaultTransactionDependencyProvider, HeaderDepResolver,
-        LiveCell, TransactionDependencyProvider,
+        TransactionDependencyProvider,
     },
     transaction::{builder::PrepareTransactionViewer, input::TransactionInput},
     tx_builder::{
@@ -101,8 +101,8 @@ pub struct WithdrawPhrase2Context {
     /// Withdraw from those out_points (prepared cells)
     items: Vec<OutPoint>,
     rpc_url: String,
-    // input_index => deposit_header_index
-    deposit_header_indexes: HashMap<usize, usize>,
+    // input_index => (deposit_header_index, since_value)
+    deposit_header_indexes: HashMap<usize, (usize, u64)>,
 }
 
 impl WithdrawPhrase2Context {
@@ -163,14 +163,7 @@ impl DaoScriptHandler {
             };
             let output_data = bytes::Bytes::from(deposit_header.number().to_le_bytes().to_vec());
 
-            let live_cell = LiveCell {
-                output: input_cell,
-                output_data: data,
-                out_point,
-                block_number: deposit_header.number(),
-                tx_index: u32::MAX, // TODO set correct tx_index
-            };
-            let transaction_input = TransactionInput::new(live_cell, 0);
+            let transaction_input = TransactionInput::new(input_cell, data, out_point);
             viewer.transaction_inputs.push(transaction_input);
 
             viewer.tx.dedup_header_dep(deposit_header.hash());
@@ -256,27 +249,21 @@ impl DaoScriptHandler {
             }
             // build live cell
             {
-                let unlock_point = minimal_unlock_point(&deposit_header, &prepare_header);
-                let since = Since::new(
-                    SinceType::EpochNumberWithFraction,
-                    unlock_point.full_value(),
-                    false,
-                );
-                let live_cell = LiveCell {
-                    output: input_cell,
-                    output_data: data,
-                    out_point: out_point.clone(),
-                    block_number: deposit_header.number(),
-                    tx_index: u32::MAX, // TODO set correct tx_index
-                };
-                let transaction_input = TransactionInput::new(live_cell, since.value());
+                let transaction_input = TransactionInput::new(input_cell, data, out_point.clone());
                 viewer.transaction_inputs.push(transaction_input);
             };
+            let unlock_point = minimal_unlock_point(&deposit_header, &prepare_header);
+            let since = Since::new(
+                SinceType::EpochNumberWithFraction,
+                unlock_point.full_value(),
+                false,
+            );
             let deposit_block_hash = deposit_header.hash();
             let dep_header_idx = viewer.tx.dedup_header_dep(deposit_block_hash);
-            context
-                .deposit_header_indexes
-                .insert(viewer.transaction_inputs.len() - 1, dep_header_idx);
+            context.deposit_header_indexes.insert(
+                viewer.transaction_inputs.len() - 1,
+                (dep_header_idx, since.value()),
+            );
         }
         viewer.tx.dedup_header_deps(prepare_block_hashes);
 
@@ -327,7 +314,7 @@ impl ScriptHandler for DaoScriptHandler {
     }
     fn build_transaction(
         &self,
-        tx_data: &mut crate::core::TransactionBuilder,
+        tx_builder: &mut crate::core::TransactionBuilder,
         script_group: &ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError> {
@@ -337,15 +324,16 @@ impl ScriptHandler for DaoScriptHandler {
         if context.as_any().is::<DepositContext>()
             || context.as_any().is::<WithdrawPhrase1Context>()
         {
-            tx_data.dedup_cell_deps(self.cell_deps.clone());
+            tx_builder.dedup_cell_deps(self.cell_deps.clone());
             Ok(true)
         } else if let Some(args) = context.as_any().downcast_ref::<WithdrawPhrase2Context>() {
-            tx_data.dedup_cell_deps(self.cell_deps.clone());
+            tx_builder.dedup_cell_deps(self.cell_deps.clone());
             if let Some(idx) = script_group.input_indices.last() {
-                if let Some(dep_header_idx) = args.deposit_header_indexes.get(idx) {
+                if let Some((dep_header_idx, since)) = args.deposit_header_indexes.get(idx) {
                     let idx_data =
                         bytes::Bytes::from((*dep_header_idx as u64).to_le_bytes().to_vec());
-                    tx_data.set_witness_input(*idx, Some(idx_data));
+                    tx_builder.set_witness_input(*idx, Some(idx_data));
+                    tx_builder.set_input_since(*idx, *since);
                 }
             }
             Ok(true)

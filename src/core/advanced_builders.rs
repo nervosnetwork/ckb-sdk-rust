@@ -24,7 +24,7 @@ pub struct TransactionBuilder {
     #[getter(rename = "get_outputs")]
     pub outputs: Vec<packed::CellOutput>,
     #[getter(rename = "get_witnesses")]
-    pub witnesses: Vec<WitnessArgs>,
+    pub witnesses: Vec<packed::Bytes>,
     #[getter(rename = "get_outputs_data")]
     pub outputs_data: Vec<packed::Bytes>,
 }
@@ -126,7 +126,7 @@ macro_rules! def_setter_for_vector {
         def_setter_for_vector!(packed, $field, $type, $func_push, $func_extend, $func_set);
     };
     (set_i, $field:ident, $type:ident, $func_push:ident, $func_extend:ident, $func_set:ident, $func_set_i: ident) => {
-        def_setter_for_vector!(packed, $field, $type, $func_push, $func_extend, $func_set);
+        def_setter_for_vector!($field, $type, $func_push, $func_extend, $func_set);
 
         pub fn $func_set_i(&mut self, i: usize, v: packed::$type) -> &mut Self {
             self.$field[i] = v;
@@ -212,7 +212,7 @@ impl TransactionBuilder {
     def_setter_for_vector!(
         set_i,
         witnesses,
-        WitnessArgs,
+        Bytes,
         witness,
         witnesses,
         set_witnesses,
@@ -226,30 +226,44 @@ impl TransactionBuilder {
         set_outputs_data
     );
 
+    fn get_witness_obj(&self, i: usize) -> WitnessArgs {
+        let witness_data = self.witnesses[i].raw_data();
+        if witness_data.is_empty() {
+            WitnessArgs::default()
+        } else {
+            WitnessArgs::from_slice(witness_data.as_ref()).unwrap()
+        }
+    }
     pub fn set_witness_lock(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
-        self.witnesses[i] = self.witnesses[i]
-            .clone()
+        let current_witness = self.get_witness_obj(i);
+        self.witnesses[i] = current_witness
             .as_builder()
             .lock(v.pack())
-            .build();
+            .build()
+            .as_bytes()
+            .pack();
         self
     }
 
     pub fn set_witness_input(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
-        self.witnesses[i] = self.witnesses[i]
-            .clone()
+        self.witnesses[i] = self
+            .get_witness_obj(i)
             .as_builder()
             .input_type(v.pack())
-            .build();
+            .build()
+            .as_bytes()
+            .pack();
         self
     }
 
     pub fn set_witness_output(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
-        self.witnesses[i] = self.witnesses[i]
-            .clone()
+        self.witnesses[i] = self
+            .get_witness_obj(i)
             .as_builder()
             .output_type(v.pack())
-            .build();
+            .build()
+            .as_bytes()
+            .pack();
         self
     }
     /// Converts into [`TransactionView`](struct.TransactionView.html).
@@ -271,15 +285,20 @@ impl TransactionBuilder {
             .outputs(outputs.pack())
             .outputs_data(outputs_data.pack())
             .build();
-        let witnesses = witnesses
-            .iter()
-            .map(|t| t.as_bytes().pack())
-            .collect::<Vec<_>>();
         let tx = packed::Transaction::new_builder()
             .raw(raw)
             .witnesses(witnesses.pack())
             .build();
 
         tx.into_view()
+    }
+
+    pub(crate) fn set_input_since(&mut self, i: usize, since: u64) -> &mut Self {
+        self.inputs[i] = self.inputs[i]
+            .clone()
+            .as_builder()
+            .since(since.pack())
+            .build();
+        self
     }
 }
