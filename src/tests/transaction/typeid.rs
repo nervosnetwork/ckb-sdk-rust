@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[test]
-fn test_transfer_from_sighash() {
+fn test_deploy_id() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
     let ctx = init_context(Vec::new(), vec![(sender.clone(), Some(10_0000 * ONE_CKB))]);
 

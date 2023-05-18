@@ -5,7 +5,8 @@ use ckb_types::{
 };
 
 use crate::{
-    core::TransactionBuilder, tx_builder::TxBuilderError, NetworkInfo, ScriptGroup, ScriptId,
+    core::TransactionBuilder, tx_builder::TxBuilderError, NetworkInfo, ScriptGroup,
+    ScriptGroupType, ScriptId,
 };
 
 use super::{HandlerContext, ScriptHandler};
@@ -39,7 +40,10 @@ impl ScriptHandler for TypeIdHandler {
         script_group: &ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError> {
-        if !self.is_match(&script_group.script) || script_group.output_indices.is_empty() {
+        if script_group.group_type != ScriptGroupType::Type
+            || !self.is_match(&script_group.script)
+            || script_group.output_indices.is_empty()
+        {
             return Ok(false);
         }
         if let Some(_args) = context.as_any().downcast_ref::<TypeIdContext>() {
