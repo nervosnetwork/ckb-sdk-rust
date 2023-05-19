@@ -77,25 +77,28 @@ impl ScriptHandler for TypeIdHandler {
     ) -> Result<bool, TxBuilderError> {
         if let Some(output) = tx_builder.get_outputs().get(index) {
             if let Some(type_) = output.type_().to_opt() {
-                if self.is_match(&type_) && type_.args().raw_data()[..] == [0u8; 32] {
-                    let input = tx_builder
-                        .get_inputs()
-                        .get(0)
-                        .ok_or(TxBuilderError::InvalidInputIndex(0))?;
-                    let args = calculate_type_id(input, index as u64);
-                    let type_ = type_
-                        .as_builder()
-                        .args(bytes::Bytes::from(args.to_vec()).pack())
-                        .build();
-                    let output = output
-                        .clone()
-                        .as_builder()
-                        .type_(Some(type_).pack())
-                        .build();
-                    tx_builder.set_output(index, output);
+                if self.is_match(&type_) {
+                    if type_.args().raw_data()[..] == [0u8; 32] {
+                        let input = tx_builder
+                            .get_inputs()
+                            .get(0)
+                            .ok_or(TxBuilderError::InvalidInputIndex(0))?;
+                        let args = calculate_type_id(input, index as u64);
+                        let type_ = type_
+                            .as_builder()
+                            .args(bytes::Bytes::from(args.to_vec()).pack())
+                            .build();
+                        let output = output
+                            .clone()
+                            .as_builder()
+                            .type_(Some(type_).pack())
+                            .build();
+                        tx_builder.set_output(index, output);
+                    }
+                    return Ok(true);
                 }
             }
         }
-        Ok(true)
+        Ok(false)
     }
 }
