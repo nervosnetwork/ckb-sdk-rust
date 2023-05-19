@@ -13,6 +13,7 @@ pub mod dao;
 pub mod multisig;
 pub mod sighash;
 pub mod typeid;
+pub mod udt;
 
 pub trait ScriptHandler {
     fn prepare_transaction(
