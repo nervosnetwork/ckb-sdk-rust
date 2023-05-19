@@ -13,7 +13,7 @@ use lazy_static::lazy_static;
 
 use crate::{
     core::TransactionBuilder,
-    traits::{CellCollector, CellQueryOptions, DefaultCellCollector, ValueRangeOption},
+    traits::{CellCollector, CellQueryOptions, DefaultCellCollector, LiveCell, ValueRangeOption},
     transaction::{builder::PrepareTransactionViewer, input::TransactionInput},
     tx_builder::{udt::UdtType, TransferAction, TxBuilderError},
     NetworkInfo, NetworkType, ScriptGroup, ScriptGroupType, ScriptId,
@@ -172,7 +172,14 @@ pub struct UdtIssueContext {
 }
 
 impl UdtIssueContext {
-    pub fn new_simple(owner: Script, receiver:Script, amount: u128, net_info: &NetworkInfo) -> Self {
+    // Create a sudt issue context, with type script mentioned in https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0025-simple-udt/0025-simple-udt.md,
+    // action is create.
+    pub fn new_default(
+        owner: Script,
+        receiver: Script,
+        amount: u128,
+        net_info: &NetworkInfo,
+    ) -> Self {
         let receiver = UdtTargetReceiver {
             action: TransferAction::Create,
             lock_script: receiver,
@@ -233,12 +240,72 @@ pub struct UdtTransferContext {
     /// by `type_script` and `sender`)
     pub sender: Script,
 
+    // If not set, use original lock script, otherwise use this one.
+    pub udt_change_lock: Option<Script>,
+
     /// The transfer receivers
     pub receivers: Vec<UdtTargetReceiver>,
+    /// after transfer if amount is 0, should we keep the cell, or transfer the capacity to change cell.
+    /// default is true, then it will keep a cell with 0 amount, next time transfer will use this 0 amount cell as input.
+    pub keep_zero_udt_cell: bool,
     pub rpc_url: String,
 }
 
-impl UdtTransferContext {}
+impl UdtTransferContext {
+    pub fn new(
+        type_script: Script,
+        sender: Script,
+        receivers: Vec<UdtTargetReceiver>,
+        rpc_url: String,
+    ) -> Self {
+        Self {
+            type_script,
+            sender,
+            udt_change_lock: None,
+            receivers,
+            keep_zero_udt_cell: true,
+            rpc_url,
+        }
+    }
+    // Create a transafer from owner address, with  type script mentioned in https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0025-simple-udt/0025-simple-udt.md,
+    // action is create.
+    pub fn from_owner(
+        owner: &Script,
+        sender: Script,
+        receiver: Script,
+        amount: u128,
+        net_info: &NetworkInfo,
+    ) -> Self {
+        let receiver = UdtTargetReceiver {
+            action: TransferAction::Create,
+            lock_script: receiver,
+            capacity: None,
+            amount,
+            extra_data: None,
+        };
+        let script_id = if net_info.network_type == NetworkType::Mainnet {
+            (*MAINNET_SUDT_SCRIPT_ID).clone()
+        } else {
+            (*TESTNET_SUDT_SCRIPT_ID).clone()
+        };
+        let owner_lock_hash = owner.calc_script_hash();
+        let type_script = UdtType::Sudt.build_script(&script_id, &owner_lock_hash);
+        Self {
+            type_script,
+            sender,
+            udt_change_lock: None,
+            receivers: vec![receiver],
+            keep_zero_udt_cell: true,
+            rpc_url: net_info.url.clone(),
+        }
+    }
+    pub fn set_udt_change_lock(&mut self, udt_change_lock: Option<Script>) {
+        self.udt_change_lock = udt_change_lock;
+    }
+    pub fn set_keep_zero_udt_cell(&mut self, keep_zero_udt_cell: bool) {
+        self.keep_zero_udt_cell = keep_zero_udt_cell;
+    }
+}
 
 impl HandlerContext for UdtTransferContext {}
 
@@ -291,50 +358,62 @@ impl UdtScriptHandler {
         Ok(())
     }
 
-    fn build_transfer_base(
-        viewer: &mut PrepareTransactionViewer,
+    fn find_sender_cell(
         context: &UdtTransferContext,
-    ) -> Result<(), TxBuilderError> {
+        cell_collector: &mut dyn CellCollector,
+        output_total: u128,
+    ) -> Result<(Vec<LiveCell>, u128), TxBuilderError> {
         let sender_query = {
             let mut query = CellQueryOptions::new_lock(context.sender.clone());
             query.secondary_script = Some(context.type_script.clone());
             query.data_len_range = Some(ValueRangeOption::new_min(16));
             query
         };
+        let mut input_cells = vec![];
 
-        let mut cell_collector = DefaultCellCollector::new(&context.rpc_url);
-        let (sender_cells, _) = cell_collector.collect_live_cells(&sender_query, true)?;
-        if sender_cells.is_empty() {
-            return Err(TxBuilderError::Other(anyhow!("sender cell not found")));
+        let mut input_total = 0;
+        loop {
+            let (sender_cells, _) = cell_collector.collect_live_cells(&sender_query, true)?;
+            if sender_cells.is_empty() {
+                break;
+            }
+            let mut amount_bytes = [0u8; 16];
+            let sender_cell = sender_cells.into_iter().next().unwrap();
+            amount_bytes.copy_from_slice(&sender_cell.output_data.as_ref()[0..16]);
+            input_cells.push(sender_cell);
+
+            let input_amount = u128::from_le_bytes(amount_bytes);
+            input_total += input_amount;
+            if input_total >= output_total {
+                return Ok((input_cells, input_total));
+            }
         }
-        let sender_cell = sender_cells.into_iter().next().unwrap();
-
-        let mut amount_bytes = [0u8; 16];
-        amount_bytes.copy_from_slice(&sender_cell.output_data.as_ref()[0..16]);
-        let input_total = u128::from_le_bytes(amount_bytes);
-        let output_total: u128 = context
-            .receivers
-            .iter()
-            .map(|receiver| receiver.amount)
-            .sum();
-        if input_total < output_total {
+        if input_cells.is_empty() {
+            return Err(TxBuilderError::Other(anyhow!(
+                "qualified sender cell not found"
+            )));
+        } else {
             return Err(TxBuilderError::Other(anyhow!(
                 "sender udt amount not enough, expected at least: {}, actual: {}",
                 output_total,
                 input_total
             )));
         }
+    }
 
-        let sender_output_data = {
-            let new_amount = input_total - output_total;
-            let mut new_data = sender_cell.output_data.as_ref().to_vec();
-            new_data[0..16].copy_from_slice(&new_amount.to_le_bytes()[..]);
-            bytes::Bytes::from(new_data)
-        };
+    fn build_transfer_base(
+        viewer: &mut PrepareTransactionViewer,
+        context: &UdtTransferContext,
+    ) -> Result<(), TxBuilderError> {
+        let mut cell_collector = DefaultCellCollector::new(&context.rpc_url);
+        let output_total: u128 = context
+            .receivers
+            .iter()
+            .map(|receiver| receiver.amount)
+            .sum();
 
-        viewer.tx.output(sender_cell.output.clone());
-        viewer.tx.output_data(sender_output_data.pack());
-        viewer.transaction_inputs.push(sender_cell.into());
+        let (sender_cells, input_total) =
+            Self::find_sender_cell(context, &mut cell_collector, output_total)?;
 
         for receiver in &context.receivers {
             let ReceiverBuildOutput {
@@ -349,6 +428,25 @@ impl UdtScriptHandler {
             viewer.tx.output_data(output_data.pack());
         }
 
+        let new_amount = input_total - output_total;
+        if new_amount > 0 || context.keep_zero_udt_cell {
+            let sender_output_data = {
+                let mut new_data = sender_cells[0].output_data.as_ref().to_vec();
+                new_data[0..16].copy_from_slice(&new_amount.to_le_bytes()[..]);
+                bytes::Bytes::from(new_data)
+            };
+
+            let mut output = sender_cells[0].output.clone();
+            if let Some(udt_lock) = context.udt_change_lock.as_ref() {
+                output = output.as_builder().lock(udt_lock.clone()).build();
+            }
+            viewer.tx.output(output);
+            viewer.tx.output_data(sender_output_data.pack());
+        }
+        sender_cells
+            .into_iter()
+            .map(|cell| cell.into())
+            .for_each(|input| viewer.transaction_inputs.push(input));
         Ok(())
     }
 }
