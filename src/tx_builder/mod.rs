@@ -20,7 +20,6 @@ use ckb_types::{
     prelude::*,
 };
 
-use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::calculate_dao_maximum_withdraw4;
@@ -32,6 +31,7 @@ use crate::{
     },
     RpcError,
 };
+use crate::{types::ScriptGroup, unlock::omni_lock::ConfigError};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
@@ -73,6 +73,9 @@ pub enum TxBuilderError {
 
     #[error("invalid input index: `{0}`")]
     InvalidInputIndex(usize),
+
+    #[error("configuration error: `{0}`")]
+    ConfigError(#[from] ConfigError),
 
     #[error("other error: `{0}`")]
     Other(anyhow::Error),

@@ -11,6 +11,7 @@ use super::builder::PrepareTransactionViewer;
 
 pub mod dao;
 pub mod multisig;
+pub mod omnilock;
 pub mod sighash;
 pub mod typeid;
 pub mod udt;
@@ -118,3 +119,17 @@ impl HandlerContexts {
         self.contexts.extend(contexts.contexts);
     }
 }
+
+macro_rules! cell_dep {
+    ($hash: literal, $idx: expr, $dep_type: expr) => {{
+        let out_point = ckb_types::packed::OutPoint::new_builder()
+            .tx_hash(ckb_types::h256!($hash).pack())
+            .index($idx.pack())
+            .build();
+        ckb_types::packed::CellDep::new_builder()
+            .out_point(out_point)
+            .dep_type($dep_type.into())
+            .build()
+    }};
+}
+pub(crate) use cell_dep;

@@ -3,14 +3,15 @@ use std::collections::HashMap;
 
 use crate::{
     constants,
-    unlock::{MultisigConfig, UnlockError},
-    NetworkInfo, ScriptGroup, ScriptId, TransactionWithScriptGroups,
+    unlock::{MultisigConfig, OmniLockConfig, UnlockError},
+    NetworkInfo, NetworkType, ScriptGroup, ScriptId, TransactionWithScriptGroups,
 };
 
 use self::sighash::Secp256k1Blake160SighashAllSigner;
 
 use super::handler::Type2Any;
 pub mod multisig;
+pub mod omnilock;
 pub mod sighash;
 
 pub trait CKBScriptSigner {
@@ -68,6 +69,13 @@ impl SignContexts {
         Ok(Self::new_multisig(key, multisig_config))
     }
 
+    pub fn new_omnilock(key: secp256k1::SecretKey, omnilock_config: OmniLockConfig) -> Self {
+        let omnilock_context = omnilock::OmnilockSignerContext::new(vec![key], omnilock_config);
+        Self {
+            contexts: vec![Box::new(omnilock_context)],
+        }
+    }
+
     #[inline]
     pub fn add_context(&mut self, context: Box<dyn SignContext>) {
         self.contexts.push(context);
@@ -79,7 +87,7 @@ pub struct TransactionSigner {
 }
 
 impl TransactionSigner {
-    pub fn new(_network: &NetworkInfo) -> Self {
+    pub fn new(network: &NetworkInfo) -> Self {
         let mut unlockers = HashMap::default();
 
         let sighash_script_id = ScriptId::new_type(constants::SIGHASH_TYPE_HASH.clone());
@@ -92,7 +100,21 @@ impl TransactionSigner {
             ScriptId::new_type(constants::MULTISIG_TYPE_HASH.clone()),
             Box::new(multisig::Secp256k1Blake160MultisigAllSigner {}) as Box<_>,
         );
-
+        match network.network_type {
+            NetworkType::Mainnet => unlockers.insert(
+                crate::transaction::handler::omnilock::MAINNET_OMNILOCK_SCRIPT_ID.clone(),
+                Box::new(omnilock::OmnilockSigner {}) as Box<_>,
+            ),
+            NetworkType::Testnet => unlockers.insert(
+                crate::transaction::handler::omnilock::TESTNET_OMNILOCK_SCRIPT_ID.clone(),
+                Box::new(omnilock::OmnilockSigner {}) as Box<_>,
+            ),
+            _ => unreachable!(),
+        };
+        unlockers.insert(
+            ScriptId::new_type(constants::MULTISIG_TYPE_HASH.clone()),
+            Box::new(omnilock::OmnilockSigner {}) as Box<_>,
+        );
         Self { unlockers }
     }
 
