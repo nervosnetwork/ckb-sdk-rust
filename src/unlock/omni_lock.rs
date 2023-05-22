@@ -7,6 +7,7 @@ use crate::{
         omni_lock::{Auth, Identity as IdentityType, IdentityOpt, OmniLockWitnessLock},
         xudt_rce_mol::SmtProofEntryVec,
     },
+    Address,
 };
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
@@ -137,7 +138,7 @@ impl Identity {
             return Err("Not enough bytes to parse".to_string());
         }
         let flag = IdentityFlag::try_from(slice[0])
-            .map_err(|e| format!("can't parse {} to valide IdentityFlat.", e))?;
+            .map_err(|e| format!("can't parse {} to validate IdentityFlag.", e))?;
         let auth_content = H160::from_slice(&slice[1..21]).map_err(|e| e.to_string())?;
         Ok(Identity { flag, auth_content })
     }
@@ -164,6 +165,15 @@ impl From<Identity> for ckb_types::bytes::Bytes {
     fn from(id: Identity) -> Self {
         let v: Vec<u8> = id.into();
         v.into()
+    }
+}
+
+impl Pack<Auth> for Identity {
+    fn pack(&self) -> Auth {
+        let mut temp = [0u8; Auth::TOTAL_SIZE];
+        temp[0] = self.flag as u8;
+        temp[1..21].copy_from_slice(self.auth_content.as_bytes());
+        Auth::from_slice(&temp).unwrap()
     }
 }
 
@@ -364,6 +374,16 @@ impl AdminConfig {
             rce_in_input,
         }
     }
+
+    pub fn from_type_id(rc_type_id: H256) -> Self {
+        AdminConfig {
+            rc_type_id,
+            proofs: SmtProofEntryVec::default(),
+            auth: Identity::default(),
+            multisig_config: None,
+            rce_in_input: false,
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -393,6 +413,16 @@ impl OmniLockAcpConfig {
             udt_minimum,
         }
     }
+
+    pub fn from_slice(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() < 2 {
+            return Err(format!("expect minimum 2 bytes, got {}", bytes.len()));
+        }
+        Ok(Self {
+            ckb_minimum: bytes[0],
+            udt_minimum: bytes[1],
+        })
+    }
 }
 
 /// OmniLock configuration
@@ -417,7 +447,7 @@ pub struct OmniLockConfig {
     acp_config: Option<OmniLockAcpConfig>,
     /// 8 bytes since for time lock
     time_lock_config: Option<u64>,
-    // 32 bytes type script hash
+    // 32 bytes type script hash for supply mode.
     info_cell: Option<H256>,
 }
 
@@ -427,6 +457,56 @@ impl OmniLockConfig {
     /// * `lock_arg` blake160 hash of a public key.
     pub fn new_pubkey_hash(lock_arg: H160) -> Self {
         Self::new(IdentityFlag::PubkeyHash, lock_arg)
+    }
+
+    pub fn from_slice(args: &[u8]) -> Result<Self, String> {
+        let id = Identity::from_slice(args)?;
+        let omni_lock_flags = OmniLockFlags::from_bits(args[21]).unwrap_or(OmniLockFlags::empty());
+        let mut idx = 22;
+        let admin_config = if omni_lock_flags.contains(OmniLockFlags::ADMIN) {
+            let rc_type_id = H256::from_slice(&args[idx..])
+                .map_err(|e| format!("parse admin type id error {}", e))?;
+            idx += 32;
+            Some(AdminConfig::from_type_id(rc_type_id))
+        } else {
+            None
+        };
+        let acp_config = if omni_lock_flags.contains(OmniLockFlags::ACP) {
+            let acp_config = OmniLockAcpConfig::from_slice(&args[idx..])?;
+            idx += 2;
+            Some(acp_config)
+        } else {
+            None
+        };
+        let time_lock_config = if omni_lock_flags.contains(OmniLockFlags::TIME_LOCK) {
+            let mut time_bytes = [0u8; 8];
+            time_bytes.copy_from_slice(&args[idx..idx + 8]);
+            idx += 8;
+            let time = u64::from_le_bytes(time_bytes);
+            Some(time)
+        } else {
+            None
+        };
+        let info_cell = if omni_lock_flags.contains(OmniLockFlags::SUPPLY) {
+            let info_cell = H256::from_slice(&args[idx..])
+                .map_err(|e| format!("parse admin type id error {}", e))?;
+            Some(info_cell)
+        } else {
+            None
+        };
+        Ok(Self {
+            id,
+            multisig_config: None,
+            omni_lock_flags,
+            admin_config,
+            acp_config,
+            time_lock_config,
+            info_cell,
+        })
+    }
+
+    pub fn from_addr(addr: &Address) -> Result<Self, String> {
+        Self::from_slice(&addr.payload().args())
     }
 
     pub fn new_multisig(multisig_config: MultisigConfig) -> Self {
@@ -450,18 +530,13 @@ impl OmniLockConfig {
     ///
     /// * `pubkey_hash` - a ehtereum address of an account.
     ///
-    /// ```
-    /// // pubkey is a public ethereum address
-    /// use ckb_sdk::unlock::OmniLockConfig;
-    /// use ckb_sdk::util::keccak160;
-    /// use ckb_crypto::secp::Pubkey;
-    ///
-    /// let pubkey = Pubkey::from([0u8; 64]);
-    /// let pubkey_hash = keccak160(pubkey.as_ref());
-    /// let config = OmniLockConfig::new_ethereum(pubkey_hash);
-    /// ```
     pub fn new_ethereum(pubkey_hash: H160) -> Self {
         Self::new(IdentityFlag::Ethereum, pubkey_hash)
+    }
+
+    pub fn new_ethereum_from_pubkey(pubkey: &ckb_crypto::secp::Pubkey) -> Self {
+        let pubkey_hash = crate::util::keccak160(pubkey.as_ref());
+        OmniLockConfig::new_ethereum(pubkey_hash)
     }
 
     /// Create an ownerlock omnilock with according script hash.
@@ -539,6 +614,10 @@ impl OmniLockConfig {
         self.info_cell = None;
     }
 
+    pub fn set_multisig_config(&mut self, multisig_config: Option<MultisigConfig>) {
+        self.multisig_config = multisig_config;
+    }
+
     pub fn id(&self) -> &Identity {
         &self.id
     }
@@ -553,7 +632,7 @@ impl OmniLockConfig {
         &self.omni_lock_flags
     }
 
-    pub fn use_rc(&self) -> bool {
+    pub fn has_admin_config(&self) -> bool {
         self.admin_config.is_some()
     }
 
@@ -650,9 +729,28 @@ impl OmniLockConfig {
         &self,
         unlock_mode: OmniUnlockMode,
     ) -> Result<Bytes, ConfigError> {
-        let mut builder = match self.id.flag {
-            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => OmniLockWitnessLock::new_builder()
-                .signature(Some(Bytes::from(vec![0u8; 65])).pack()),
+        let mut builder = OmniLockWitnessLock::new_builder();
+        let mut auth_flag = self.id.flag;
+
+        if unlock_mode == OmniUnlockMode::Admin {
+            if let Some(config) = self.admin_config.as_ref() {
+                auth_flag = config.auth.flag;
+                let ident = IdentityType::new_builder()
+                    .identity(config.auth.pack())
+                    .proofs(config.proofs.clone())
+                    .build();
+
+                let ident_opt = IdentityOpt::new_builder().set(Some(ident)).build();
+                builder = builder.omni_identity(ident_opt);
+            } else {
+                return Err(ConfigError::NoAdminConfig);
+            }
+        }
+
+        builder = match auth_flag {
+            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => {
+                builder.signature(Some(Bytes::from(vec![0u8; 65])).pack())
+            }
             IdentityFlag::Multisig => {
                 let multisig_config = match unlock_mode {
                     OmniUnlockMode::Admin => self
@@ -671,29 +769,12 @@ impl OmniLockConfig {
                 let multisig_len = config_data.len() + multisig_config.threshold() as usize * 65;
                 let mut omni_sig = vec![0u8; multisig_len];
                 omni_sig[..config_data.len()].copy_from_slice(&config_data);
-                OmniLockWitnessLock::new_builder().signature(Some(Bytes::from(omni_sig)).pack())
+                builder.signature(Some(Bytes::from(omni_sig)).pack())
             }
-            IdentityFlag::OwnerLock => OmniLockWitnessLock::new_builder(),
+            IdentityFlag::OwnerLock => builder,
             _ => todo!("to support other placeholder_witness_lock implementions"),
         };
 
-        if unlock_mode == OmniUnlockMode::Admin {
-            if let Some(config) = self.admin_config.as_ref() {
-                let mut temp = [0u8; 21];
-                temp[0] = config.auth.flag as u8;
-                temp[1..21].copy_from_slice(config.auth.auth_content.as_bytes());
-                let auth = Auth::from_slice(&temp).unwrap();
-                let ident = IdentityType::new_builder()
-                    .identity(auth)
-                    .proofs(config.proofs.clone())
-                    .build();
-
-                let ident_opt = IdentityOpt::new_builder().set(Some(ident)).build();
-                builder = builder.omni_identity(ident_opt);
-            } else {
-                return Err(ConfigError::NoAdminConfig);
-            }
-        }
         Ok(builder.build().as_bytes())
     }
 
@@ -708,13 +789,22 @@ impl OmniLockConfig {
         &self,
         unlock_mode: OmniUnlockMode,
     ) -> Result<WitnessArgs, ConfigError> {
-        match self.id.flag {
+        let auth_flag = match unlock_mode {
+            OmniUnlockMode::Admin => {
+                self.get_admin_config()
+                    .ok_or(ConfigError::NoAdminConfig)?
+                    .auth
+                    .flag
+            }
+            OmniUnlockMode::Normal => self.id.flag,
+        };
+        match auth_flag {
             IdentityFlag::PubkeyHash | IdentityFlag::Ethereum | IdentityFlag::Multisig => {
                 let lock = self.placeholder_witness_lock(unlock_mode)?;
                 Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
             }
             IdentityFlag::OwnerLock => {
-                if self.admin_config.is_some() {
+                if unlock_mode == OmniUnlockMode::Admin {
                     let lock = self.placeholder_witness_lock(unlock_mode)?;
                     Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
                 } else {

@@ -1,4 +1,8 @@
-use ckb_types::{constants, core, packed, prelude::*};
+use ckb_types::{
+    constants, core,
+    packed::{self, WitnessArgs},
+    prelude::*,
+};
 use derive_getters::Getters;
 
 /// An advanced builder for [`TransactionView`].
@@ -122,7 +126,7 @@ macro_rules! def_setter_for_vector {
         def_setter_for_vector!(packed, $field, $type, $func_push, $func_extend, $func_set);
     };
     (set_i, $field:ident, $type:ident, $func_push:ident, $func_extend:ident, $func_set:ident, $func_set_i: ident) => {
-        def_setter_for_vector!(packed, $field, $type, $func_push, $func_extend, $func_set);
+        def_setter_for_vector!($field, $type, $func_push, $func_extend, $func_set);
 
         pub fn $func_set_i(&mut self, i: usize, v: packed::$type) -> &mut Self {
             self.$field[i] = v;
@@ -138,11 +142,12 @@ macro_rules! def_dedup_setter_for_vector {
         $comment_push:expr, $comment_extend:expr,
     ) => {
         #[doc = $comment_push]
-        pub fn $func_push(&mut self, v: $prefix::$type) -> &mut Self {
-            if !self.$field.contains(&v) {
-                self.$field.push(v);
+        pub fn $func_push(&mut self, v: $prefix::$type) -> usize {
+            if let Some(idx) = self.$field.iter().position(|x| x == &v) {
+                return idx;
             }
-            self
+            self.$field.push(v);
+            self.$field.len() - 1
         }
         #[doc = $comment_extend]
         pub fn $func_extend<T>(&mut self, v: T) -> &mut Self
@@ -221,6 +226,46 @@ impl TransactionBuilder {
         set_outputs_data
     );
 
+    fn get_witness_obj(&self, i: usize) -> WitnessArgs {
+        let witness_data = self.witnesses[i].raw_data();
+        if witness_data.is_empty() {
+            WitnessArgs::default()
+        } else {
+            WitnessArgs::from_slice(witness_data.as_ref()).unwrap()
+        }
+    }
+    pub fn set_witness_lock(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
+        let current_witness = self.get_witness_obj(i);
+        self.witnesses[i] = current_witness
+            .as_builder()
+            .lock(v.pack())
+            .build()
+            .as_bytes()
+            .pack();
+        self
+    }
+
+    pub fn set_witness_input(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
+        self.witnesses[i] = self
+            .get_witness_obj(i)
+            .as_builder()
+            .input_type(v.pack())
+            .build()
+            .as_bytes()
+            .pack();
+        self
+    }
+
+    pub fn set_witness_output(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
+        self.witnesses[i] = self
+            .get_witness_obj(i)
+            .as_builder()
+            .output_type(v.pack())
+            .build()
+            .as_bytes()
+            .pack();
+        self
+    }
     /// Converts into [`TransactionView`](struct.TransactionView.html).
     pub fn build(self) -> core::TransactionView {
         let Self {
@@ -246,5 +291,14 @@ impl TransactionBuilder {
             .build();
 
         tx.into_view()
+    }
+
+    pub(crate) fn set_input_since(&mut self, i: usize, since: u64) -> &mut Self {
+        self.inputs[i] = self.inputs[i]
+            .clone()
+            .as_builder()
+            .since(since.pack())
+            .build();
+        self
     }
 }

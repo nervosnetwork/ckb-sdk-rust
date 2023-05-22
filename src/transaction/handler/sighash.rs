@@ -1,7 +1,7 @@
 use ckb_types::{
     core::DepType,
     h256,
-    packed::{CellDep, OutPoint, Script, WitnessArgs},
+    packed::{CellDep, OutPoint, Script},
     prelude::{Builder, Entity, Pack},
 };
 
@@ -47,10 +47,7 @@ impl ScriptHandler for Secp256k1Blake160SighashAllScriptHandler {
         {
             tx_builder.dedup_cell_deps(self.cell_deps.clone());
             let index = script_group.input_indices.first().unwrap();
-            let witness = WitnessArgs::new_builder()
-                .lock(Some(bytes::Bytes::from(vec![0u8; 65])).pack())
-                .build();
-            tx_builder.set_witness(*index, witness.as_bytes().pack());
+            tx_builder.set_witness_lock(*index, Some(bytes::Bytes::from(vec![0u8; 65])));
             Ok(true)
         } else {
             Ok(false)

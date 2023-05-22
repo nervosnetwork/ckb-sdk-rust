@@ -43,7 +43,9 @@ fn test_transfer_from_sighash() {
     let mut builder = SimpleTransactionBuilder::new(configuration, iterator);
     builder.add_output(output.clone(), ckb_types::packed::Bytes::default());
     builder.set_change_lock(sender.clone());
-    let mut tx_with_groups = builder.build(&Default::default()).expect("build failed");
+    let mut tx_with_groups = builder
+        .build(&mut Default::default())
+        .expect("build failed");
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
@@ -106,7 +108,9 @@ fn test_transfer_from_sighash_samll_to_fee() {
     let mut builder = SimpleTransactionBuilder::new(configuration, iterator);
     builder.add_output(output.clone(), ckb_types::packed::Bytes::default());
     builder.set_change_lock(sender.clone());
-    let mut tx_with_groups = builder.build(&Default::default()).expect("build failed");
+    let mut tx_with_groups = builder
+        .build(&mut Default::default())
+        .expect("build failed");
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
@@ -167,7 +171,9 @@ fn test_transfer_from_sighash_samll_to_receiver() {
     let mut builder = SimpleTransactionBuilder::new(configuration, iterator);
     builder.add_output(output, ckb_types::packed::Bytes::default());
     builder.set_change_lock(sender.clone());
-    let mut tx_with_groups = builder.build(&Default::default()).expect("build failed");
+    let mut tx_with_groups = builder
+        .build(&mut Default::default())
+        .expect("build failed");
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());

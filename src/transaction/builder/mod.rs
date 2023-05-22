@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, vec};
 
 use super::{
     handler::HandlerContexts,
@@ -22,7 +22,7 @@ pub use fee_calculator::FeeCalculator;
 pub trait CkbTransactionBuilder {
     fn build(
         &mut self,
-        contexts: &HandlerContexts,
+        contexts: &mut HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError>;
 }
 
@@ -34,6 +34,12 @@ pub struct SimpleTransactionBuilder {
     input_iter: InputIterator,
     tx: TransactionBuilder,
     reward: u64,
+}
+
+pub struct PrepareTransactionViewer<'a> {
+    pub(crate) transaction_inputs: &'a mut Vec<TransactionInput>,
+    pub(crate) tx: &'a mut TransactionBuilder,
+    pub(crate) reward: &'a mut u64,
 }
 
 impl SimpleTransactionBuilder {
@@ -132,7 +138,67 @@ impl SimpleTransactionBuilder {
             .capacity((capacity + delta_capacity).pack())
             .build();
         tx_builder.set_output(idx, output);
+
         Ok(())
+    }
+
+    fn prepare_transaction(
+        viewer: &mut PrepareTransactionViewer,
+        configuration: &TransactionBuilderConfiguration,
+        contexts: &mut HandlerContexts,
+    ) -> Result<(), TxBuilderError> {
+        for handler in configuration.get_script_handlers() {
+            for context in &mut contexts.contexts {
+                if handler.prepare_transaction(viewer, context.as_mut())? {
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn post_build(
+        type_groups: &HashMap<Byte32, ScriptGroup>,
+        configuration: &TransactionBuilderConfiguration,
+        tx_builder: &mut TransactionBuilder,
+        contexts: &mut HandlerContexts,
+    ) -> Result<(), TxBuilderError> {
+        for idx in type_groups
+            .values()
+            .flat_map(|group| group.output_indices.iter())
+        {
+            for handler in configuration.get_script_handlers() {
+                for context in &mut contexts.contexts {
+                    if handler.post_build(*idx, tx_builder, context.as_mut())? {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    fn rebuild_type_script_group(
+        tx_builder: &TransactionBuilder,
+        type_groups: HashMap<Byte32, ScriptGroup>,
+    ) -> HashMap<Byte32, ScriptGroup> {
+        let mut ret = HashMap::default();
+        for (key, old_group) in type_groups.into_iter() {
+            if !old_group.input_indices.is_empty() {
+                let new_group = ret
+                    .entry(key)
+                    .or_insert_with(|| ScriptGroup::from_type_script(&old_group.script));
+                new_group.input_indices.extend(old_group.input_indices);
+            }
+            for idx in old_group.output_indices {
+                let output = tx_builder.get_outputs().get(idx).unwrap();
+                let type_ = output.type_().to_opt().unwrap();
+                let new_group = ret
+                    .entry(type_.calc_script_hash())
+                    .or_insert_with(|| ScriptGroup::from_type_script(&type_));
+                new_group.output_indices.push(idx);
+            }
+        }
+        ret
     }
 }
 
@@ -143,11 +209,22 @@ macro_rules! celloutput_capacity {
     }};
 }
 
+macro_rules! prepare_veiwer {
+    ($self:ident) => {
+        PrepareTransactionViewer {
+            transaction_inputs: &mut $self.transaction_inputs,
+            tx: &mut $self.tx,
+            reward: &mut $self.reward,
+        }
+    };
+}
+
 impl CkbTransactionBuilder for SimpleTransactionBuilder {
     fn build(
         &mut self,
-        contexts: &HandlerContexts,
+        contexts: &mut HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
+        Self::prepare_transaction(&mut prepare_veiwer!(self), &self.configuration, contexts)?;
         let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
         let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
         let mut outputs_capacity = 0u64;
@@ -171,9 +248,9 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             InputView::new(&self.transaction_inputs, &mut self.input_iter).enumerate()
         {
             let input = input?;
-            self.tx.input(input.cell_input());
+            self.tx.input(input.cell_input(0));
             let previous_output = input.previous_output();
-            self.tx.witness(packed::Bytes::default());
+            self.tx.witness(Default::default());
             let lock_script = previous_output.lock();
             let script_group = lock_groups
                 .entry(lock_script.calc_script_hash())
@@ -269,7 +346,9 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
         if !state.is_success() {
             return Err(TxBuilderError::BalanceCapacity(state.into()));
         }
-        let script_groups = lock_groups
+        Self::post_build(&type_groups, &self.configuration, &mut self.tx, contexts)?;
+        let type_groups = Self::rebuild_type_script_group(&self.tx, type_groups);
+        let script_groups: Vec<ScriptGroup> = lock_groups
             .into_values()
             .chain(type_groups.into_values())
             .collect();
