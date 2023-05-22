@@ -9,6 +9,7 @@ use self::sighash::Secp256k1Blake160SighashAllScriptContext;
 
 pub mod multisig;
 pub mod sighash;
+pub mod typeid;
 
 pub trait ScriptHandler {
     /// Try to build transaction with the given script_group and context.
@@ -20,6 +21,15 @@ pub trait ScriptHandler {
         script_group: &ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError>;
+
+    fn post_build(
+        &self,
+        _index: usize,
+        _tx_builder: &mut TransactionBuilder,
+        _context: &dyn HandlerContext,
+    ) -> Result<bool, TxBuilderError> {
+        Ok(false)
+    }
 
     fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError>;
 }
@@ -43,7 +53,10 @@ pub struct HandlerContexts {
 impl Default for HandlerContexts {
     fn default() -> Self {
         Self {
-            contexts: vec![Box::new(Secp256k1Blake160SighashAllScriptContext {})],
+            contexts: vec![
+                Box::new(Secp256k1Blake160SighashAllScriptContext {}),
+                Box::new(typeid::TypeIdContext {}),
+            ],
         }
     }
 }
