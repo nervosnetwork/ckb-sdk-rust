@@ -166,12 +166,12 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
         }
 
         // handle script groups
-        let script_groups = lock_groups
+        let mut script_groups: Vec<ScriptGroup> = lock_groups
             .into_values()
             .chain(type_groups.into_values())
             .collect();
 
-        for script_group in &script_groups {
+        for script_group in script_groups.iter_mut() {
             for handler in configuration.get_script_handlers() {
                 for context in &contexts.contexts {
                     if handler.build_transaction(&mut tx, script_group, context.as_ref())? {

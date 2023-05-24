@@ -43,7 +43,7 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
     fn build_transaction(
         &self,
         tx_builder: &mut TransactionBuilder,
-        script_group: &ScriptGroup,
+        script_group: &mut ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError> {
         if !self.is_match(&script_group.script) {

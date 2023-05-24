@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
 
     let sender = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r")?;
-    let receiver=Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqv5dsed9par23x4g58seaw58j3ym5ml2hs8ztche")?;
+    let receiver= Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqv5dsed9par23x4g58seaw58j3ym5ml2hs8ztche")?;
 
     let iterator = InputIterator::new_with_address(&[sender], &network_info);
     let mut builder = SimpleTransactionBuilder::new(configuration, iterator);

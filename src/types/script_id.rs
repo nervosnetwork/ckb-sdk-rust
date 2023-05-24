@@ -30,10 +30,13 @@ impl ScriptId {
     pub fn is_type_id(&self) -> bool {
         self.code_hash == TYPE_ID_CODE_HASH && self.hash_type == ScriptHashType::Type
     }
-    pub fn dummy_script(&self) -> Script {
+
+    /// Generate a dummy TypeId script with a placeholder args
+    pub fn dummy_type_id_script(&self) -> Script {
         Script::new_builder()
             .code_hash(self.code_hash.pack())
             .hash_type(self.hash_type.into())
+            .args(vec![0u8; 32].pack())
             .build()
     }
 }
