@@ -45,6 +45,10 @@ impl InputIterator {
         Self::new(lock_scripts, network_info)
     }
 
+    pub fn lock_scripts(&self) -> &[packed::Script] {
+        &self.lock_scripts
+    }
+
     fn collect_live_cells_by_lock(
         cell_collector: &mut Box<dyn CellCollector>,
         buffer_inputs: &mut Vec<TransactionInput>,

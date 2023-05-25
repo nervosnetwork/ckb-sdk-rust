@@ -9,11 +9,13 @@ use ckb_sdk::{
     unlock::MultisigConfig,
     Address, CkbRpcClient, NetworkInfo,
 };
-use ckb_types::{core::Capacity, h160, h256, packed::Script};
+use ckb_types::{core::Capacity, h160, h256};
 use std::{error::Error as StdErr, str::FromStr};
 
 fn main() -> Result<(), Box<dyn StdErr>> {
     let network_info = NetworkInfo::testnet();
+    let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
+
     let multisig_config = MultisigConfig::new_with(
         vec![
             h160!("0x7336b0ba900684cb3cb00f0d46d4f64c0994a562"),
@@ -22,23 +24,13 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         0,
         2,
     )?;
+    let sender = multisig_config.to_address(network_info.network_type, None);
+    let receiver = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r")?;
 
-    let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
-    // set small change action instead of default
-    // use ckb_sdk::transaction::SmallChangeAction;
-    // configuration.small_change_action = SmallChangeAction::AsFee { threshold: Capacity::bytes(61)?.as_u64() };
-    // configuration.small_change_action = SmallChangeAction::to_output(&sender.parse()?, Capacity::bytes(1)?.as_u64());
-
-    let sender_addr = multisig_config.to_address(network_info.network_type, None);
-
-    let iterator = InputIterator::new(
-        vec![Script::from(&multisig_config)],
-        configuration.network_info(),
-    );
+    let iterator = InputIterator::new_with_address(&[sender], &network_info);
     let mut builder = SimpleTransactionBuilder::new(configuration, iterator);
-    let addr = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r")?;
-    builder.add_output_from_addr(&addr, Capacity::shannons(501_0000_0000u64));
-    builder.set_change_addr(&sender_addr);
+    builder.add_output(&receiver, Capacity::shannons(510_0000_0000u64));
+
     let mut tx_with_groups =
         builder.build(&HandlerContexts::new_multisig(multisig_config.clone()))?;
 
@@ -46,8 +38,8 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
 
     let private_key1 = h256!("0x4fd809631a6aa6e3bb378dd65eae5d71df895a82c91a615a1e8264741515c79c");
-    let signer = TransactionSigner::new(&network_info);
-    signer.sign_transaction(
+    let signer1 = TransactionSigner::new(&network_info);
+    signer1.sign_transaction(
         &mut tx_with_groups,
         &SignContexts::new_multisig_h256(&private_key1, multisig_config.clone())?,
     )?;
@@ -55,9 +47,9 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
 
-    let signer = TransactionSigner::new(&network_info);
+    let signer2 = TransactionSigner::new(&network_info);
     let private_key2 = h256!("0x7438f7b35c355e3d2fb9305167a31a72d22ddeafb80a21cc99ff6329d92e8087");
-    signer.sign_transaction(
+    signer2.sign_transaction(
         &mut tx_with_groups,
         &SignContexts::new_multisig_h256(&private_key2, multisig_config)?,
     )?;

@@ -1,5 +1,3 @@
-use ckb_types::packed::Script;
-
 use crate::{tx_builder::TxBuilderError, NetworkInfo};
 
 use self::{builder::FeeCalculator, handler::ScriptHandler};
@@ -10,41 +8,23 @@ pub mod input;
 pub mod signer;
 
 pub struct TransactionBuilderConfiguration {
+    /// The network for transaction builder.
     pub network: NetworkInfo,
+    /// The script handlers for transaction builder, user can add their own script handlers.
     pub script_handlers: Vec<Box<dyn ScriptHandler>>,
+    /// The fee rate for transaction builder, the default value is 1000 shannons/KB.
     pub fee_rate: u64,
-    pub small_change_action: SmallChangeAction,
-}
-
-/// Define what to do when change capacity is too small to create a new cell.
-/// If the change capacity is lower than `threshold` in shannons, it is considered small.
-pub enum SmallChangeAction {
-    /// Find another input cell, and put it's capacity to change.
-    /// It's the default action.
-    FindMoreInput,
-    /// Put the change capacity to the first output cell with target address.
-    /// If change capacity lower than threshold, add it to output cell,
-    /// or it will act as `FindMoreInput`
-    ToOutput { target: Script, threshold: u64 },
-    /// Put the small change capacity to fee.
-    /// If change capacity lower than threshold, add it to fee, or it will act as `FindMoreInput`.
-    AsFee { threshold: u64 },
-}
-
-impl SmallChangeAction {
-    pub fn to_output(target: Script, threshold: u64) -> Self {
-        Self::ToOutput { target, threshold }
-    }
-
-    pub fn as_fee(threshold: u64) -> Self {
-        Self::AsFee { threshold }
-    }
+    /// The estimate tx size in bytes, the maximum size of the tx-pool to accept transactions is 512000,
+    /// a typical TWO_IN_TWO_OUT secp256k1-sig-hash-all transaction size is about 597 bytes,
+    /// we set the default value to 128000, it's enough for most cases, and user can change it if needed.
+    pub estimate_tx_size: u64,
 }
 
 impl TransactionBuilderConfiguration {
     pub fn new() -> Result<Self, TxBuilderError> {
         Self::new_with_network(NetworkInfo::mainnet())
     }
+
     pub fn new_testnet() -> Result<Self, TxBuilderError> {
         Self::new_with_network(NetworkInfo::testnet())
     }
@@ -55,9 +35,10 @@ impl TransactionBuilderConfiguration {
             network,
             script_handlers,
             fee_rate: 1000,
-            small_change_action: SmallChangeAction::FindMoreInput,
+            estimate_tx_size: 128000,
         })
     }
+
     fn generate_system_handlers(
         network: &NetworkInfo,
     ) -> Result<Vec<Box<dyn ScriptHandler>>, TxBuilderError> {
@@ -76,18 +57,18 @@ impl TransactionBuilderConfiguration {
         Ok(ret)
     }
 
-    #[inline]
     pub fn network_info(&self) -> &NetworkInfo {
         &self.network
     }
+
     pub fn register_script_handler(&mut self, script_handler: Box<dyn ScriptHandler>) {
         self.script_handlers.push(script_handler);
     }
-    #[inline]
+
     pub fn get_script_handlers(&self) -> &Vec<Box<dyn ScriptHandler>> {
         &self.script_handlers
     }
-    #[inline]
+
     pub fn get_fee_rate(&self) -> u64 {
         self.fee_rate
     }

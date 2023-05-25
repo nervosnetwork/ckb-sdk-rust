@@ -9,313 +9,192 @@ use crate::{
     traits::CellCollectorError,
     transaction::TransactionBuilderConfiguration,
     tx_builder::{BalanceTxCapacityError, TxBuilderError},
-    Address, ScriptGroup, TransactionWithScriptGroups,
+    ScriptGroup, TransactionWithScriptGroups,
 };
 use ckb_types::{
-    core::{Capacity, HeaderView},
+    core::Capacity,
     packed::{self, Byte32, CellOutput, Script},
     prelude::{Builder, Entity, Pack, Unpack},
 };
 pub mod fee_calculator;
 pub use fee_calculator::FeeCalculator;
 
+/// CKB transaction builder trait.
 pub trait CkbTransactionBuilder {
     fn build(
-        &mut self,
+        self,
         contexts: &HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError>;
 }
 
+/// A simple transaction builder implementation, it will build a transaction with enough capacity to pay for the outputs and the fee.
 pub struct SimpleTransactionBuilder {
-    change_output_index: Option<usize>,
-    change_lock: Option<Script>,
+    /// The change lock script, the default change lock script is the last lock script of the input iterator
+    change_lock: Script,
+    /// The transaction builder configuration
     configuration: TransactionBuilderConfiguration,
+    /// Specified transaction inputs, used for building transaction with specific inputs, for example, building a DAO withdraw transaction
     transaction_inputs: Vec<TransactionInput>,
-    input_iter: InputIterator,
-    tx: TransactionBuilder,
+    /// The reward for the DAO withdraw transaction, the default value is 0
     reward: u64,
+    /// The input iterator, used for building transaction with cell collector
+    input_iter: InputIterator,
+    /// The inner transaction builder
+    tx: TransactionBuilder,
 }
 
 impl SimpleTransactionBuilder {
     pub fn new(configuration: TransactionBuilderConfiguration, input_iter: InputIterator) -> Self {
         Self {
-            change_output_index: None,
-            change_lock: None,
+            change_lock: input_iter
+                .lock_scripts()
+                .last()
+                .expect("input iter should not be empty")
+                .clone(),
             configuration,
             transaction_inputs: vec![],
+            reward: 0,
             input_iter,
             tx: TransactionBuilder::default(),
-            reward: 0,
         }
     }
-    pub fn set_change_addr(&mut self, change_addr: &Address) {
-        self.change_lock = Some(change_addr.into());
-    }
 
+    /// Update the change lock script.
     pub fn set_change_lock(&mut self, lock_script: Script) {
-        self.change_lock = Some(lock_script);
+        self.change_lock = lock_script;
     }
 
-    pub fn set_outputs(&mut self, outputs: Vec<CellOutput>, outputs_data: Vec<packed::Bytes>) {
-        self.tx.set_outputs(outputs);
-        self.tx.set_outputs_data(outputs_data);
-    }
-
-    pub fn add_output(&mut self, output: CellOutput, data: packed::Bytes) {
+    /// Add an output cell and output data to the transaction.
+    pub fn add_output_and_data(&mut self, output: CellOutput, data: packed::Bytes) {
         self.tx.output(output);
         self.tx.output_data(data);
     }
 
-    pub fn add_output_from_addr(&mut self, addr: &Address, capacity: Capacity) {
-        self.add_output_from_script(addr.into(), capacity);
-    }
-
-    pub fn add_output_from_script(&mut self, lock_script: Script, capacity: Capacity) {
+    /// Add an output cell with the given lock script and capacity, the type script and the output data are empty.
+    pub fn add_output<S: Into<Script>>(&mut self, output_lock_script: S, capacity: Capacity) {
         let output = CellOutput::new_builder()
             .capacity(capacity.pack())
-            .lock(lock_script)
+            .lock(output_lock_script.into())
             .build();
-        self.add_output(output, packed::Bytes::default());
+        self.add_output_and_data(output, packed::Bytes::default());
     }
-
-    pub fn add_input(&mut self, input: TransactionInput) {
-        self.transaction_inputs.push(input);
-    }
-
-    pub fn add_header_dep(&mut self, header_dep: &HeaderView) {
-        self.tx.dedup_header_dep(header_dep.hash());
-    }
-
-    fn set_change_output_capacity(&mut self, change_capacity: u64) {
-        let mut outputs = self.tx.get_outputs().clone();
-        outputs[self.change_output_index.unwrap()] = outputs
-            [*self.change_output_index.as_ref().unwrap()]
-        .clone()
-        .as_builder()
-        .capacity(change_capacity.pack())
-        .build();
-        self.tx.set_outputs(outputs);
-    }
-
-    fn handle_script(
-        tx_builder: &mut TransactionBuilder,
-        configuration: &TransactionBuilderConfiguration,
-        script_group: &ScriptGroup,
-        contexts: &HandlerContexts,
-    ) -> Result<(), TxBuilderError> {
-        for handler in configuration.get_script_handlers() {
-            for context in &contexts.contexts {
-                if handler.build_transaction(tx_builder, script_group, context.as_ref())? {
-                    break;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn add_output_capacity(
-        tx_builder: &mut TransactionBuilder,
-        script: &Script,
-        delta_capacity: u64,
-    ) -> Result<(), TxBuilderError> {
-        let target_script = script.calc_script_hash();
-        let (idx, output) = tx_builder
-            .get_outputs()
-            .iter()
-            .enumerate()
-            .find(|(_, output)| target_script == output.lock().calc_script_hash())
-            .ok_or(TxBuilderError::NoOutputForSmallChange)?;
-        let capacity: u64 = output.capacity().unpack();
-        let output = output
-            .clone()
-            .as_builder()
-            .capacity((capacity + delta_capacity).pack())
-            .build();
-        tx_builder.set_output(idx, output);
-        Ok(())
-    }
-}
-
-macro_rules! celloutput_capacity {
-    ($output:expr) => {{
-        let tmp_capacity: u64 = $output.capacity().unpack();
-        tmp_capacity
-    }};
 }
 
 impl CkbTransactionBuilder for SimpleTransactionBuilder {
     fn build(
-        &mut self,
+        self,
         contexts: &HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
+        let Self {
+            change_lock,
+            configuration,
+            transaction_inputs,
+            mut input_iter,
+            mut tx,
+            reward,
+        } = self;
+
         let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
         let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
-        let mut outputs_capacity = 0u64;
 
-        for (output_idx, output) in self.tx.get_outputs().clone().iter().enumerate() {
-            outputs_capacity += celloutput_capacity!(output);
-            if let Some(t) = &output.type_().to_opt() {
-                let script_group = type_groups
-                    .entry(t.calc_script_hash())
-                    .or_insert_with(|| ScriptGroup::from_type_script(t));
-                script_group.output_indices.push(output_idx);
-                Self::handle_script(&mut self.tx, &self.configuration, script_group, contexts)?;
+        // setup outputs' type script group
+        let mut outputs_capacity = 0u64;
+        for (output_idx, output) in tx.get_outputs().clone().iter().enumerate() {
+            let output_capacity: u64 = output.capacity().unpack();
+            outputs_capacity += output_capacity;
+            if let Some(type_script) = &output.type_().to_opt() {
+                type_groups
+                    .entry(type_script.calc_script_hash())
+                    .or_insert_with(|| ScriptGroup::from_type_script(type_script))
+                    .output_indices
+                    .push(output_idx);
             }
         }
 
-        let mut state = BalanceState::Init;
+        // setup change output as placeholder with zero capacity
+        let change_output = CellOutput::new_builder().lock(change_lock).build();
+        let occupied_capacity = change_output
+            .occupied_capacity(Capacity::zero())
+            .unwrap()
+            .as_u64();
+        tx.output(change_output);
+        tx.output_data(Default::default());
+
+        // collect inputs
+        let fee_calculator = configuration.fee_calculator();
+        let required_capacity = outputs_capacity
+            + occupied_capacity
+            + fee_calculator.fee(configuration.estimate_tx_size)
+            - reward;
+        let mut has_enough_capacity = false;
         let mut inputs_capacity = 0u64;
-        let mut mini_change_capacity = 0u64;
-        let calculator = self.configuration.fee_calculator();
-        for (input_index, input) in
-            InputView::new(&self.transaction_inputs, &mut self.input_iter).enumerate()
+        for (input_index, input) in InputView::new(&transaction_inputs, &mut input_iter).enumerate()
         {
             let input = input?;
-            self.tx.input(input.cell_input());
+            tx.input(input.cell_input());
+            tx.witness(packed::Bytes::default());
+
             let previous_output = input.previous_output();
-            self.tx.witness(packed::Bytes::default());
             let lock_script = previous_output.lock();
-            let script_group = lock_groups
+            lock_groups
                 .entry(lock_script.calc_script_hash())
-                .or_insert_with(|| ScriptGroup::from_lock_script(&lock_script));
-            script_group.input_indices.push(input_index);
-            // add cellDeps and set witness placeholder
-            Self::handle_script(&mut self.tx, &self.configuration, script_group, contexts)?;
+                .or_insert_with(|| ScriptGroup::from_lock_script(&lock_script))
+                .input_indices
+                .push(input_index);
 
-            if let Some(t) = &previous_output.type_().to_opt() {
-                let script_group = type_groups
-                    .entry(t.calc_script_hash())
-                    .or_insert_with(|| ScriptGroup::from_type_script(t));
-
-                script_group.input_indices.push(input_index);
-                Self::handle_script(&mut self.tx, &self.configuration, script_group, contexts)?;
+            if let Some(type_script) = previous_output.type_().to_opt() {
+                type_groups
+                    .entry(type_script.calc_script_hash())
+                    .or_insert_with(|| ScriptGroup::from_type_script(&type_script))
+                    .input_indices
+                    .push(input_index);
             }
-            inputs_capacity += celloutput_capacity!(previous_output);
-            // check if there is enough capacity for output capacity and change
-            let fee = calculator.fee_with_tx_builder(&self.tx);
-            let change_capacity =
-                (inputs_capacity + self.reward).checked_sub(outputs_capacity + fee);
-            if let Some(mut change_capacity) = change_capacity {
-                if self.change_output_index.is_none() {
-                    // it's already balanced, no need to add change output cell
-                    if change_capacity == 0 {
-                        state = BalanceState::Success;
-                        break;
-                    }
-                    match self.configuration.small_change_action {
-                        super::SmallChangeAction::FindMoreInput => {}
-                        super::SmallChangeAction::ToOutput {
-                            ref target,
-                            threshold,
-                        } => {
-                            if change_capacity < threshold {
-                                Self::add_output_capacity(&mut self.tx, target, change_capacity)?;
-                                state = BalanceState::Success;
-                                break;
-                            }
-                        }
-                        super::SmallChangeAction::AsFee { threshold } => {
-                            if change_capacity < threshold {
-                                state = BalanceState::Success;
-                                break;
-                            }
-                        }
-                    }
-                    {
-                        // init change
-                        let change_output = CellOutput::new_builder()
-                            .capacity(Capacity::bytes(0).unwrap().pack())
-                            .lock(self.change_lock.as_ref().unwrap().clone())
-                            .build();
-                        let change_output_data = packed::Bytes::default();
-                        mini_change_capacity = change_output
-                            .occupied_capacity(Capacity::bytes(change_output_data.len()).unwrap())
-                            .unwrap()
-                            .as_u64();
-                        self.change_output_index = Some(self.tx.get_outputs().len());
-                        self.tx.output(change_output);
-                        self.tx.output_data(change_output_data);
-                    }
-                    let new_fee = calculator.fee_with_tx_builder(&self.tx);
-                    if let Some(new_change) =
-                        (inputs_capacity + self.reward).checked_sub(outputs_capacity + new_fee)
-                    {
-                        change_capacity = new_change;
-                    } else {
-                        state = BalanceState::CapacityNotEnoughForChange(
-                            mini_change_capacity + new_fee - fee,
-                            change_capacity,
-                        );
-                        continue;
-                    }
-                }
-                if change_capacity >= mini_change_capacity {
-                    self.set_change_output_capacity(change_capacity);
-                    state = BalanceState::Success;
-                    break;
-                } else {
-                    state = BalanceState::CapacityNotEnoughForChange(
-                        mini_change_capacity,
-                        change_capacity,
-                    );
-                }
-            } else {
-                state = BalanceState::CapacityNotEnough(
-                    (outputs_capacity + fee) - (inputs_capacity + self.reward),
-                );
+            let input_capacity: u64 = previous_output.capacity().unpack();
+            inputs_capacity += input_capacity;
+            if inputs_capacity >= required_capacity {
+                has_enough_capacity = true;
+                break;
             }
         }
 
-        if !state.is_success() {
-            return Err(TxBuilderError::BalanceCapacity(state.into()));
+        if !has_enough_capacity {
+            return Err(BalanceTxCapacityError::CapacityNotEnough(format!(
+                "can not find enough inputs, inputs_capacity: {}, required_capacity: {}",
+                inputs_capacity, required_capacity
+            ))
+            .into());
         }
+
+        // handle script groups
         let script_groups = lock_groups
             .into_values()
             .chain(type_groups.into_values())
             .collect();
-        Ok(TransactionWithScriptGroups::new(
-            self.tx.clone().build(),
-            script_groups,
-        ))
-    }
-}
 
-enum BalanceState {
-    Init,
-    Success,
-    // (left_capacity)
-    CapacityNotEnough(u64),
-    // (required_capacity, change_capacity)
-    CapacityNotEnoughForChange(u64, u64),
-}
-impl BalanceState {
-    #[inline]
-    fn is_success(&self) -> bool {
-        matches!(self, BalanceState::Success)
-    }
-}
-
-impl From<BalanceState> for BalanceTxCapacityError {
-    fn from(val: BalanceState) -> Self {
-        BalanceTxCapacityError::CapacityNotEnough(val.to_string())
-    }
-}
-
-impl ToString for BalanceState {
-    fn to_string(&self) -> String {
-        match self {
-            BalanceState::Init => "Init".to_string(),
-            BalanceState::Success => "Success".to_string(),
-            BalanceState::CapacityNotEnough(left_capacity) => {
-                format!("CapacityNotEnough, left_capacity: {}", left_capacity)
-            }
-            BalanceState::CapacityNotEnoughForChange(required_capacity, change_capacity) => {
-                format!(
-                    "CapacityNotEnoughForChange, required_capacity: {}, change_capacity: {}",
-                    required_capacity, change_capacity
-                )
+        for script_group in &script_groups {
+            for handler in configuration.get_script_handlers() {
+                for context in &contexts.contexts {
+                    if handler.build_transaction(&mut tx, script_group, context.as_ref())? {
+                        break;
+                    }
+                }
             }
         }
+
+        // update change output capacity to real value
+        let fee = fee_calculator.fee_with_tx_builder(&tx);
+        let change_capacity = inputs_capacity + reward - outputs_capacity - fee;
+        let change_output = tx
+            .outputs
+            .last()
+            .unwrap()
+            .clone()
+            .as_builder()
+            .capacity(change_capacity.pack())
+            .build();
+        tx.set_output(tx.outputs.len() - 1, change_output);
+
+        Ok(TransactionWithScriptGroups::new(tx.build(), script_groups))
     }
 }
 
