@@ -151,7 +151,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             }
             let input_capacity: u64 = previous_output.capacity().unpack();
             inputs_capacity += input_capacity;
-            if inputs_capacity > required_capacity {
+            if inputs_capacity >= required_capacity {
                 has_enough_capacity = true;
                 break;
             }
