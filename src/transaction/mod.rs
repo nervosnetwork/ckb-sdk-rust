@@ -53,6 +53,7 @@ impl TransactionBuilderConfiguration {
                     network,
                 )?,
             ) as Box<_>,
+            Box::new(handler::typeid::TypeIdHandler) as Box<_>,
         ];
         Ok(ret)
     }

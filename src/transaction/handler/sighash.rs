@@ -16,7 +16,7 @@ pub struct Secp256k1Blake160SighashAllScriptHandler {
     cell_deps: Vec<CellDep>,
 }
 
-pub struct Secp256k1Blake160SighashAllScriptContext {}
+pub struct Secp256k1Blake160SighashAllScriptContext;
 
 impl HandlerContext for Secp256k1Blake160SighashAllScriptContext {}
 
@@ -35,7 +35,7 @@ impl ScriptHandler for Secp256k1Blake160SighashAllScriptHandler {
     fn build_transaction(
         &self,
         tx_builder: &mut TransactionBuilder,
-        script_group: &ScriptGroup,
+        script_group: &mut ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError> {
         if !self.is_match(&script_group.script) {
