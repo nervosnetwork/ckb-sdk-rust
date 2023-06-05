@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use super::{
-    handler::HandlerContexts,
-    input::{InputIterator, TransactionInput},
-};
+use super::{handler::HandlerContexts, input::TransactionInput};
 use crate::{
     core::TransactionBuilder,
     traits::CellCollectorError,
@@ -12,12 +9,16 @@ use crate::{
     ScriptGroup, TransactionWithScriptGroups,
 };
 use ckb_types::{
-    core::Capacity,
+    core::{Capacity, TransactionView},
     packed::{self, Byte32, CellOutput, Script},
     prelude::{Builder, Entity, Pack, Unpack},
 };
 pub mod fee_calculator;
+pub mod simple;
+pub mod sudt;
+
 pub use fee_calculator::FeeCalculator;
+pub use simple::SimpleTransactionBuilder;
 
 /// CKB transaction builder trait.
 pub trait CkbTransactionBuilder {
@@ -27,163 +28,83 @@ pub trait CkbTransactionBuilder {
     ) -> Result<TransactionWithScriptGroups, TxBuilderError>;
 }
 
-/// A simple transaction builder implementation, it will build a transaction with enough capacity to pay for the outputs and the fee.
-pub struct SimpleTransactionBuilder {
-    /// The change lock script, the default change lock script is the last lock script of the input iterator
+/// Change output builder trait.
+trait ChangeBuilder {
+    /// Initialize the change output and data, and add it to the transaction builder.
+    fn init(&self, tx: &mut TransactionBuilder);
+
+    /// Check if the inputs has enough capacity to build the transaction and pay the fee.
+    fn check_balance(&mut self, input: TransactionInput, tx: &mut TransactionBuilder) -> bool;
+
+    /// Finalize the transaction with the change capacity and data.
+    fn finalize(&self, tx: TransactionBuilder) -> TransactionView;
+}
+
+struct DefaultChangeBuilder<'a> {
+    configuration: &'a TransactionBuilderConfiguration,
     change_lock: Script,
-    /// The transaction builder configuration
-    configuration: TransactionBuilderConfiguration,
-    /// Specified transaction inputs, used for building transaction with specific inputs, for example, building a DAO withdraw transaction
-    transaction_inputs: Vec<TransactionInput>,
-    /// The reward for the DAO withdraw transaction, the default value is 0
-    reward: u64,
-    /// The input iterator, used for building transaction with cell collector
-    input_iter: InputIterator,
-    /// The inner transaction builder
-    tx: TransactionBuilder,
+    inputs: Vec<TransactionInput>,
 }
 
-impl SimpleTransactionBuilder {
-    pub fn new(configuration: TransactionBuilderConfiguration, input_iter: InputIterator) -> Self {
-        Self {
-            change_lock: input_iter
-                .lock_scripts()
-                .last()
-                .expect("input iter should not be empty")
-                .clone(),
-            configuration,
-            transaction_inputs: vec![],
-            reward: 0,
-            input_iter,
-            tx: TransactionBuilder::default(),
-        }
-    }
-
-    /// Update the change lock script.
-    pub fn set_change_lock(&mut self, lock_script: Script) {
-        self.change_lock = lock_script;
-    }
-
-    /// Add an output cell and output data to the transaction.
-    pub fn add_output_and_data(&mut self, output: CellOutput, data: packed::Bytes) {
-        self.tx.output(output);
-        self.tx.output_data(data);
-    }
-
-    /// Add an output cell with the given lock script and capacity, the type script and the output data are empty.
-    pub fn add_output<S: Into<Script>>(&mut self, output_lock_script: S, capacity: Capacity) {
-        let output = CellOutput::new_builder()
-            .capacity(capacity.pack())
-            .lock(output_lock_script.into())
+impl<'a> DefaultChangeBuilder<'a> {
+    fn get_change(&self) -> (CellOutput, packed::Bytes) {
+        let change_output = CellOutput::new_builder()
+            .lock(self.change_lock.clone())
             .build();
-        self.add_output_and_data(output, packed::Bytes::default());
+        let change_output_data = packed::Bytes::default();
+        (change_output, change_output_data)
     }
 }
 
-impl CkbTransactionBuilder for SimpleTransactionBuilder {
-    fn build(
-        self,
-        contexts: &HandlerContexts,
-    ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
-        let Self {
-            change_lock,
-            configuration,
-            transaction_inputs,
-            mut input_iter,
-            mut tx,
-            reward,
-        } = self;
+impl<'a> ChangeBuilder for DefaultChangeBuilder<'a> {
+    fn init(&self, tx: &mut TransactionBuilder) {
+        let (change_output, change_output_data) = self.get_change();
+        tx.output(change_output);
+        tx.output_data(change_output_data);
+    }
 
-        let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
-        let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+    fn check_balance(&mut self, input: TransactionInput, tx: &mut TransactionBuilder) -> bool {
+        self.inputs.push(input);
 
-        // setup outputs' type script group
-        let mut outputs_capacity = 0u64;
-        for (output_idx, output) in tx.get_outputs().clone().iter().enumerate() {
-            let output_capacity: u64 = output.capacity().unpack();
-            outputs_capacity += output_capacity;
-            if let Some(type_script) = &output.type_().to_opt() {
-                type_groups
-                    .entry(type_script.calc_script_hash())
-                    .or_insert_with(|| ScriptGroup::from_type_script(type_script))
-                    .output_indices
-                    .push(output_idx);
-            }
-        }
-
-        // setup change output as placeholder with zero capacity
-        let change_output = CellOutput::new_builder().lock(change_lock).build();
+        let outputs_capacity: u64 = tx
+            .get_outputs()
+            .iter()
+            .map(|o| Unpack::<u64>::unpack(&o.capacity()))
+            .sum();
+        let (change_output, change_output_data) = self.get_change();
         let occupied_capacity = change_output
-            .occupied_capacity(Capacity::zero())
+            .occupied_capacity(Capacity::bytes(change_output_data.len()).unwrap())
             .unwrap()
             .as_u64();
-        tx.output(change_output);
-        tx.output_data(Default::default());
 
-        // collect inputs
-        let fee_calculator = configuration.fee_calculator();
+        let fee_calculator = self.configuration.fee_calculator();
         let required_capacity = outputs_capacity
             + occupied_capacity
-            + fee_calculator.fee(configuration.estimate_tx_size)
-            - reward;
-        let mut has_enough_capacity = false;
-        let mut inputs_capacity = 0u64;
-        for (input_index, input) in InputView::new(&transaction_inputs, &mut input_iter).enumerate()
-        {
-            let input = input?;
-            tx.input(input.cell_input());
-            tx.witness(packed::Bytes::default());
+            + fee_calculator.fee(self.configuration.estimate_tx_size);
 
-            let previous_output = input.previous_output();
-            let lock_script = previous_output.lock();
-            lock_groups
-                .entry(lock_script.calc_script_hash())
-                .or_insert_with(|| ScriptGroup::from_lock_script(&lock_script))
-                .input_indices
-                .push(input_index);
+        let inputs_capacity: u64 = self
+            .inputs
+            .iter()
+            .map(|i| Unpack::<u64>::unpack(&i.previous_output().capacity()))
+            .sum();
+        inputs_capacity >= required_capacity
+    }
 
-            if let Some(type_script) = previous_output.type_().to_opt() {
-                type_groups
-                    .entry(type_script.calc_script_hash())
-                    .or_insert_with(|| ScriptGroup::from_type_script(&type_script))
-                    .input_indices
-                    .push(input_index);
-            }
-            let input_capacity: u64 = previous_output.capacity().unpack();
-            inputs_capacity += input_capacity;
-            if inputs_capacity >= required_capacity {
-                has_enough_capacity = true;
-                break;
-            }
-        }
-
-        if !has_enough_capacity {
-            return Err(BalanceTxCapacityError::CapacityNotEnough(format!(
-                "can not find enough inputs, inputs_capacity: {}, required_capacity: {}",
-                inputs_capacity, required_capacity
-            ))
-            .into());
-        }
-
-        // handle script groups
-        let mut script_groups: Vec<ScriptGroup> = lock_groups
-            .into_values()
-            .chain(type_groups.into_values())
-            .collect();
-
-        for script_group in script_groups.iter_mut() {
-            for handler in configuration.get_script_handlers() {
-                for context in &contexts.contexts {
-                    if handler.build_transaction(&mut tx, script_group, context.as_ref())? {
-                        break;
-                    }
-                }
-            }
-        }
-
+    fn finalize(&self, mut tx: TransactionBuilder) -> TransactionView {
         // update change output capacity to real value
+        let fee_calculator = self.configuration.fee_calculator();
         let fee = fee_calculator.fee_with_tx_builder(&tx);
-        let change_capacity = inputs_capacity + reward - outputs_capacity - fee;
+        let inputs_capacity: u64 = self
+            .inputs
+            .iter()
+            .map(|i| Unpack::<u64>::unpack(&i.previous_output().capacity()))
+            .sum();
+        let outputs_capacity: u64 = tx
+            .get_outputs()
+            .iter()
+            .map(|o| Unpack::<u64>::unpack(&o.capacity()))
+            .sum();
+        let change_capacity = inputs_capacity - outputs_capacity - fee;
         let change_output = tx
             .outputs
             .last()
@@ -193,39 +114,83 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             .capacity(change_capacity.pack())
             .build();
         tx.set_output(tx.outputs.len() - 1, change_output);
-
-        Ok(TransactionWithScriptGroups::new(tx.build(), script_groups))
+        tx.build()
     }
 }
 
-struct InputView<'a> {
-    index: usize,
-    transaction_inputs: &'a Vec<TransactionInput>,
-    input_iter: &'a mut InputIterator,
-}
+/// a helper fn to build a transaction with common logic
+fn inner_build<
+    CB: ChangeBuilder,
+    I: Iterator<Item = Result<TransactionInput, CellCollectorError>>,
+>(
+    mut tx: TransactionBuilder,
+    mut change_builder: CB,
+    input_iter: I,
+    configuration: &TransactionBuilderConfiguration,
+    contexts: &HandlerContexts,
+) -> Result<TransactionWithScriptGroups, TxBuilderError> {
+    let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+    let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
 
-impl<'a> InputView<'a> {
-    fn new(
-        transaction_inputs: &'a Vec<TransactionInput>,
-        input_iter: &'a mut InputIterator,
-    ) -> InputView<'a> {
-        InputView {
-            index: 0,
-            transaction_inputs,
-            input_iter,
+    // setup outputs' type script group
+    for (output_idx, output) in tx.get_outputs().clone().iter().enumerate() {
+        if let Some(type_script) = &output.type_().to_opt() {
+            type_groups
+                .entry(type_script.calc_script_hash())
+                .or_insert_with(|| ScriptGroup::from_type_script(type_script))
+                .output_indices
+                .push(output_idx);
         }
     }
-}
 
-impl<'a> Iterator for InputView<'a> {
-    type Item = Result<TransactionInput, CellCollectorError>;
+    // setup change output and data
+    change_builder.init(&mut tx);
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.transaction_inputs.len() {
-            let input = self.transaction_inputs.get(self.index).unwrap();
-            self.index += 1;
-            return Some(Ok(input.clone()));
+    // collect inputs
+    for (input_index, input) in input_iter.enumerate() {
+        let input = input?;
+        tx.input(input.cell_input());
+        tx.witness(packed::Bytes::default());
+
+        let previous_output = input.previous_output();
+        let lock_script = previous_output.lock();
+        lock_groups
+            .entry(lock_script.calc_script_hash())
+            .or_insert_with(|| ScriptGroup::from_lock_script(&lock_script))
+            .input_indices
+            .push(input_index);
+
+        if let Some(type_script) = previous_output.type_().to_opt() {
+            type_groups
+                .entry(type_script.calc_script_hash())
+                .or_insert_with(|| ScriptGroup::from_type_script(&type_script))
+                .input_indices
+                .push(input_index);
         }
-        self.input_iter.next()
+
+        // check if we have enough inputs
+        if change_builder.check_balance(input, &mut tx) {
+            // handle script groups
+            let mut script_groups: Vec<ScriptGroup> = lock_groups
+                .into_values()
+                .chain(type_groups.into_values())
+                .collect();
+
+            for script_group in script_groups.iter_mut() {
+                for handler in configuration.get_script_handlers() {
+                    for context in &contexts.contexts {
+                        if handler.build_transaction(&mut tx, script_group, context.as_ref())? {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let tx_view = change_builder.finalize(tx);
+
+            return Ok(TransactionWithScriptGroups::new(tx_view, script_groups));
+        }
     }
+
+    Err(BalanceTxCapacityError::CapacityNotEnough("can not find enough inputs".to_string()).into())
 }

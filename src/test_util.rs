@@ -64,6 +64,7 @@ pub struct Context {
     pub cell_dep_map: HashMap<ScriptId, CellDep>,
 }
 
+#[derive(Clone)]
 pub struct LiveCellsContext {
     pub inputs: Vec<MockInput>,
     pub header_deps: Vec<HeaderView>,

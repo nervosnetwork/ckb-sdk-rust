@@ -180,6 +180,7 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
     }
 }
 
+#[derive(Clone)]
 pub struct LightClientCellCollector {
     light_client: LightClientRpcClient,
     offchain: OffchainCellCollector,

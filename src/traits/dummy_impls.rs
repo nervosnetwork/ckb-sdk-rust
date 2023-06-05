@@ -11,7 +11,7 @@ use crate::traits::{
 use anyhow::anyhow;
 
 /// A dummy CellCollector. All methods will return error if possible.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct DummyCellCollector;
 
 impl CellCollector for DummyCellCollector {

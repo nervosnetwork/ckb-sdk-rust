@@ -19,6 +19,7 @@ pub use offchain_impls::{
     OffchainTransactionDependencyProvider,
 };
 
+use dyn_clone::DynClone;
 use thiserror::Error;
 
 use ckb_hash::blake2b_256;
@@ -376,7 +377,7 @@ impl CellQueryOptions {
         }
     }
 }
-pub trait CellCollector {
+pub trait CellCollector: DynClone {
     /// Collect live cells by query options, if `apply_changes` is true will
     /// mark all collected cells as dead cells.
     fn collect_live_cells(

@@ -7,8 +7,8 @@ use crate::traits::LiveCell;
 
 #[derive(Clone, Debug)]
 pub struct TransactionInput {
-    live_cell: LiveCell,
-    since: u64,
+    pub live_cell: LiveCell,
+    pub since: u64,
 }
 
 impl TransactionInput {

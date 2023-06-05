@@ -27,6 +27,7 @@ jsonrpc-core = "18"
 parking_lot = "0.12"
 lru = "0.7.1"
 dashmap = "5.4"
+dyn-clone = "1.0"
 
 ckb-types = "=0.108.0"
 ckb-dao-utils = "=0.108.0"

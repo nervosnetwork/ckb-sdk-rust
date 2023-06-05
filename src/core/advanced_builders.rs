@@ -214,11 +214,13 @@ impl TransactionBuilder {
         set_witness
     );
     def_setter_for_vector!(
+        set_i,
         outputs_data,
         Bytes,
         output_data,
         outputs_data,
-        set_outputs_data
+        set_outputs_data,
+        set_output_data
     );
 
     /// Converts into [`TransactionView`](struct.TransactionView.html).

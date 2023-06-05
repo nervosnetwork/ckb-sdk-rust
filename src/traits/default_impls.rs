@@ -239,6 +239,7 @@ impl HeaderDepResolver for DefaultHeaderDepResolver {
 }
 
 /// A cell collector use ckb-indexer as backend
+#[derive(Clone)]
 pub struct DefaultCellCollector {
     indexer_client: IndexerRpcClient,
     ckb_client: CkbRpcClient,

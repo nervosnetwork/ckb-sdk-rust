@@ -5,10 +5,13 @@ use crate::{
     ScriptGroup,
 };
 
-use self::sighash::Secp256k1Blake160SighashAllScriptContext;
+use self::{
+    sighash::Secp256k1Blake160SighashAllScriptContext, sudt::SudtContext, typeid::TypeIdContext,
+};
 
 pub mod multisig;
 pub mod sighash;
+pub mod sudt;
 pub mod typeid;
 
 pub trait ScriptHandler {
@@ -46,7 +49,8 @@ impl Default for HandlerContexts {
         Self {
             contexts: vec![
                 Box::new(Secp256k1Blake160SighashAllScriptContext),
-                Box::new(typeid::TypeIdContext),
+                Box::new(SudtContext),
+                Box::new(TypeIdContext),
             ],
         }
     }
