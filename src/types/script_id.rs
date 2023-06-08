@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::constants::TYPE_ID_CODE_HASH;
+use crate::constants::{DAO_TYPE_HASH, TYPE_ID_CODE_HASH};
 use ckb_types::{core::ScriptHashType, packed::Script, prelude::*, H256};
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug, Default)]
@@ -29,6 +29,10 @@ impl ScriptId {
 
     pub fn is_type_id(&self) -> bool {
         self.code_hash == TYPE_ID_CODE_HASH && self.hash_type == ScriptHashType::Type
+    }
+
+    pub fn is_dao(&self) -> bool {
+        self.code_hash == DAO_TYPE_HASH && self.hash_type == ScriptHashType::Type
     }
 
     /// Generate a dummy TypeId script with a placeholder args

@@ -39,6 +39,12 @@ macro_rules! jsonrpc {
             pub id: std::sync::atomic::AtomicU64,
         }
 
+        impl Clone for $struct_name {
+            fn clone(&self) -> Self {
+                Self::new(&self.url.to_string())
+            }
+        }
+
         impl $struct_name {
             pub fn new(uri: &str) -> Self {
                 let url = reqwest::Url::parse(uri).expect("ckb uri, e.g. \"http://127.0.0.1:8114\"");
