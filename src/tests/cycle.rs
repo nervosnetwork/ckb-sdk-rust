@@ -8,6 +8,7 @@ use ckb_types::{
     prelude::{Builder, Entity, Pack},
     H256,
 };
+use lazy_static::lazy_static;
 
 use crate::{
     constants::ONE_CKB,

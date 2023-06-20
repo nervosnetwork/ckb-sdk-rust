@@ -1,7 +1,7 @@
 use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockResponse, BlockTemplate,
     BlockView, CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, EstimateCycles,
-    ExtraLoggerConfig, FeeRateStatics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
+    ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
     OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState, Timestamp, Transaction,
     TransactionAndWitnessProof, TransactionProof, TransactionWithStatusResponse, TxPoolInfo,
     Uint32, Uint64, Version,
@@ -39,7 +39,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_block_median_time(&self, block_hash: H256) -> Option<Timestamp>;
     pub fn get_block_economic_state(&self, block_hash: H256) -> Option<BlockEconomicState>;
     pub fn estimate_cycles(&self, tx: Transaction)-> EstimateCycles;
-    pub fn get_fee_rate_statics(&self, target:Option<Uint64>)->FeeRateStatics;
+    pub fn get_fee_rate_statics(&self, tartet:Option<Uint64>)->FeeRateStatistics;
 
     // Indexer
     pub fn get_indexer_tip(&self) -> Option<Tip>;

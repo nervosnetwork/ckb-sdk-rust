@@ -23,7 +23,8 @@ use dyn_clone::DynClone;
 use thiserror::Error;
 
 use ckb_hash::blake2b_256;
-use ckb_traits::{BlockEpoch, CellDataProvider, EpochProvider, HeaderProvider};
+use ckb_traits::{BlockEpoch, CellDataProvider, EpochProvider, ExtensionProvider, HeaderProvider};
+use ckb_types::core::{BlockExt, BlockNumber};
 use ckb_types::{
     bytes::Bytes,
     core::{
@@ -90,7 +91,7 @@ pub enum TransactionDependencyError {
 ///   * inputs
 ///   * cell_deps
 ///   * header_deps
-pub trait TransactionDependencyProvider {
+pub trait TransactionDependencyProvider: Sync + Send {
     /// For verify certain cell belong to certain transaction
     fn get_transaction(
         &self,
@@ -120,6 +121,19 @@ impl EpochProvider for &dyn TransactionDependencyProvider {
     fn get_epoch_ext(&self, _block_header: &HeaderView) -> Option<EpochExt> {
         None
     }
+
+    fn get_block_hash(&self, number: BlockNumber) -> Option<Byte32> {
+        None
+    }
+
+    fn get_block_ext(&self, block_hash: &Byte32) -> Option<BlockExt> {
+        None
+    }
+
+    fn get_block_header(&self, hash: &Byte32) -> Option<HeaderView> {
+        None
+    }
+
     fn get_block_epoch(&self, _block_header: &HeaderView) -> Option<BlockEpoch> {
         None
     }
@@ -158,6 +172,12 @@ impl CellProvider for &dyn TransactionDependencyProvider {
                 .unwrap_or(CellStatus::Unknown),
             Err(_err) => CellStatus::Unknown,
         }
+    }
+}
+
+impl ExtensionProvider for &dyn TransactionDependencyProvider {
+    fn get_block_extension(&self, hash: &Byte32) -> Option<ckb_types::packed::Bytes> {
+        None
     }
 }
 
