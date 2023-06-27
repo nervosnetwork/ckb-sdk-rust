@@ -254,4 +254,13 @@ impl TransactionDependencyProvider for OffchainTransactionDependencyProvider {
             "get_header not supported"
         )))
     }
+
+    fn get_block_extension(
+        &self,
+        _block_hash: &Byte32,
+    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
+        Err(TransactionDependencyError::Other(anyhow!(
+            "get_block_extension not supported"
+        )))
+    }
 }

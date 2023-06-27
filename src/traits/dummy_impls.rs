@@ -86,4 +86,12 @@ impl TransactionDependencyProvider for DummyTransactionDependencyProvider {
             "dummy get_header"
         )))
     }
+    fn get_block_extension(
+        &self,
+        _block_hash: &Byte32,
+    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
+        Err(TransactionDependencyError::Other(anyhow!(
+            "dummy get_block_extension"
+        )))
+    }
 }

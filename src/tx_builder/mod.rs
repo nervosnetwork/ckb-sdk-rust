@@ -553,7 +553,7 @@ impl CapacityBalancer {
         header_dep_resolver: &dyn HeaderDepResolver,
         change_index: Option<usize>,
     ) -> Result<(TransactionView, Option<usize>, bool), BalanceTxCapacityError> {
-        let cycle_resolver = CycleResolver::new(tx_dep_provider.clone());
+        let cycle_resolver = CycleResolver::new(tx_dep_provider);
         let cycle = cycle_resolver.estimate_cycles(&tx)?;
         let cycle_size = (cycle as f64 * bytes_per_cycle()) as usize;
         let serialized_size = tx.data().as_reader().serialized_size_in_block();

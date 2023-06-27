@@ -178,6 +178,15 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
             }
         }
     }
+
+    fn get_block_extension(
+        &self,
+        _block_hash: &Byte32,
+    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
+        Err(TransactionDependencyError::NotFound(
+            "get_block_extension not supported".to_string(),
+        ))
+    }
 }
 
 #[derive(Clone)]
