@@ -1,4 +1,4 @@
-use ckb_chain_spec::consensus::{Consensus, ConsensusBuilder};
+use ckb_chain_spec::consensus::ConsensusBuilder;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -426,6 +426,15 @@ impl TransactionDependencyProvider for Context {
     fn get_header(&self, _block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
         Err(TransactionDependencyError::NotFound(
             "header not found".to_string(),
+        ))
+    }
+
+    fn get_block_extension(
+        &self,
+        block_hash: &Byte32,
+    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
+        Err(TransactionDependencyError::NotFound(
+            "block extension not found".to_string(),
         ))
     }
 }

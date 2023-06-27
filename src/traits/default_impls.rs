@@ -551,6 +551,24 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
         inner.header_cache.put(block_hash.clone(), header.clone());
         Ok(header)
     }
+
+    fn get_block_extension(
+        &self,
+        block_hash: &Byte32,
+    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
+        let inner = self.inner.lock();
+
+        let block = inner
+            .rpc_client
+            .get_block(block_hash.unpack())
+            .map_err(|err| TransactionDependencyError::Other(err.into()))?;
+        return match block {
+            Some(block) => Ok(block
+                .extension
+                .map(|extension| ckb_types::packed::Bytes::from(extension))),
+            None => Ok(None),
+        };
+    }
 }
 
 /// A signer use secp256k1 raw key, the id is `blake160(pubkey)`.

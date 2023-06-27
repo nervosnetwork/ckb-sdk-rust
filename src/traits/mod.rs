@@ -23,14 +23,13 @@ use dyn_clone::DynClone;
 use thiserror::Error;
 
 use ckb_hash::blake2b_256;
-use ckb_traits::{BlockEpoch, CellDataProvider, EpochProvider, ExtensionProvider, HeaderProvider};
-use ckb_types::core::{BlockExt, BlockNumber};
+use ckb_traits::{CellDataProvider, EpochProvider, ExtensionProvider, HeaderProvider};
 use ckb_types::{
     bytes::Bytes,
     core::{
         cell::{CellMetaBuilder, CellProvider, CellStatus, HeaderChecker},
         error::OutPointError,
-        EpochExt, HeaderView, TransactionView,
+        HeaderView, TransactionView,
     },
     packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction},
     prelude::*,
@@ -103,6 +102,12 @@ pub trait TransactionDependencyProvider: Sync + Send {
     fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError>;
     /// For get the header information of header_deps
     fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError>;
+
+    /// For get_block_extension
+    fn get_block_extension(
+        &self,
+        block_hash: &Byte32,
+    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError>;
 }
 
 // Implement CellDataProvider trait is currently for `DaoCalculator`
@@ -116,28 +121,7 @@ impl CellDataProvider for &dyn TransactionDependencyProvider {
             .map(|data| blake2b_256(data.as_ref()).pack())
     }
 }
-// Implement CellDataProvider trait is currently for `DaoCalculator`
-impl EpochProvider for &dyn TransactionDependencyProvider {
-    fn get_epoch_ext(&self, _block_header: &HeaderView) -> Option<EpochExt> {
-        None
-    }
 
-    fn get_block_hash(&self, number: BlockNumber) -> Option<Byte32> {
-        None
-    }
-
-    fn get_block_ext(&self, block_hash: &Byte32) -> Option<BlockExt> {
-        None
-    }
-
-    fn get_block_header(&self, hash: &Byte32) -> Option<HeaderView> {
-        None
-    }
-
-    fn get_block_epoch(&self, _block_header: &HeaderView) -> Option<BlockEpoch> {
-        None
-    }
-}
 // Implement CellDataProvider trait is currently for `DaoCalculator`
 impl HeaderProvider for &dyn TransactionDependencyProvider {
     fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
@@ -177,7 +161,10 @@ impl CellProvider for &dyn TransactionDependencyProvider {
 
 impl ExtensionProvider for &dyn TransactionDependencyProvider {
     fn get_block_extension(&self, hash: &Byte32) -> Option<ckb_types::packed::Bytes> {
-        None
+        match TransactionDependencyProvider::get_block_extension(*self, hash).ok() {
+            Some(Some(bytes)) => Some(bytes),
+            _ => None,
+        }
     }
 }
 
@@ -219,7 +206,7 @@ impl ValueRangeOption {
     pub fn new_min(start: u64) -> ValueRangeOption {
         ValueRangeOption {
             start,
-            end: u64::max_value(),
+            end: u64::MAX,
         }
     }
     pub fn match_value(&self, value: u64) -> bool {
