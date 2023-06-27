@@ -255,7 +255,7 @@ impl Context {
     }
 
     pub fn add_header(&mut self, header: HeaderView) {
-        self.header_deps.push(header.clone());
+        self.header_deps.push(header);
     }
 
     pub fn get_live_cell(&self, out_point: &OutPoint) -> Option<(CellOutput, Bytes)> {
@@ -431,7 +431,7 @@ impl TransactionDependencyProvider for Context {
 
     fn get_block_extension(
         &self,
-        block_hash: &Byte32,
+        _block_hash: &Byte32,
     ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
         Err(TransactionDependencyError::NotFound(
             "block extension not found".to_string(),

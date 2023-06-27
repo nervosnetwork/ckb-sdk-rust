@@ -625,7 +625,7 @@ impl<
         let mut verifier = TransactionScriptsVerifier::new(
             Arc::new(rtx),
             self.tx_dep_provider.clone(),
-            self.consensus.clone(),
+            Arc::clone(&self.consensus),
             Arc::new(TxVerifyEnv::new_submit(&self.tip_header)),
         );
         verifier.set_debug_printer(|script_hash, message| {
