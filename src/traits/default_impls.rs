@@ -562,12 +562,10 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
             .rpc_client
             .get_block(block_hash.unpack())
             .map_err(|err| TransactionDependencyError::Other(err.into()))?;
-        return match block {
-            Some(block) => Ok(block
-                .extension
-                .map(|extension| ckb_types::packed::Bytes::from(extension))),
+        match block {
+            Some(block) => Ok(block.extension.map(ckb_types::packed::Bytes::from)),
             None => Ok(None),
-        };
+        }
     }
 }
 

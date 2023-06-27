@@ -23,7 +23,7 @@ use dyn_clone::DynClone;
 use thiserror::Error;
 
 use ckb_hash::blake2b_256;
-use ckb_traits::{CellDataProvider, EpochProvider, ExtensionProvider, HeaderProvider};
+use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
 use ckb_types::{
     bytes::Bytes,
     core::{
