@@ -19,9 +19,14 @@ const ARGS: [u8; 32] = [
 #[test]
 fn test_get_indexer_tip() {
     let ckb_client = CkbRpcClient::new(TEST_CKB_RPC_URL);
-    let indexer_tip = ckb_client.get_indexer_tip().unwrap().unwrap();
+    let indexer_tip_block_number = ckb_client
+        .get_indexer_tip()
+        .unwrap()
+        .unwrap()
+        .block_number
+        .value();
     let tip_block_number = ckb_client.get_tip_block_number().unwrap().value();
-    assert!(indexer_tip.block_number.value() - tip_block_number <= 1);
+    assert!(tip_block_number - indexer_tip_block_number <= 1);
 }
 
 #[test]
