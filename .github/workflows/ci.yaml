@@ -53,7 +53,7 @@ jobs:
     - name: Security Audit & Licenses
       run: |
         rustup toolchain install stable --profile minimal
-        cargo deny --version || cargo install cargo-deny --locked
+        cargo deny --version || cargo install cargo-deny@0.13.9 --locked
         make security-audit
         make check-crates
         make check-licenses
