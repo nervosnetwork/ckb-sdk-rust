@@ -18,7 +18,7 @@ pub type AlertPriority = Uint32;
 /// An example in JSON
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::Alert>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::Alert>(r#"
 /// {
 ///   "id": "0x1",
 ///   "cancel": "0x0",

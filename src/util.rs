@@ -160,7 +160,7 @@ mod tests {
     use crate::test_util::MockRpcResult;
     use ckb_chain_spec::consensus::ConsensusBuilder;
     use ckb_dao_utils::pack_dao_data;
-    use ckb_jsonrpc_types::{Consensus, EpochView, HeaderView};
+    use ckb_crate_jsonrpc_types::{Consensus, EpochView, HeaderView};
     use ckb_types::{
         bytes::Bytes,
         core::{capacity_bytes, EpochNumberWithFraction, HeaderBuilder},
