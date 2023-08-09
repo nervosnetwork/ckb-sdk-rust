@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::LocalNode>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::LocalNode>(r#"
 /// {
 ///   "active": true,
 ///   "addresses": [
@@ -85,7 +85,7 @@ pub struct LocalNodeProtocol {
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::RemoteNode>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::RemoteNode>(r#"
 /// {
 ///   "addresses": [
 ///     {

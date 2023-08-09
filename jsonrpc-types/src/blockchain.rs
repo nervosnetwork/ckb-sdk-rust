@@ -75,7 +75,7 @@ impl fmt::Display for ScriptHashType {
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::Script>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::Script>(r#"
 /// {
 ///   "code_hash": "0x28e83a1277d48add8e72fadaa9248559e1b632bab2bd60b27955ebc4c03800a5",
 ///   "hash_type": "data",
@@ -127,7 +127,7 @@ impl From<packed::Script> for Script {
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::CellOutput>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::CellOutput>(r#"
 /// {
 ///   "capacity": "0x2540be400",
 ///   "lock": {
@@ -192,7 +192,7 @@ impl From<CellOutput> for packed::CellOutput {
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::OutPoint>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::OutPoint>(r#"
 /// {
 ///   "index": "0x0",
 ///   "tx_hash": "0x365698b50ca0da75dca2c87f9e7b563811d3b5813736b8cc62cc3b106faceb17"
@@ -234,7 +234,7 @@ impl From<OutPoint> for packed::OutPoint {
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::CellInput>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::CellInput>(r#"
 /// {
 ///   "previous_output": {
 ///     "index": "0x0",
@@ -324,7 +324,7 @@ impl From<core::DepType> for DepType {
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::CellDep>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::CellDep>(r#"
 /// {
 ///   "dep_type": "code",
 ///   "out_point": {
@@ -417,7 +417,7 @@ pub struct Transaction {
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::TransactionView>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::TransactionView>(r#"
 /// {
 ///   "cell_deps": [
 ///     {
@@ -733,7 +733,7 @@ pub struct Header {
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::HeaderView>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::HeaderView>(r#"
 /// {
 ///   "compact_target": "0x1e083126",
 ///   "dao": "0xb5a3e047474401001bc476b9ee573000c0c387962a38000000febffacf030000",
@@ -1103,7 +1103,7 @@ impl From<BlockView> for core::BlockView {
 /// ## Examples
 ///
 /// ```
-/// # serde_json::from_str::<ckb_jsonrpc_types::EpochView>(r#"
+/// # serde_json::from_str::<ckb_sdk_jsonrpc_types::EpochView>(r#"
 /// {
 ///   "compact_target": "0x1e083126",
 ///   "length": "0x708",
