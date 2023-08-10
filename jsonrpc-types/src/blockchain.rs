@@ -952,6 +952,28 @@ impl BlockResponse {
     pub fn with_cycles(block: ResponseFormat<BlockView>, cycles: Option<Vec<Cycle>>) -> Self {
         BlockResponse::WithCycles(BlockWithCyclesResponse { block, cycles })
     }
+
+    /// Get the regular block response.
+    ///
+    /// Returns `Ok` with the wrapped `ResponseFormat<BlockView>` if the variant is `Regular`,
+    /// otherwise returns `Err` with an error message.
+    pub fn get_regular(self) -> Result<ResponseFormat<BlockView>, String> {
+        match self {
+            BlockResponse::Regular(regular) => Ok(regular),
+            _ => Err("Not a Regular variant".to_string()),
+        }
+    }
+
+    /// Get the block response with cycles.
+    ///
+    /// Returns `Ok` with the wrapped `BlockWithCyclesResponse` if the variant is `WithCycles`,
+    /// otherwise returns `Err` with an error message.
+    pub fn get_with_cycles(self) -> Result<BlockWithCyclesResponse, String> {
+        match self {
+            BlockResponse::WithCycles(with_cycles) => Ok(with_cycles),
+            _ => Err("Not a WithCycles variant".to_string()),
+        }
+    }
 }
 
 /// BlockResponse with cycles format wrapper
