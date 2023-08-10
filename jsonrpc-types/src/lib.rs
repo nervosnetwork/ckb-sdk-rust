@@ -111,17 +111,19 @@ impl<V> ResponseFormat<V> {
         }
     }
 
+    /// Retrieve the data in JSON format from the ResponseFormat
     pub fn get_json(self) -> Result<V, String> {
         match self.inner {
             Either::Left(v) => Ok(v),
-            _ => Err("Cannot retrieve hex format from JSON".to_string()),
+            _ => Err("Not in JSON format".to_string()),
         }
     }
 
+    /// Retrieve the data in molecule serialized hex format from the ResponseFormat
     pub fn get_hex(self) -> Result<JsonBytes, String> {
         match self.inner {
             Either::Right(json_bytes) => Ok(json_bytes),
-            _ => Err("Cannot retrieve JSON from hex format".to_string()),
+            _ => Err("Not in hex format".to_string()),
         }
     }
 }
