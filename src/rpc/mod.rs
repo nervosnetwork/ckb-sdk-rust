@@ -114,7 +114,9 @@ macro_rules! serialize_parameters {
 }
 
 pub trait ResponseFormatGetter<V> {
+    #[deprecated(note = "This method is being phased out in favor of `ResponseFormat::get_value`.")]
     fn get_value(self) -> Result<V, crate::rpc::RpcError>;
+    #[deprecated(note = "This method is being phased out in favor of `ResponseFormat::get_hex`.")]
     fn get_json_bytes(self) -> Result<JsonBytes, crate::rpc::RpcError>;
 }
 

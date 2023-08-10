@@ -110,4 +110,18 @@ impl<V> ResponseFormat<V> {
             inner: Either::Right(JsonBytes::from_bytes(raw)),
         }
     }
+
+    pub fn get_json(self) -> Result<V, String> {
+        match self.inner {
+            Either::Left(v) => Ok(v),
+            _ => Err("Cannot retrieve hex format from JSON".to_string()),
+        }
+    }
+
+    pub fn get_hex(self) -> Result<JsonBytes, String> {
+        match self.inner {
+            Either::Right(json_bytes) => Ok(json_bytes),
+            _ => Err("Cannot retrieve JSON from hex format".to_string()),
+        }
+    }
 }
