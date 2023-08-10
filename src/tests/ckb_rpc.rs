@@ -1,5 +1,5 @@
-use crate::rpc::{CkbRpcClient, ResponseFormatGetter};
-use ckb_types::{core, h256, prelude::*, H256};
+use crate::rpc::CkbRpcClient;
+use ckb_types::{core, h256, prelude::Entity, H256};
 // use serde_json;
 
 const TEST_CKB_RPC_URL: &str = "https://testnet.ckb.dev";
@@ -215,12 +215,12 @@ fn test_get_packed_transaction() {
     let trans_resp0 = ckb_client.get_transaction(TRANSACTION_HASH.clone());
     let trans_resp0 = trans_resp0.unwrap();
     let trans_resp0 = trans_resp0.unwrap();
-    let transaction_view_from_json = trans_resp0.transaction.unwrap().get_value().unwrap();
+    let transaction_view_from_json = trans_resp0.transaction.unwrap().get_json().unwrap();
 
     let transaction_resp = ckb_client.get_packed_transaction(TRANSACTION_HASH.clone());
     let transaction_1 = transaction_resp.unwrap();
 
-    let json_bytes = transaction_1.transaction.unwrap().get_json_bytes().unwrap();
+    let json_bytes = transaction_1.transaction.unwrap().get_hex().unwrap();
 
     let transaction_from_bytes =
         ckb_types::packed::Transaction::new_unchecked(json_bytes.into_bytes()).into_view();
