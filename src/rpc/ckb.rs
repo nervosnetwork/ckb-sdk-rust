@@ -2,7 +2,7 @@ use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockResponse, BlockTemplate,
     BlockView, CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, EstimateCycles,
     ExtraLoggerConfig, FeeRateStatics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
-    OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState, Timestamp, Transaction,
+    OutPoint, OutputsValidator, RawTxPool, RemoteNode, SyncState, Timestamp, Transaction,
     TransactionAndWitnessProof, TransactionProof, TransactionWithStatusResponse, TxPoolInfo,
     Uint32, Uint64, Version,
 };
