@@ -32,7 +32,6 @@ dyn-clone = "1.0"
 ckb-types = "0.111.0"
 ckb-dao-utils =  "0.111.0"
 ckb-traits =  "0.111.0"
-ckb-jsonrpc-types  =  "0.111.0"
 ckb-hash =  "0.111.0"
 ckb-resource =  "0.111.0"
 ckb-crypto = { version = "=0.111.0", features = ["secp"] }
@@ -63,7 +62,7 @@ clap = { version = "4.1.8", features = ["derive"] }
 httpmock = "0.6"
 async-global-executor = "2.3.1"
 hex = "0.4"
-ckb-crate-jsonrpc-types = { package = "ckb-jsonrpc-types", version = "=0.111.0-rc8" }
+ckb-crate-jsonrpc-types = { package = "ckb-jsonrpc-types", version = "0.111.0-rc10" }
 
 [workspace]
 members = [
