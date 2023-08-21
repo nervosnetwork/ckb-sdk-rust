@@ -324,6 +324,7 @@ impl Context {
             inputs: self.inputs.clone(),
             cell_deps: self.cell_deps.clone(),
             header_deps: self.header_deps.clone(),
+            extensions: vec![],
         };
         MockTransaction { mock_info, tx }
     }
