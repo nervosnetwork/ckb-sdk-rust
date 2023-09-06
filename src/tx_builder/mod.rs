@@ -392,7 +392,9 @@ pub enum BalanceTxCapacityError {
     AlreadyBalance(u64, u64),
 }
 
-/// Transaction capacity balancer config
+/// Transaction capacity balancer config.
+///
+/// CapacityBalancer will try to balance the transaction capacity by adding inputs from CapacityProvider.
 #[derive(Debug, Clone)]
 pub struct CapacityBalancer {
     pub fee_rate: FeeRate,
@@ -411,6 +413,15 @@ pub struct CapacityBalancer {
 }
 
 impl CapacityBalancer {
+    /// Create a new balancer.
+    ///
+    /// # Arguments
+    ///
+    /// * `capacity_provider` - Use live cells with this lock script as capacity provider.
+    /// * `placeholder_witness` - The witness used as a placeholder when adding new inputs.
+    ///     This placeholder ensures that the transaction size does not increase after signing,
+    ///     thus maintaining the validity of fee calculation.
+    /// * `fee_rate` - The fee rate used to calculate the transaction fee.
     pub fn new_simple(
         capacity_provider: Script,
         placeholder_witness: WitnessArgs,
