@@ -70,8 +70,6 @@ pub enum IdentityFlag {
     Dl = 0xFE,
 }
 
-
-
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Default)]
 pub struct Identity {
     /// Indicate what's auth content of auth_content will be.
