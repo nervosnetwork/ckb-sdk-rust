@@ -90,7 +90,7 @@ where
         Ok(Handle {
             inner: self.inner,
             topic_list,
-            output: PhantomData::default(),
+            output: PhantomData,
             rpc_id: self.id,
             pending_recv,
         })
@@ -123,7 +123,7 @@ where
         Ok(Handle {
             inner: self.inner,
             topic_list,
-            output: PhantomData::default(),
+            output: PhantomData,
             rpc_id: self.id,
             pending_recv,
         })

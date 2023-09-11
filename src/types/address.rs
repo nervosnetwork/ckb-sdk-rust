@@ -441,6 +441,7 @@ mod old_addr {
     const P2PH_MARK: &[u8] = b"\x01P2PH";
 
     #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
+    #[derive(Default)]
     pub enum AddressFormat {
         // SECP256K1 algorithm	PK
         #[allow(dead_code)]
@@ -449,17 +450,14 @@ mod old_addr {
         #[allow(dead_code)]
         Sp2r,
         // SECP256K1 + blake160	blake160(pk)
+        #[default]
         P2ph,
         // Alias of SP2K	PK
         #[allow(dead_code)]
         P2pk,
     }
 
-    impl Default for AddressFormat {
-        fn default() -> AddressFormat {
-            AddressFormat::P2ph
-        }
-    }
+    
 
     impl AddressFormat {
         pub fn from_bytes(format: &[u8]) -> Result<AddressFormat, String> {
