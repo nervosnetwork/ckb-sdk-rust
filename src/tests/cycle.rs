@@ -9,6 +9,7 @@ use ckb_types::{
     H256,
 };
 
+use crate::test_util::Context;
 use crate::{
     constants::ONE_CKB,
     tests::{build_sighash_script, init_context, ACCOUNT2_ARG, FEE_RATE},
@@ -98,10 +99,10 @@ fn test_change_enough(loops: u64) {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let ctx: &'static Context = Box::leak(Box::new(init_context(
         vec![(CYCLE_BIN, true)],
         vec![(sender.clone(), Some(200 * ONE_CKB))],
-    );
+    )));
 
     let output = CellOutput::new_builder()
         .capacity((140 * ONE_CKB).pack())
@@ -114,7 +115,7 @@ fn test_change_enough(loops: u64) {
     let mut cell_collector = ctx.to_live_cells_context();
     let unlockers = build_cycle_unlockers(loops);
     let (tx, new_locked_groups) = builder
-        .build_balance_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+        .build_balance_unlocked(&mut cell_collector, ctx, ctx, ctx, &balancer, &unlockers)
         .unwrap();
 
     assert!(new_locked_groups.is_empty());
@@ -144,10 +145,10 @@ fn vsize_big_and_fee_enough() {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let ctx: &'static Context = Box::leak(Box::new(init_context(
         vec![(CYCLE_BIN, true)],
         vec![(sender.clone(), Some(200 * ONE_CKB + 123_456))],
-    );
+    )));
 
     let output = CellOutput::new_builder()
         .capacity((200 * ONE_CKB).pack())
@@ -161,7 +162,7 @@ fn vsize_big_and_fee_enough() {
     let mut cell_collector = ctx.to_live_cells_context();
     let unlockers = build_cycle_unlockers(loops);
     let (tx, new_locked_groups) = builder
-        .build_balance_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+        .build_balance_unlocked(&mut cell_collector, ctx, ctx, ctx, &balancer, &unlockers)
         .unwrap();
 
     assert!(new_locked_groups.is_empty());
@@ -190,10 +191,10 @@ fn vsize_big_and_fee_not_enough() {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let ctx: &'static Context = Box::leak(Box::new(init_context(
         vec![(CYCLE_BIN, true)],
         vec![(sender.clone(), Some(200 * ONE_CKB + 456))],
-    );
+    )));
 
     let output = CellOutput::new_builder()
         .capacity((200 * ONE_CKB).pack())
@@ -206,14 +207,8 @@ fn vsize_big_and_fee_not_enough() {
 
     let mut cell_collector = ctx.to_live_cells_context();
     let unlockers = build_cycle_unlockers(loops);
-    let result = builder.build_balance_unlocked(
-        &mut cell_collector,
-        &ctx,
-        &ctx,
-        &ctx,
-        &balancer,
-        &unlockers,
-    );
+    let result =
+        builder.build_balance_unlocked(&mut cell_collector, ctx, ctx, ctx, &balancer, &unlockers);
 
     if let Err(TxBuilderError::BalanceCapacity(BalanceTxCapacityError::CapacityNotEnough(_msg))) =
         result
@@ -229,13 +224,13 @@ fn vsize_big_and_can_find_more_capacity() {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let ctx: &'static Context = Box::leak(Box::new(init_context(
         vec![(CYCLE_BIN, true)],
         vec![
             (sender.clone(), Some(200 * ONE_CKB + 286)), // 286 is fee calculated from tx_size
             (sender.clone(), Some(70 * ONE_CKB)),
         ],
-    );
+    )));
 
     let output = CellOutput::new_builder()
         .capacity((200 * ONE_CKB).pack())
@@ -254,17 +249,17 @@ fn vsize_big_and_can_find_more_capacity() {
     //     .unwrap();
     let (tx, new_locked_groups) = {
         let base_tx = builder
-            .build_base(&mut cell_collector, &ctx, &ctx, &ctx)
+            .build_base(&mut cell_collector, ctx, ctx, ctx)
             .unwrap();
         let (tx_filled_witnesses, _) =
-            fill_placeholder_witnesses(base_tx, &ctx, &unlockers).unwrap();
+            fill_placeholder_witnesses(base_tx, ctx, &unlockers).unwrap();
         let (balanced_tx, mut change_idx) = balancer
             .rebalance_tx_capacity(
                 &tx_filled_witnesses,
                 &mut cell_collector,
-                &ctx,
-                &ctx,
-                &ctx,
+                ctx,
+                ctx,
+                ctx,
                 0,
                 None,
             )
@@ -272,20 +267,20 @@ fn vsize_big_and_can_find_more_capacity() {
 
         assert_eq!(balanced_tx.inputs().len(), 1);
         assert_eq!(balanced_tx.outputs().len(), 1);
-        let (mut tx, unlocked_group) = unlock_tx(balanced_tx, &ctx, &unlockers).unwrap();
+        let (mut tx, unlocked_group) = unlock_tx(balanced_tx, ctx, &unlockers).unwrap();
         assert!(unlocked_group.is_empty());
         let mut ready = false;
         let mut loop_times = 0;
         while !ready {
             loop_times += 1;
             let (new_tx, new_change_idx, ok) = balancer
-                .check_cycle_fee(tx, &mut cell_collector, &ctx, &ctx, &ctx, change_idx)
+                .check_cycle_fee(tx, &mut cell_collector, ctx, ctx, ctx, change_idx)
                 .unwrap();
             tx = new_tx;
             ready = ok;
             change_idx = new_change_idx;
             if !ready {
-                let (new_tx, _) = unlock_tx(tx, &ctx, &unlockers).unwrap();
+                let (new_tx, _) = unlock_tx(tx, ctx, &unlockers).unwrap();
                 tx = new_tx
             }
         }
@@ -319,13 +314,13 @@ fn vsize_big_and_cannot_find_more_capacity() {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let ctx: &'static Context = Box::leak(Box::new(init_context(
         vec![(CYCLE_BIN, true)],
         vec![
             (sender.clone(), Some(200 * ONE_CKB + 286)), // 286 is fee calculated from tx_size
             (sender.clone(), Some(49 * ONE_CKB)),
         ],
-    );
+    )));
 
     let output = CellOutput::new_builder()
         .capacity((200 * ONE_CKB).pack())
@@ -343,16 +338,16 @@ fn vsize_big_and_cannot_find_more_capacity() {
     //     .build_balance_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
     //     .unwrap();
     let base_tx = builder
-        .build_base(&mut cell_collector, &ctx, &ctx, &ctx)
+        .build_base(&mut cell_collector, ctx, ctx, ctx)
         .unwrap();
-    let (tx_filled_witnesses, _) = fill_placeholder_witnesses(base_tx, &ctx, &unlockers).unwrap();
+    let (tx_filled_witnesses, _) = fill_placeholder_witnesses(base_tx, ctx, &unlockers).unwrap();
     let (balanced_tx, change_idx) = balancer
         .rebalance_tx_capacity(
             &tx_filled_witnesses,
             &mut cell_collector,
-            &ctx,
-            &ctx,
-            &ctx,
+            ctx,
+            ctx,
+            ctx,
             0,
             None,
         )
@@ -360,9 +355,9 @@ fn vsize_big_and_cannot_find_more_capacity() {
 
     assert_eq!(balanced_tx.inputs().len(), 1);
     assert_eq!(balanced_tx.outputs().len(), 1);
-    let (tx, unlocked_group) = unlock_tx(balanced_tx, &ctx, &unlockers).unwrap();
+    let (tx, unlocked_group) = unlock_tx(balanced_tx, ctx, &unlockers).unwrap();
     assert!(unlocked_group.is_empty());
-    let result = balancer.check_cycle_fee(tx, &mut cell_collector, &ctx, &ctx, &ctx, change_idx);
+    let result = balancer.check_cycle_fee(tx, &mut cell_collector, ctx, ctx, ctx, change_idx);
     if let Err(BalanceTxCapacityError::ForceSmallChangeAsFeeFailed(_msg)) = result {
     } else {
         panic!("not expected result: {:?}", result);

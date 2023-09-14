@@ -108,6 +108,7 @@ impl AddressPayload {
                 (ScriptHashType::Data, true) => AddressType::Full,
                 (ScriptHashType::Type, true) => AddressType::Full,
                 (ScriptHashType::Data1, _) => AddressType::Full,
+                (ScriptHashType::Data2, _) => AddressType::Full,
                 (ScriptHashType::Data, false) => AddressType::FullData,
                 (ScriptHashType::Type, false) => AddressType::FullType,
             },
@@ -221,6 +222,7 @@ impl fmt::Debug for AddressPayload {
             ScriptHashType::Type => "type",
             ScriptHashType::Data => "data",
             ScriptHashType::Data1 => "data1",
+            ScriptHashType::Data2 => "data2",
         };
         f.debug_struct("AddressPayload")
             .field("hash_type", &hash_type)
@@ -316,6 +318,7 @@ impl fmt::Debug for Address {
             ScriptHashType::Type => "type",
             ScriptHashType::Data => "data",
             ScriptHashType::Data1 => "data1",
+            ScriptHashType::Data2 => "data2",
         };
         f.debug_struct("Address")
             .field("network", &self.network)

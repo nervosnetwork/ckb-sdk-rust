@@ -1,5 +1,5 @@
 use crate::rpc::{CkbRpcClient, ResponseFormatGetter};
-use ckb_types::{core, h256, prelude::Entity, H256};
+use ckb_types::{core, h256, prelude::*, H256};
 // use serde_json;
 
 const TEST_CKB_RPC_URL: &str = "https://testnet.ckb.dev";
