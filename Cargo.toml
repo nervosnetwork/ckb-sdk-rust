@@ -43,7 +43,7 @@ enum-repr-derive = "0.2.0"
 
 # for feature test
 rand = { version = "0.7.3", optional = true }
-ckb-mock-tx-types = { git = "https://github.com/nervosnetwork/ckb-standalone-debugger", branch = "develop"}
+ckb-mock-tx-types = "0.111.0"
 ckb-chain-spec = "0.111.0"
 
 sparse-merkle-tree = "0.6.1"
