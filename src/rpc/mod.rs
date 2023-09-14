@@ -122,21 +122,17 @@ impl<V> ResponseFormatGetter<V> for ResponseFormat<V> {
     fn get_value(self) -> Result<V, crate::rpc::RpcError> {
         match self.inner {
             ckb_jsonrpc_types::Either::Left(v) => Ok(v),
-            ckb_jsonrpc_types::Either::Right(_) => {
-                return Err(crate::rpc::RpcError::Other(anyhow!(
-                    "It's a JsonBytes, can't get the inner value directly"
-                )))
-            }
+            ckb_jsonrpc_types::Either::Right(_) => Err(crate::rpc::RpcError::Other(anyhow!(
+                "It's a JsonBytes, can't get the inner value directly"
+            ))),
         }
     }
 
     fn get_json_bytes(self) -> Result<JsonBytes, crate::rpc::RpcError> {
         match self.inner {
-            ckb_jsonrpc_types::Either::Left(_v) => {
-                return Err(crate::rpc::RpcError::Other(anyhow!(
-                    "It's not a JsonBytes, can't get the json bytes directly"
-                )))
-            }
+            ckb_jsonrpc_types::Either::Left(_v) => Err(crate::rpc::RpcError::Other(anyhow!(
+                "It's not a JsonBytes, can't get the json bytes directly"
+            ))),
             ckb_jsonrpc_types::Either::Right(json_bytes) => Ok(json_bytes),
         }
     }

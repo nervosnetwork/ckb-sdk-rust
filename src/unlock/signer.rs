@@ -509,18 +509,13 @@ pub fn generate_message(
 }
 
 /// specify the unlock mode for a omnilock transaction.
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash, Default)]
 pub enum OmniUnlockMode {
     /// Use the normal mode to unlock the omnilock transaction.
+    #[default]
     Normal = 1,
     /// Use the admin mode to unlock the omnilock transaction.
     Admin = 2,
-}
-
-impl Default for OmniUnlockMode {
-    fn default() -> Self {
-        OmniUnlockMode::Normal
-    }
 }
 
 pub struct OmniLockScriptSigner {

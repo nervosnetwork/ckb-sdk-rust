@@ -38,9 +38,11 @@ use thiserror::Error;
     FromEnumToRepr,
 )]
 #[repr(u8)]
+#[derive(Default)]
 pub enum IdentityFlag {
     /// The auth content represents the blake160 hash of a secp256k1 public key.
     /// The lock script will perform secp256k1 signature verification, the same as the SECP256K1/blake160 lock.
+    #[default]
     PubkeyHash = 0,
     /// It follows the same unlocking methods used by Ethereum.
     Ethereum = 1,
@@ -66,12 +68,6 @@ pub enum IdentityFlag {
     /// The preimage contains dynamic linking information that is used to delegate signature verification to the dynamic linking script.
     /// The interface described in Swappable Signature Verification Protocol Spec is used here.
     Dl = 0xFE,
-}
-
-impl Default for IdentityFlag {
-    fn default() -> Self {
-        IdentityFlag::PubkeyHash
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Default)]
