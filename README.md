@@ -15,8 +15,7 @@ These features allow for seamless interaction with CKB and facilitate the develo
 ```toml
 # Cargo.toml
 [dependencies]
-
-ckb-sdk = "2.5.0"
+ckb-sdk = "3.0.0"
 ```
 
 ## Build
