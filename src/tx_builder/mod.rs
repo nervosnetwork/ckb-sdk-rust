@@ -6,11 +6,16 @@ pub mod transfer;
 pub mod udt;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use anyhow::anyhow;
-use ckb_script::TransactionScriptsVerifier;
+use ckb_chain_spec::consensus::Consensus;
+use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
+use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
 use thiserror::Error;
 
+use ckb_types::core::cell::{CellProvider, HeaderChecker};
+use ckb_types::core::HeaderView;
 use ckb_types::{
     core::{
         cell::resolve_transaction, error::OutPointError, Capacity, CapacityError, FeeRate,
@@ -158,7 +163,7 @@ pub trait TxBuilder {
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
         header_dep_resolver: &dyn HeaderDepResolver,
-        tx_dep_provider: &dyn TransactionDependencyProvider,
+        tx_dep_provider: &'static dyn TransactionDependencyProvider,
         balancer: &CapacityBalancer,
         unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
     ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
@@ -554,7 +559,7 @@ impl CapacityBalancer {
         &self,
         tx: TransactionView,
         cell_collector: &mut dyn CellCollector,
-        tx_dep_provider: &dyn TransactionDependencyProvider,
+        tx_dep_provider: &'static dyn TransactionDependencyProvider,
         cell_dep_resolver: &dyn CellDepResolver,
         header_dep_resolver: &dyn HeaderDepResolver,
         change_index: Option<usize>,
@@ -591,13 +596,30 @@ pub const fn bytes_per_cycle() -> f64 {
     DEFAULT_BYTES_PER_CYCLE
 }
 
-pub struct CycleResolver<'a> {
-    tx_dep_provider: &'a dyn TransactionDependencyProvider,
+pub struct CycleResolver<DL> {
+    tx_dep_provider: DL,
+    tip_header: HeaderView,
+    consensus: Arc<Consensus>,
 }
 
-impl<'a> CycleResolver<'a> {
-    pub fn new(tx_dep_provider: &'a dyn TransactionDependencyProvider) -> CycleResolver {
-        CycleResolver { tx_dep_provider }
+impl<
+        DL: CellDataProvider
+            + HeaderProvider
+            + ExtensionProvider
+            + CellProvider
+            + HeaderChecker
+            + Send
+            + Sync
+            + Clone
+            + 'static,
+    > CycleResolver<DL>
+{
+    pub fn new(tx_dep_provider: DL) -> Self {
+        CycleResolver {
+            tx_dep_provider,
+            tip_header: HeaderView::new_advanced_builder().build(), // TODO
+            consensus: Default::default(),                          // TODO
+        }
     }
 
     fn estimate_cycles(&self, tx: &TransactionView) -> Result<u64, BalanceTxCapacityError> {
@@ -611,7 +633,12 @@ impl<'a> CycleResolver<'a> {
             BalanceTxCapacityError::VerifyScript(format!("Resolve transaction error: {:?}", err))
         })?;
 
-        let mut verifier = TransactionScriptsVerifier::new(&rtx, &self.tx_dep_provider);
+        let mut verifier = TransactionScriptsVerifier::new(
+            Arc::new(rtx),
+            self.tx_dep_provider.clone(),
+            Arc::clone(&self.consensus),
+            Arc::new(TxVerifyEnv::new_submit(&self.tip_header)),
+        );
         verifier.set_debug_printer(|script_hash, message| {
             println!("script: {:x}, debug: {}", script_hash, message);
         });

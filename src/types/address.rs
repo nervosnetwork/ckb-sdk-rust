@@ -108,6 +108,7 @@ impl AddressPayload {
                 (ScriptHashType::Data, true) => AddressType::Full,
                 (ScriptHashType::Type, true) => AddressType::Full,
                 (ScriptHashType::Data1, _) => AddressType::Full,
+                (ScriptHashType::Data2, _) => AddressType::Full,
                 (ScriptHashType::Data, false) => AddressType::FullData,
                 (ScriptHashType::Type, false) => AddressType::FullType,
             },
@@ -221,6 +222,7 @@ impl fmt::Debug for AddressPayload {
             ScriptHashType::Type => "type",
             ScriptHashType::Data => "data",
             ScriptHashType::Data1 => "data1",
+            ScriptHashType::Data2 => "data2",
         };
         f.debug_struct("AddressPayload")
             .field("hash_type", &hash_type)
@@ -316,6 +318,7 @@ impl fmt::Debug for Address {
             ScriptHashType::Type => "type",
             ScriptHashType::Data => "data",
             ScriptHashType::Data1 => "data1",
+            ScriptHashType::Data2 => "data2",
         };
         f.debug_struct("Address")
             .field("network", &self.network)
@@ -440,7 +443,7 @@ mod old_addr {
     // \x01 is the P2PH version
     const P2PH_MARK: &[u8] = b"\x01P2PH";
 
-    #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
+    #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, Serialize, Deserialize, Default)]
     pub enum AddressFormat {
         // SECP256K1 algorithm	PK
         #[allow(dead_code)]
@@ -449,16 +452,11 @@ mod old_addr {
         #[allow(dead_code)]
         Sp2r,
         // SECP256K1 + blake160	blake160(pk)
+        #[default]
         P2ph,
         // Alias of SP2K	PK
         #[allow(dead_code)]
         P2pk,
-    }
-
-    impl Default for AddressFormat {
-        fn default() -> AddressFormat {
-            AddressFormat::P2ph
-        }
     }
 
     impl AddressFormat {

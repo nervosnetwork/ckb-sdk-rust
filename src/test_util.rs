@@ -1,9 +1,11 @@
+use ckb_chain_spec::consensus::ConsensusBuilder;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 use ckb_jsonrpc_types::Serialize;
-use ckb_types::core::TransactionBuilder;
+use ckb_types::core::{HeaderBuilder, TransactionBuilder};
 use rand::{thread_rng, Rng};
 use thiserror::Error;
 
@@ -24,7 +26,8 @@ use ckb_hash::blake2b_256;
 use ckb_mock_tx_types::{
     MockCellDep, MockInfo, MockInput, MockResourceLoader, MockTransaction, Resource,
 };
-use ckb_script::TransactionScriptsVerifier;
+use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
+use ckb_types::core::hardfork::{HardForks, CKB2021, CKB2023};
 use ckb_types::{
     bytes::Bytes,
     core::{
@@ -321,6 +324,7 @@ impl Context {
             inputs: self.inputs.clone(),
             cell_deps: self.cell_deps.clone(),
             header_deps: self.header_deps.clone(),
+            extensions: vec![],
         };
         MockTransaction { mock_info, tx }
     }
@@ -354,8 +358,21 @@ impl Context {
         let resource = Resource::from_both(&mock_tx, DummyLoader).map_err(Error::VerifyScript)?;
         let rtx = resolve_transaction(tx, &mut HashSet::new(), &resource, &resource)
             .map_err(|err| Error::VerifyScript(format!("Resolve transaction error: {:?}", err)))?;
+        let consensus = ConsensusBuilder::default()
+            .hardfork_switch(HardForks {
+                ckb2021: CKB2021::new_dev_default(),
+                ckb2023: CKB2023::new_dev_default(),
+            })
+            .build();
+        let tip = HeaderBuilder::default().number(0.pack()).build();
+        let tx_verify_env = TxVerifyEnv::new_submit(&tip);
 
-        let mut verifier = TransactionScriptsVerifier::new(&rtx, &resource);
+        let mut verifier = TransactionScriptsVerifier::new(
+            Arc::new(rtx),
+            resource,
+            Arc::new(consensus),
+            Arc::new(tx_verify_env),
+        );
         verifier.set_debug_printer(|script_hash, message| {
             println!("script: {:x}, debug: {}", script_hash, message);
         });
@@ -410,6 +427,15 @@ impl TransactionDependencyProvider for Context {
     fn get_header(&self, _block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
         Err(TransactionDependencyError::NotFound(
             "header not found".to_string(),
+        ))
+    }
+
+    fn get_block_extension(
+        &self,
+        _block_hash: &Byte32,
+    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
+        Err(TransactionDependencyError::NotFound(
+            "block extension not found".to_string(),
         ))
     }
 }

@@ -1,4 +1,4 @@
-///! Basic ckb sdk types
+//! Basic ckb sdk types
 mod address;
 mod human_capacity;
 mod network_type;

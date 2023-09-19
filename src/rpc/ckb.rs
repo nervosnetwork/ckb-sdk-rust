@@ -1,10 +1,10 @@
 use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockResponse, BlockTemplate,
-    BlockView, CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView, EstimateCycles,
-    ExtraLoggerConfig, FeeRateStatics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
-    OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState, Timestamp, Transaction,
-    TransactionAndWitnessProof, TransactionProof, TransactionWithStatusResponse, TxPoolInfo,
-    Uint32, Uint64, Version,
+    BlockView, CellWithStatus, ChainInfo, Consensus, DeploymentsInfo, EpochNumber, EpochView,
+    EstimateCycles, ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes, LocalNode,
+    MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState,
+    Timestamp, Transaction, TransactionAndWitnessProof, TransactionProof,
+    TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
 };
 use ckb_types::{core::Cycle, H256};
 
@@ -36,10 +36,12 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn verify_transaction_and_witness_proof(&self, tx_proof: TransactionAndWitnessProof) -> Vec<H256>;
     pub fn get_fork_block(&self, block_hash: H256) -> Option<BlockView>;
     pub fn get_consensus(&self) -> Consensus;
+    pub fn get_deployments_info(&self) -> DeploymentsInfo;
     pub fn get_block_median_time(&self, block_hash: H256) -> Option<Timestamp>;
     pub fn get_block_economic_state(&self, block_hash: H256) -> Option<BlockEconomicState>;
     pub fn estimate_cycles(&self, tx: Transaction)-> EstimateCycles;
-    pub fn get_fee_rate_statics(&self, target:Option<Uint64>)->FeeRateStatics;
+    pub fn get_fee_rate_statics(&self, tartet:Option<Uint64>)->FeeRateStatistics;
+    pub fn get_fee_rate_statistics(&self, tartet:Option<Uint64>)->FeeRateStatistics;
 
     // Indexer
     pub fn get_indexer_tip(&self) -> Option<Tip>;
