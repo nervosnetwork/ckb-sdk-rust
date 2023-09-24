@@ -1,12 +1,12 @@
 [package]
 name = "ckb-sdk-jsonrpc-types"
 version = "3.0.0"
-license = "MIT"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2021"
+license = "MIT"
 description = "CKB common types for JSON serialization."
-homepage = "https://github.com/nervosnetwork/ckb"
-repository = "https://github.com/nervosnetwork/ckb"
+homepage = "https://github.com/nervosnetwork/ckb-sdk-rust"
+repository = "https://github.com/nervosnetwork/ckb-sdk-rust"
 
 [dependencies]
 ckb-types = "0.111.0"

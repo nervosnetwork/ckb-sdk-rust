@@ -14,6 +14,8 @@ use super::RpcError;
 
 pub use super::ckb_indexer::{Cell, Order, Pagination, SearchKey, Tip, Tx};
 
+type TransformFunction<T> = fn(BlockWithCyclesResponse) -> Result<(T, Vec<Cycle>), RpcError>;
+
 crate::jsonrpc!(pub struct CkbRpcClient {
     // Chain
     pub fn get_block(&self, hash: H256) -> Option<BlockView>;
@@ -113,7 +115,7 @@ impl CkbRpcClient {
 
     fn transform_block_with_cycle<T>(
         opt_resp: Option<BlockResponse>,
-        transform_fn: fn(BlockWithCyclesResponse) -> Result<(T, Vec<Cycle>), RpcError>,
+        transform_fn: TransformFunction<T>,
     ) -> Result<Option<(T, Vec<Cycle>)>, RpcError> {
         opt_resp
             .map(|resp| {
