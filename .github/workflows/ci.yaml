@@ -32,6 +32,24 @@ jobs:
     - name: UnitTest
       run: make test
 
+  build-examples:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-2019 ]
+    steps:
+    - uses: actions/checkout@v2
+    - if: matrix.os == 'windows-2019'
+      name: Windows Dependencies
+      run: |
+        iwr -useb get.scoop.sh -outfile 'install-scoop.ps1'
+        .\install-scoop.ps1 -RunAsAdmin
+        echo "LIBCLANG_PATH=$($HOME)/scoop/apps/llvm/current/bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        scoop install llvm yasm
+    - name: Build Cargo Examples
+      run: cargo build --examples
+
   linters:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -64,6 +82,7 @@ jobs:
       - unit-test
       - linters
       - security-audit
+      - build-examples
     runs-on: ubuntu-latest
     steps:
       - name: CI succeeded
