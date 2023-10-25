@@ -40,8 +40,8 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_block_median_time(&self, block_hash: H256) -> Option<Timestamp>;
     pub fn get_block_economic_state(&self, block_hash: H256) -> Option<BlockEconomicState>;
     pub fn estimate_cycles(&self, tx: Transaction)-> EstimateCycles;
-    pub fn get_fee_rate_statics(&self, tartet:Option<Uint64>)->FeeRateStatistics;
-    pub fn get_fee_rate_statistics(&self, tartet:Option<Uint64>)->FeeRateStatistics;
+    pub fn get_fee_rate_statics(&self, target:Option<Uint64>) -> Option<FeeRateStatistics>;
+    pub fn get_fee_rate_statistics(&self, target:Option<Uint64>) -> Option<FeeRateStatistics>;
 
     // Indexer
     pub fn get_indexer_tip(&self) -> Option<Tip>;
