@@ -1,3 +1,8 @@
+# 3.0.1
+* Support ckb 0.111.0
+* Update README.md
+* fix: fn get_fee_rate_statistics return type
+
 # 3.0.0
 * Support ckb 0.111.0
 

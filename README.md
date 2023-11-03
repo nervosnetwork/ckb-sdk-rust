@@ -15,7 +15,7 @@ These features allow for seamless interaction with CKB and facilitate the develo
 ```toml
 # Cargo.toml
 [dependencies]
-ckb-sdk = "3.0.0"
+ckb-sdk = "3.0.1"
 ```
 
 ## Build
@@ -52,7 +52,7 @@ For more details about CKB RPC APIs, please refer to the [CKB RPC doc](https://g
 
 ### Build transaction by manual
 
-The following code example demonstrates how to construct a transfer transaction on CKB. You can use it to transfer a specified amount of CKB from one address to another. 
+The following code example demonstrates how to construct a transfer transaction on CKB. You can use it to transfer a specified amount of CKB from one address to another.
 
 **NOTE**: The address and key are for demo purposes only and should not be used in a production environment.
 
@@ -141,7 +141,7 @@ let (_tx, _) = builder
 
 ### Generate a new address
 
-In CKB, a private key can be used to generate a public key, which is then hashed using the Blake2b hashing algorithm to produce a CKB address. The public key is derived from the private key using the secp256k1 elliptic curve cryptography algorithm. This process results in a unique CKB address that can be used to receive or send CKB tokens. It is important to keep the private key secure, as anyone with access to it can potentially access the associated CKB funds. 
+In CKB, a private key can be used to generate a public key, which is then hashed using the Blake2b hashing algorithm to produce a CKB address. The public key is derived from the private key using the secp256k1 elliptic curve cryptography algorithm. This process results in a unique CKB address that can be used to receive or send CKB tokens. It is important to keep the private key secure, as anyone with access to it can potentially access the associated CKB funds.
 
 ```rust
 use ckb_sdk::types::{Address, AddressPayload, NetworkType};
