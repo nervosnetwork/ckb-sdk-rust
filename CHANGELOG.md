@@ -1,3 +1,6 @@
+# 3.0.0
+* Support ckb 0.111.0
+
 # 2.5.0
 * Support indexer `exact` search mode.
 * Add `get_block_with_cycles` and `get_block_by_number_with_cycles` to support `get_block` and `get_block_by_number` with parameter `with_cycles`.
