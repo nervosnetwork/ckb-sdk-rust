@@ -1,10 +1,10 @@
 use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockResponse, BlockTemplate,
-    BlockView, CellWithStatus, ChainInfo, Consensus, DeploymentsInfo, EpochNumber, EpochView,
-    EstimateCycles, ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes, LocalNode,
-    MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState,
-    Timestamp, Transaction, TransactionAndWitnessProof, TransactionProof,
-    TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
+    BlockView, CellWithStatus, ChainInfo, Consensus, DaoWithdrawingCalculationKind,
+    DeploymentsInfo, EpochNumber, EpochView, EstimateCycles, ExtraLoggerConfig, FeeRateStatistics,
+    HeaderView, JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool,
+    RemoteNode, Script, SyncState, Timestamp, Transaction, TransactionAndWitnessProof,
+    TransactionProof, TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
 };
 use ckb_types::{core::Cycle, H256};
 
@@ -97,6 +97,9 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn jemalloc_profiling_dump(&self) -> String;
     pub fn update_main_logger(&self, config: MainLoggerConfig) -> ();
     pub fn set_extra_logger(&self, name: String, config_opt: Option<ExtraLoggerConfig>) -> ();
+
+    // Experimental
+    fn calculate_dao_maximum_withdraw(&self, out_point: OutPoint, kind: DaoWithdrawingCalculationKind) -> Capacity;
 });
 
 fn transform_cycles(cycles: Option<Vec<ckb_jsonrpc_types::Cycle>>) -> Vec<Cycle> {
