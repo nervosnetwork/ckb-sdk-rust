@@ -26,7 +26,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_live_cell(&self, out_point: OutPoint, with_data: bool) -> CellWithStatus;
     pub fn get_tip_block_number(&self) -> BlockNumber;
     pub fn get_tip_header(&self) -> HeaderView;
-    pub fn get_transaction(&self, hash: H256, only_committed: Option<bool>) -> Option<TransactionWithStatusResponse>;
+    pub fn get_transaction(&self, hash: H256) -> Option<TransactionWithStatusResponse>;
     pub fn get_transaction_proof(
         &self,
         tx_hashes: Vec<H256>,
@@ -206,15 +206,37 @@ impl CkbRpcClient {
             (number, Some(Uint32::from(0u32))),
         )
     }
+
+    // get transaction with only_committed=true
+    pub fn get_only_committed_transaction(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(2u32)), true),
+        )
+    }
+
     // get transaction with verbosity=0
     pub fn get_packed_transaction(
         &self,
         hash: H256,
-        only_committed: Option<bool>,
     ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
         self.post::<_, TransactionWithStatusResponse>(
             "get_transaction",
-            (hash, Some(Uint32::from(0u32)), only_committed),
+            (hash, Some(Uint32::from(0u32))),
+        )
+    }
+
+    // get transaction with verbosity=0 and only_committed=true
+    pub fn get_only_committed_packed_transaction(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(0u32)), true),
         )
     }
 
@@ -222,11 +244,21 @@ impl CkbRpcClient {
     pub fn get_transaction_status(
         &self,
         hash: H256,
-        only_committed: Option<bool>,
     ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
         self.post::<_, TransactionWithStatusResponse>(
             "get_transaction",
-            (hash, Some(Uint32::from(1u32)), only_committed),
+            (hash, Some(Uint32::from(1u32))),
+        )
+    }
+
+    // get transaction with verbosity=1 and only_committed=true, so the result transaction field is None
+    pub fn get_only_committed_transaction_status(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(1u32)), true),
         )
     }
 
