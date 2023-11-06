@@ -39,9 +39,10 @@ pub enum FetchStatus<T> {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct TransactionWithHeader {
-    pub transaction: TransactionView,
-    pub header: HeaderView,
+pub struct TransactionWithStatus {
+    pub(crate) transaction: Option<TransactionView>,
+    pub(crate) cycles: Option<Cycle>,
+    pub(crate) tx_status: TxStatus,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
