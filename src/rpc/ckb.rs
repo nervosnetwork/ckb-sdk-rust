@@ -1,6 +1,6 @@
 use ckb_jsonrpc_types::{
-    Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockResponse, BlockTemplate,
-    BlockView, CellWithStatus, ChainInfo, Consensus, DaoWithdrawingCalculationKind,
+    Alert, BannedAddr, Block, BlockEconomicState, BlockFilter, BlockNumber, BlockResponse,
+    BlockTemplate, BlockView, CellWithStatus, ChainInfo, Consensus, DaoWithdrawingCalculationKind,
     DeploymentsInfo, EpochNumber, EpochView, EstimateCycles, ExtraLoggerConfig, FeeRateStatistics,
     HeaderView, JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool,
     RemoteNode, Script, SyncState, Timestamp, Transaction, TransactionAndWitnessProof,
@@ -17,6 +17,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_block(&self, hash: H256) -> Option<BlockView>;
     pub fn get_block_by_number(&self, number: BlockNumber) -> Option<BlockView>;
     pub fn get_block_hash(&self, number: BlockNumber) -> Option<H256>;
+    pub fn get_block_filter(&self, block_hash: H256) -> Option<BlockFilter>;
     pub fn get_current_epoch(&self) -> EpochView;
     pub fn get_epoch_by_number(&self, number: EpochNumber) -> Option<EpochView>;
     pub fn get_header(&self, hash: H256) -> Option<HeaderView>;
