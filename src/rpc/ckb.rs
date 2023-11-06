@@ -102,7 +102,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn set_extra_logger(&self, name: String, config_opt: Option<ExtraLoggerConfig>) -> ();
 
     // Experimental
-    fn calculate_dao_maximum_withdraw(&self, out_point: OutPoint, kind: DaoWithdrawingCalculationKind) -> Capacity;
+    pub fn calculate_dao_maximum_withdraw(&self, out_point: OutPoint, kind: DaoWithdrawingCalculationKind) -> Capacity;
 });
 
 fn transform_cycles(cycles: Option<Vec<ckb_jsonrpc_types::Cycle>>) -> Vec<Cycle> {
