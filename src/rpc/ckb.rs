@@ -91,6 +91,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn truncate(&self, target_tip_hash: H256) -> ();
     pub fn generate_block(&self, block_assembler_script: Option<Script>, block_assembler_message: Option<JsonBytes>) -> H256;
     pub fn notify_transaction(&self, tx: Transaction) -> H256;
+    pub fn calculate_dao_field(&self, block_template: BlockTemplate) -> Byte32;
 
     // Debug
     pub fn jemalloc_profiling_dump(&self) -> String;
