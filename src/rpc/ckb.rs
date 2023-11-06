@@ -1,10 +1,11 @@
 use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockFilter, BlockNumber, BlockResponse,
-    BlockTemplate, BlockView, CellWithStatus, ChainInfo, Consensus, DaoWithdrawingCalculationKind,
-    DeploymentsInfo, EpochNumber, EpochView, EstimateCycles, ExtraLoggerConfig, FeeRateStatistics,
-    HeaderView, JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool,
-    RemoteNode, Script, SyncState, Timestamp, Transaction, TransactionAndWitnessProof,
-    TransactionProof, TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
+    BlockTemplate, BlockView, Capacity, CellWithStatus, ChainInfo, Consensus,
+    DaoWithdrawingCalculationKind, DeploymentsInfo, EpochNumber, EpochView, EstimateCycles,
+    ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
+    OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState, Timestamp, Transaction,
+    TransactionAndWitnessProof, TransactionProof, TransactionWithStatusResponse, TxPoolInfo,
+    Uint32, Uint64, Version,
 };
 use ckb_types::{core::Cycle, H256};
 
