@@ -91,7 +91,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     // IntegrationTest
     pub fn process_block_without_verify(&self, data: Block, broadcast: bool) -> Option<H256>;
     pub fn truncate(&self, target_tip_hash: H256) -> ();
-    pub fn generate_block(&self, block_assembler_script: Option<Script>, block_assembler_message: Option<JsonBytes>) -> H256;
+    pub fn generate_block(&self) -> H256;
     pub fn notify_transaction(&self, tx: Transaction) -> H256;
     pub fn calculate_dao_field(&self, block_template: BlockTemplate) -> JsonBytes;
     pub fn generate_block_with_template(&self, block_template: BlockTemplate) -> H256;
