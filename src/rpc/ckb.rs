@@ -208,10 +208,11 @@ impl CkbRpcClient {
     pub fn get_packed_transaction(
         &self,
         hash: H256,
+        only_committed: Option<bool>,
     ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
         self.post::<_, TransactionWithStatusResponse>(
             "get_transaction",
-            (hash, Some(Uint32::from(0u32))),
+            (hash, Some(Uint32::from(0u32)), only_committed),
         )
     }
 
