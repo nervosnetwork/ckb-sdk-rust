@@ -25,7 +25,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_live_cell(&self, out_point: OutPoint, with_data: bool) -> CellWithStatus;
     pub fn get_tip_block_number(&self) -> BlockNumber;
     pub fn get_tip_header(&self) -> HeaderView;
-    pub fn get_transaction(&self, hash: H256) -> Option<TransactionWithStatusResponse>;
+    pub fn get_transaction(&self, hash: H256, only_committed: Option<bool>) -> Option<TransactionWithStatusResponse>;
     pub fn get_transaction_proof(
         &self,
         tx_hashes: Vec<H256>,
