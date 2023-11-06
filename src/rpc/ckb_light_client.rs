@@ -17,6 +17,17 @@ pub struct ScriptStatus {
     pub block_number: BlockNumber,
 }
 
+#[derive(Deserialize, Serialize, Eq, PartialEq, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum SetScriptsCommand {
+    // Replace all scripts with new scripts, non-exist scripts will be deleted
+    All,
+    // Update partial scripts with new scripts, non-exist scripts will be ignored
+    Partial,
+    // Delete scripts, non-exist scripts will be ignored
+    Delete,
+}
+
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug)]
 #[serde(tag = "status")]
 #[serde(rename_all = "snake_case")]
@@ -88,7 +99,7 @@ pub struct PeerSyncState {
 
 crate::jsonrpc!(pub struct LightClientRpcClient {
     // BlockFilter
-    pub fn set_scripts(&self, scripts: Vec<ScriptStatus>) -> ();
+    pub fn set_scripts(&self, scripts: Vec<ScriptStatus>, command: Option<SetScriptsCommand>) -> ();
     pub fn get_scripts(&self) -> Vec<ScriptStatus>;
     pub fn get_cells(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
     pub fn get_transactions(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
