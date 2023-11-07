@@ -49,9 +49,22 @@ impl HeaderDepResolver for LightClientHeaderDepResolver {
         }
         match self.client.fetch_transaction(tx_hash.unpack())? {
             FetchStatus::Fetched { data } => {
-                let header: HeaderView = data.header.into();
-                self.headers.insert(tx_hash.clone(), Some(header.clone()));
-                Ok(Some(header))
+                if let Some(block_hash) = data.tx_status.block_hash {
+                    match self.client.fetch_header(block_hash)? {
+                        FetchStatus::Fetched { data } => {
+                            let header: HeaderView = data.into();
+                            self.headers.insert(tx_hash.clone(), Some(header.clone()));
+                            Ok(Some(header))
+                        }
+                        status => {
+                            self.headers.insert(tx_hash.clone(), None);
+                            Err(anyhow!("fetching header by transaction: {:?}", status))
+                        }
+                    }
+                } else {
+                    self.headers.insert(tx_hash.clone(), None);
+                    Err(anyhow!("fetching transaction: {:?}", data))
+                }
             }
             status => {
                 self.headers.insert(tx_hash.clone(), None);
