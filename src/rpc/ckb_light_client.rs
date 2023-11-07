@@ -89,6 +89,43 @@ pub struct RemoteNode {
     pub protocols: Vec<RemoteNodeProtocol>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LocalNode {
+    /// light client node version.
+    ///
+    /// Example: "version": "0.2.0"
+    pub version: String,
+    /// The unique node ID derived from the p2p private key.
+    ///
+    /// The private key is generated randomly on the first boot.
+    pub node_id: String,
+    /// Whether this node is active.
+    ///
+    /// An inactive node ignores incoming p2p messages and drops outgoing messages.
+    pub active: bool,
+    /// P2P addresses of this node.
+    ///
+    /// A node can have multiple addresses.
+    pub addresses: Vec<NodeAddress>,
+    /// Supported protocols.
+    pub protocols: Vec<LocalNodeProtocol>,
+    /// Count of currently connected peers.
+    pub connections: Uint64,
+}
+
+/// The information of a P2P protocol that is supported by the local node.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LocalNodeProtocol {
+    /// Unique protocol ID.
+    pub id: Uint64,
+    /// Readable protocol name.
+    pub name: String,
+    /// Supported versions.
+    ///
+    /// See [Semantic Version](https://semver.org/) about how to specify a version.
+    pub support_versions: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerSyncState {
     /// Requested best known header of remote peer.
@@ -127,4 +164,5 @@ crate::jsonrpc!(pub struct LightClientRpcClient {
 
     // Net
     pub fn get_peers(&self) -> Vec<RemoteNode>;
+    pub fn local_node_info(&self) -> LocalNode;
 });
