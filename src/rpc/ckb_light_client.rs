@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use ckb_jsonrpc_types::{
-    BlockNumber, BlockView, HeaderView, JsonBytes, NodeAddress, RemoteNodeProtocol, Script,
-    Transaction, TransactionView, Uint32, Uint64,
+    BlockNumber, BlockView, Cycle, HeaderView, JsonBytes, NodeAddress, RemoteNodeProtocol, Script,
+    Transaction, TransactionView, TxStatus, Uint32, Uint64,
 };
 use ckb_types::H256;
 
@@ -123,7 +123,7 @@ crate::jsonrpc!(pub struct LightClientRpcClient {
     /// Fetch a transaction from remote node. If return status is `not_found` will re-sent fetching request immediately.
     ///
     /// Returns: FetchStatus<TransactionWithHeader>
-    pub fn fetch_transaction(&self, tx_hash: H256) -> FetchStatus<TransactionWithHeader>;
+    pub fn fetch_transaction(&self, tx_hash: H256) -> FetchStatus<TransactionWithStatus>;
 
     // Net
     pub fn get_peers(&self) -> Vec<RemoteNode>;
