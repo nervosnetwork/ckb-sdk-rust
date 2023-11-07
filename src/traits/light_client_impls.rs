@@ -126,11 +126,43 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
             .map_err(|err| TransactionDependencyError::Other(anyhow!(err)))?
         {
             FetchStatus::Fetched { data } => {
-                let header: HeaderView = data.header.into();
-                let tx: TransactionView = Transaction::from(data.transaction.inner).into_view();
-                self.headers.insert(header.hash(), Some(header));
-                self.txs.insert(tx_hash.clone(), Some(tx.clone()));
-                Ok(tx)
+                if let Some(block_hash) = data.tx_status.block_hash {
+                    match self
+                        .client
+                        .fetch_header(block_hash)
+                        .map_err(|err| TransactionDependencyError::Other(anyhow!(err)))?
+                    {
+                        FetchStatus::Fetched { data: header_view } => {
+                            let header: HeaderView = header_view.into();
+                            if let Some(transaction_view) = data.transaction {
+                                let tx: TransactionView =
+                                    Transaction::from(transaction_view.inner).into_view();
+                                self.headers.insert(header.hash(), Some(header));
+                                self.txs.insert(tx_hash.clone(), Some(tx.clone()));
+                                Ok(tx)
+                            } else {
+                                self.txs.insert(tx_hash.clone(), None);
+                                Err(TransactionDependencyError::NotFound(format!(
+                                    "fetching transaction: {:?}",
+                                    header
+                                )))
+                            }
+                        }
+                        status => {
+                            self.txs.insert(tx_hash.clone(), None);
+                            Err(TransactionDependencyError::NotFound(format!(
+                                "fetching transaction: {:?}",
+                                status
+                            )))
+                        }
+                    }
+                } else {
+                    self.txs.insert(tx_hash.clone(), None);
+                    Err(TransactionDependencyError::NotFound(format!(
+                        "fetching transaction: {:?}",
+                        data
+                    )))
+                }
             }
             status => {
                 self.txs.insert(tx_hash.clone(), None);
