@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use ckb_jsonrpc_types::{
-    BlockNumber, BlockView, HeaderView, JsonBytes, NodeAddress, RemoteNodeProtocol, Script,
-    Transaction, TransactionView, Uint32, Uint64,
+    BlockNumber, BlockView, Cycle, HeaderView, JsonBytes, NodeAddress, RemoteNodeProtocol, Script,
+    Transaction, TransactionView, TxStatus, Uint32, Uint64,
 };
 use ckb_types::H256;
 
@@ -17,6 +17,17 @@ pub struct ScriptStatus {
     pub block_number: BlockNumber,
 }
 
+#[derive(Deserialize, Serialize, Eq, PartialEq, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum SetScriptsCommand {
+    // Replace all scripts with new scripts, non-exist scripts will be deleted
+    All,
+    // Update partial scripts with new scripts, non-exist scripts will be ignored
+    Partial,
+    // Delete scripts, non-exist scripts will be ignored
+    Delete,
+}
+
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug)]
 #[serde(tag = "status")]
 #[serde(rename_all = "snake_case")]
@@ -28,9 +39,11 @@ pub enum FetchStatus<T> {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct TransactionWithHeader {
-    pub transaction: TransactionView,
-    pub header: HeaderView,
+pub struct TransactionWithStatus {
+    pub(crate) transaction: Option<TransactionView>,
+    pub(crate) cycles: Option<Cycle>,
+    pub(crate) time_added_to_pool: Option<Uint64>,
+    pub(crate) tx_status: TxStatus,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -76,6 +89,43 @@ pub struct RemoteNode {
     pub protocols: Vec<RemoteNodeProtocol>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LocalNode {
+    /// light client node version.
+    ///
+    /// Example: "version": "0.2.0"
+    pub version: String,
+    /// The unique node ID derived from the p2p private key.
+    ///
+    /// The private key is generated randomly on the first boot.
+    pub node_id: String,
+    /// Whether this node is active.
+    ///
+    /// An inactive node ignores incoming p2p messages and drops outgoing messages.
+    pub active: bool,
+    /// P2P addresses of this node.
+    ///
+    /// A node can have multiple addresses.
+    pub addresses: Vec<NodeAddress>,
+    /// Supported protocols.
+    pub protocols: Vec<LocalNodeProtocol>,
+    /// Count of currently connected peers.
+    pub connections: Uint64,
+}
+
+/// The information of a P2P protocol that is supported by the local node.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LocalNodeProtocol {
+    /// Unique protocol ID.
+    pub id: Uint64,
+    /// Readable protocol name.
+    pub name: String,
+    /// Supported versions.
+    ///
+    /// See [Semantic Version](https://semver.org/) about how to specify a version.
+    pub support_versions: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeerSyncState {
     /// Requested best known header of remote peer.
@@ -88,7 +138,7 @@ pub struct PeerSyncState {
 
 crate::jsonrpc!(pub struct LightClientRpcClient {
     // BlockFilter
-    pub fn set_scripts(&self, scripts: Vec<ScriptStatus>) -> ();
+    pub fn set_scripts(&self, scripts: Vec<ScriptStatus>, command: Option<SetScriptsCommand>) -> ();
     pub fn get_scripts(&self) -> Vec<ScriptStatus>;
     pub fn get_cells(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
     pub fn get_transactions(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
@@ -101,7 +151,7 @@ crate::jsonrpc!(pub struct LightClientRpcClient {
     pub fn get_tip_header(&self) -> HeaderView;
     pub fn get_genesis_block(&self) -> BlockView;
     pub fn get_header(&self, block_hash: H256) -> Option<HeaderView>;
-    pub fn get_transaction(&self, tx_hash: H256) -> Option<TransactionWithHeader>;
+    pub fn get_transaction(&self, tx_hash: H256) -> Option<TransactionWithStatus>;
     /// Fetch a header from remote node. If return status is `not_found` will re-sent fetching request immediately.
     ///
     /// Returns: FetchStatus<HeaderView>
@@ -110,8 +160,9 @@ crate::jsonrpc!(pub struct LightClientRpcClient {
     /// Fetch a transaction from remote node. If return status is `not_found` will re-sent fetching request immediately.
     ///
     /// Returns: FetchStatus<TransactionWithHeader>
-    pub fn fetch_transaction(&self, tx_hash: H256) -> FetchStatus<TransactionWithHeader>;
+    pub fn fetch_transaction(&self, tx_hash: H256) -> FetchStatus<TransactionWithStatus>;
 
     // Net
     pub fn get_peers(&self) -> Vec<RemoteNode>;
+    pub fn local_node_info(&self) -> LocalNode;
 });

@@ -1,10 +1,11 @@
 use ckb_jsonrpc_types::{
-    Alert, BannedAddr, Block, BlockEconomicState, BlockNumber, BlockResponse, BlockTemplate,
-    BlockView, CellWithStatus, ChainInfo, Consensus, DeploymentsInfo, EpochNumber, EpochView,
-    EstimateCycles, ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes, LocalNode,
-    MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, SyncState,
-    Timestamp, Transaction, TransactionAndWitnessProof, TransactionProof,
-    TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
+    Alert, BannedAddr, Block, BlockEconomicState, BlockFilter, BlockNumber, BlockResponse,
+    BlockTemplate, BlockView, Capacity, CellWithStatus, ChainInfo, Consensus,
+    DaoWithdrawingCalculationKind, DeploymentsInfo, EpochNumber, EpochView, EstimateCycles,
+    ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
+    OutPoint, OutputsValidator, RawTxPool, RemoteNode, SyncState, Timestamp, Transaction,
+    TransactionAndWitnessProof, TransactionProof, TransactionWithStatusResponse, TxPoolInfo,
+    Uint32, Uint64, Version,
 };
 use ckb_types::{core::Cycle, H256};
 
@@ -17,6 +18,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_block(&self, hash: H256) -> Option<BlockView>;
     pub fn get_block_by_number(&self, number: BlockNumber) -> Option<BlockView>;
     pub fn get_block_hash(&self, number: BlockNumber) -> Option<H256>;
+    pub fn get_block_filter(&self, block_hash: H256) -> Option<BlockFilter>;
     pub fn get_current_epoch(&self) -> EpochView;
     pub fn get_epoch_by_number(&self, number: EpochNumber) -> Option<EpochView>;
     pub fn get_header(&self, hash: H256) -> Option<HeaderView>;
@@ -89,13 +91,18 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     // IntegrationTest
     pub fn process_block_without_verify(&self, data: Block, broadcast: bool) -> Option<H256>;
     pub fn truncate(&self, target_tip_hash: H256) -> ();
-    pub fn generate_block(&self, block_assembler_script: Option<Script>, block_assembler_message: Option<JsonBytes>) -> H256;
+    pub fn generate_block(&self) -> H256;
     pub fn notify_transaction(&self, tx: Transaction) -> H256;
+    pub fn calculate_dao_field(&self, block_template: BlockTemplate) -> JsonBytes;
+    pub fn generate_block_with_template(&self, block_template: BlockTemplate) -> H256;
 
     // Debug
     pub fn jemalloc_profiling_dump(&self) -> String;
     pub fn update_main_logger(&self, config: MainLoggerConfig) -> ();
     pub fn set_extra_logger(&self, name: String, config_opt: Option<ExtraLoggerConfig>) -> ();
+
+    // Experimental
+    pub fn calculate_dao_maximum_withdraw(&self, out_point: OutPoint, kind: DaoWithdrawingCalculationKind) -> Capacity;
 });
 
 fn transform_cycles(cycles: Option<Vec<ckb_jsonrpc_types::Cycle>>) -> Vec<Cycle> {
@@ -199,6 +206,18 @@ impl CkbRpcClient {
             (number, Some(Uint32::from(0u32))),
         )
     }
+
+    // get transaction with only_committed=true
+    pub fn get_only_committed_transaction(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(2u32)), true),
+        )
+    }
+
     // get transaction with verbosity=0
     pub fn get_packed_transaction(
         &self,
@@ -210,6 +229,17 @@ impl CkbRpcClient {
         )
     }
 
+    // get transaction with verbosity=0 and only_committed=true
+    pub fn get_only_committed_packed_transaction(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(0u32)), true),
+        )
+    }
+
     // get transaction with verbosity=1, so the result transaction field is None
     pub fn get_transaction_status(
         &self,
@@ -218,6 +248,17 @@ impl CkbRpcClient {
         self.post::<_, TransactionWithStatusResponse>(
             "get_transaction",
             (hash, Some(Uint32::from(1u32))),
+        )
+    }
+
+    // get transaction with verbosity=1 and only_committed=true, so the result transaction field is None
+    pub fn get_only_committed_transaction_status(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(1u32)), true),
         )
     }
 
