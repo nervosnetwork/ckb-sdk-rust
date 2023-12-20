@@ -411,7 +411,9 @@ pub trait CellCollector: DynClone {
 }
 
 pub trait CellDepResolver {
-    /// Resolve cell dep by script
+    /// Resolve cell dep by script.
+    ///
+    /// When a new script is added, transaction builders use CellDepResolver to find the corresponding cell deps and add them to the transaction.
     fn resolve(&self, script: &Script) -> Option<CellDep>;
 }
 pub trait HeaderDepResolver {

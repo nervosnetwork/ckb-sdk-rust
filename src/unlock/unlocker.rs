@@ -46,6 +46,8 @@ pub enum UnlockError {
 ///   * Parse the script.args
 ///   * Sign the transaction
 ///   * Put extra unlock information into transaction (e.g. SMT proof in omni-lock case)
+///
+/// See example in `examples/script_unlocker_example.rs`
 pub trait ScriptUnlocker {
     fn match_args(&self, args: &[u8]) -> bool;
 
