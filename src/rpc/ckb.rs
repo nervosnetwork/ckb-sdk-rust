@@ -74,6 +74,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn send_transaction(&self, tx: Transaction, outputs_validator: Option<OutputsValidator>) -> H256;
     pub fn remove_transaction(&self, tx_hash: H256) -> bool;
     pub fn tx_pool_info(&self) -> TxPoolInfo;
+    pub fn get_pool_tx_detail_info(&self, tx_hash: H256) -> PoolTxDetailInfo;
     pub fn clear_tx_pool(&self) -> ();
     pub fn get_raw_tx_pool(&self, verbose: Option<bool>) -> RawTxPool;
     pub fn tx_pool_ready(&self) -> bool;
