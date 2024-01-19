@@ -1,11 +1,11 @@
 use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockFilter, BlockNumber, BlockResponse,
     BlockTemplate, BlockView, Capacity, CellWithStatus, ChainInfo, Consensus,
-    DaoWithdrawingCalculationKind, DeploymentsInfo, EpochNumber, EpochView, EstimateCycles,
-    ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes, LocalNode, MainLoggerConfig,
-    OutPoint, OutputsValidator, RawTxPool, RemoteNode, SyncState, Timestamp, Transaction,
-    TransactionAndWitnessProof, TransactionProof, TransactionWithStatusResponse, TxPoolInfo,
-    Uint32, Uint64, Version,
+    DaoWithdrawingCalculationKind, DeploymentsInfo, EpochNumber, EpochNumberWithFraction,
+    EpochView, EstimateCycles, ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes,
+    LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode, SyncState,
+    Timestamp, Transaction, TransactionAndWitnessProof, TransactionProof,
+    TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
 };
 use ckb_types::{core::Cycle, H256};
 
@@ -92,6 +92,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn process_block_without_verify(&self, data: Block, broadcast: bool) -> Option<H256>;
     pub fn truncate(&self, target_tip_hash: H256) -> ();
     pub fn generate_block(&self) -> H256;
+    pub fn generate_epochs(&self, num_epochs: EpochNumberWithFraction) -> EpochNumberWithFraction;
     pub fn notify_transaction(&self, tx: Transaction) -> H256;
     pub fn calculate_dao_field(&self, block_template: BlockTemplate) -> JsonBytes;
     pub fn generate_block_with_template(&self, block_template: BlockTemplate) -> H256;
