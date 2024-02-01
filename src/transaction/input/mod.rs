@@ -3,7 +3,7 @@ use ckb_types::packed::Script;
 pub use transaction_input::TransactionInput;
 
 use crate::{
-    rpc::ckb_indexer::ScriptSearchMode,
+    rpc::ckb_indexer::SearchMode,
     traits::{
         CellCollector, CellCollectorError, CellQueryOptions, DefaultCellCollector, ValueRangeOption,
     },
@@ -76,7 +76,7 @@ impl InputIterator {
         loop {
             if let Some(lock_script) = self.lock_scripts.last() {
                 let mut query = CellQueryOptions::new_lock(lock_script.clone());
-                query.script_search_mode = Some(ScriptSearchMode::Exact);
+                query.script_search_mode = Some(SearchMode::Exact);
                 if let Some(type_script) = &self.type_script {
                     query.secondary_script = Some(type_script.clone());
                 } else {

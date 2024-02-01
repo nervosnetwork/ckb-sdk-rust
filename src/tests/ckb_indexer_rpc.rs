@@ -1,6 +1,6 @@
 use crate::{
     rpc::{
-        ckb_indexer::{Order, ScriptSearchMode, SearchKey},
+        ckb_indexer::{Order, SearchKey, SearchMode},
         CkbRpcClient,
     },
     traits::{CellQueryOptions, ValueRangeOption},
@@ -66,7 +66,7 @@ fn test_cells_search_mode_prefix_partitial() {
 
     let mut query = CellQueryOptions::new(script, crate::traits::PrimaryScriptType::Type);
     query.block_range = block_range;
-    query.script_search_mode = Some(ScriptSearchMode::Prefix);
+    query.script_search_mode = Some(SearchMode::Prefix);
     query.min_total_capacity = u64::MAX;
 
     let search_key = SearchKey::from(query);
@@ -87,7 +87,7 @@ fn test_cells_search_mode_exact_partitial() {
         .build();
     // exact with partitial args
     let mut query = CellQueryOptions::new(script, crate::traits::PrimaryScriptType::Type);
-    query.script_search_mode = Some(ScriptSearchMode::Exact);
+    query.script_search_mode = Some(SearchMode::Exact);
     query.block_range = block_range;
     query.min_total_capacity = u64::MAX;
 
@@ -109,7 +109,7 @@ fn test_cells_search_mode_exact() {
         .build();
 
     let mut query = CellQueryOptions::new(script, crate::traits::PrimaryScriptType::Type);
-    query.script_search_mode = Some(ScriptSearchMode::Exact);
+    query.script_search_mode = Some(SearchMode::Exact);
     query.block_range = block_range;
     query.min_total_capacity = u64::MAX;
 
@@ -156,7 +156,7 @@ fn test_get_transactions_search_mode_prefix_partial() {
 
     let mut query = CellQueryOptions::new(script, crate::traits::PrimaryScriptType::Type);
     query.block_range = block_range;
-    query.script_search_mode = Some(ScriptSearchMode::Prefix);
+    query.script_search_mode = Some(SearchMode::Prefix);
     query.min_total_capacity = u64::MAX;
 
     let search_key = SearchKey::from(query);
@@ -177,7 +177,7 @@ fn test_get_transactions_search_mode_exact_partitial() {
         .build();
 
     let mut query = CellQueryOptions::new(script, crate::traits::PrimaryScriptType::Type);
-    query.script_search_mode = Some(ScriptSearchMode::Exact);
+    query.script_search_mode = Some(SearchMode::Exact);
     query.block_range = block_range;
     query.min_total_capacity = u64::MAX;
 
@@ -200,7 +200,7 @@ fn test_get_transactions_search_mode_exact_full() {
         .build();
 
     let mut query = CellQueryOptions::new(script, crate::traits::PrimaryScriptType::Type);
-    query.script_search_mode = Some(ScriptSearchMode::Exact);
+    query.script_search_mode = Some(SearchMode::Exact);
     query.block_range = block_range;
     query.min_total_capacity = u64::MAX;
 
@@ -244,7 +244,7 @@ fn test_get_cells_capacity_search_mode_prefix_partial() {
 
     let mut query = CellQueryOptions::new(script, crate::traits::PrimaryScriptType::Type);
     query.block_range = block_range;
-    query.script_search_mode = Some(ScriptSearchMode::Prefix);
+    query.script_search_mode = Some(SearchMode::Prefix);
     query.min_total_capacity = u64::MAX;
 
     let search_key = SearchKey::from(query);
@@ -264,7 +264,7 @@ fn test_get_cells_capacity_search_mode_exact_partital() {
         .build();
     // exact with partitial args
     let mut query = CellQueryOptions::new(script, crate::traits::PrimaryScriptType::Type);
-    query.script_search_mode = Some(ScriptSearchMode::Exact);
+    query.script_search_mode = Some(SearchMode::Exact);
     query.block_range = block_range;
     query.min_total_capacity = u64::MAX;
 
@@ -285,7 +285,7 @@ fn test_get_cells_capacity_search_mode_exact() {
         .build();
 
     let mut query = CellQueryOptions::new(script, crate::traits::PrimaryScriptType::Type);
-    query.script_search_mode = Some(ScriptSearchMode::Exact);
+    query.script_search_mode = Some(SearchMode::Exact);
     query.block_range = block_range;
     query.min_total_capacity = u64::MAX;
 
