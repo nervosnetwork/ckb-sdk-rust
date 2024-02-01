@@ -3,8 +3,8 @@ use ckb_jsonrpc_types::{
     BlockTemplate, BlockView, Capacity, CellWithStatus, ChainInfo, Consensus,
     DaoWithdrawingCalculationKind, DeploymentsInfo, EpochNumber, EpochNumberWithFraction,
     EpochView, EstimateCycles, ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes,
-    LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode, SyncState,
-    Timestamp, Transaction, TransactionAndWitnessProof, TransactionProof,
+    LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, PoolTxDetailInfo, RawTxPool,
+    RemoteNode, SyncState, Timestamp, Transaction, TransactionAndWitnessProof, TransactionProof,
     TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
 };
 use ckb_types::{core::Cycle, H256};
