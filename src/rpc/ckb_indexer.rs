@@ -12,7 +12,7 @@ use crate::traits::{CellQueryOptions, LiveCell, PrimaryScriptType, ValueRangeOpt
 pub struct SearchKey {
     pub script: Script,
     pub script_type: ScriptType,
-    pub script_search_mode: Option<ScriptSearchMode>,
+    pub script_search_mode: Option<SearchMode>,
     pub filter: Option<SearchKeyFilter>,
     pub with_data: Option<bool>,
     pub group_by_transaction: Option<bool>,
@@ -20,14 +20,16 @@ pub struct SearchKey {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(rename_all = "snake_case")]
-pub enum ScriptSearchMode {
-    // search script with prefix
+pub enum SearchMode {
+    // search with prefix
     Prefix,
-    // search script with exact match
+    // search with exact match
     Exact,
+    // search with partial match
+    Partial,
 }
 
-impl Default for ScriptSearchMode {
+impl Default for SearchMode {
     fn default() -> Self {
         Self::Prefix
     }

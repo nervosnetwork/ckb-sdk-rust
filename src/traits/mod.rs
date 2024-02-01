@@ -35,7 +35,7 @@ use ckb_types::{
     prelude::*,
 };
 
-use crate::{rpc::ckb_indexer::ScriptSearchMode, util::is_mature};
+use crate::{rpc::ckb_indexer::SearchMode, util::is_mature};
 
 /// Signer errors
 #[derive(Error, Debug)]
@@ -256,7 +256,7 @@ pub struct CellQueryOptions {
     /// satisfied will stop collecting. The default value is 1 shannon means
     /// collect only one cell at most.
     pub min_total_capacity: u64,
-    pub script_search_mode: Option<ScriptSearchMode>,
+    pub script_search_mode: Option<SearchMode>,
 }
 impl CellQueryOptions {
     pub fn new(primary_script: Script, primary_type: PrimaryScriptType) -> CellQueryOptions {
