@@ -57,7 +57,7 @@ rustls-tls = ["reqwest/rustls-tls"]
 test = []
 
 [dev-dependencies]
-clap = { version = "~4.4.18", features = ["derive"] } # TODO clap v4.5 requires rustc v1.74.0+
+clap = { version = "=4.4.18", features = ["derive"] } # TODO clap v4.5 requires rustc v1.74.0+
 httpmock = "0.6"
 async-global-executor = "2.3.1"
 hex = "0.4"
