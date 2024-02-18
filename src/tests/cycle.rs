@@ -69,7 +69,7 @@ fn build_script(loops: u64) -> Script {
     let cycle_data_hash = H256::from(blake2b_256(CYCLE_BIN));
     Script::new_builder()
         .code_hash(cycle_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data.into())
         .args(build_args(loops).pack())
         .build()
 }

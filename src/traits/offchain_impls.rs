@@ -180,7 +180,7 @@ impl OffchainTransactionDependencyProvider {
     ) -> Result<(), TransactionDependencyError> {
         self.truncate(tip_blocknumber);
         let tx_view = tx.into_view();
-        let tx_hash = tx_view.hash().unpack();
+        let tx_hash: H256 = tx_view.hash().unpack();
         self.tx_tip_num_map.insert(tx_hash.clone(), tip_blocknumber);
         self.txs.insert(tx_hash.clone(), tx_view.clone());
 
