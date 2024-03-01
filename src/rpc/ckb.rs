@@ -3,8 +3,8 @@ use ckb_jsonrpc_types::{
     BlockTemplate, BlockView, Capacity, CellWithStatus, ChainInfo, Consensus,
     DaoWithdrawingCalculationKind, DeploymentsInfo, EpochNumber, EpochNumberWithFraction,
     EpochView, EstimateCycles, ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes,
-    LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode, SyncState,
-    Timestamp, Transaction, TransactionAndWitnessProof, TransactionProof,
+    LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, PoolTxDetailInfo, RawTxPool,
+    RemoteNode, SyncState, Timestamp, Transaction, TransactionAndWitnessProof, TransactionProof,
     TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
 };
 use ckb_types::{core::Cycle, H256};
@@ -74,6 +74,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn send_transaction(&self, tx: Transaction, outputs_validator: Option<OutputsValidator>) -> H256;
     pub fn remove_transaction(&self, tx_hash: H256) -> bool;
     pub fn tx_pool_info(&self) -> TxPoolInfo;
+    pub fn get_pool_tx_detail_info(&self, tx_hash: H256) -> PoolTxDetailInfo;
     pub fn clear_tx_pool(&self) -> ();
     pub fn get_raw_tx_pool(&self, verbose: Option<bool>) -> RawTxPool;
     pub fn tx_pool_ready(&self) -> bool;
