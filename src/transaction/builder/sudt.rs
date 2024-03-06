@@ -67,7 +67,7 @@ impl SudtTransactionBuilder {
     }
 
     /// Add an output cell with the given lock script and sudt amount
-    pub fn add_output<S: Into<Script>>(&mut self, output_lock_script: S, sudt_amount: u64) {
+    pub fn add_output<S: Into<Script>>(&mut self, output_lock_script: S, sudt_amount: u128) {
         let type_script = build_sudt_type_script(
             self.configuration.network_info(),
             &self.sudt_owner_lock_script,
@@ -122,10 +122,10 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
             let mut sudt_input_iter = input_iter.clone();
             sudt_input_iter.set_type_script(Some(sudt_type_script));
 
-            let outputs_sudt_amount: u64 = tx
+            let outputs_sudt_amount: u128 = tx
                 .outputs_data
                 .iter()
-                .map(|data| u64::from_le_bytes(data.raw_data().as_ref().try_into().unwrap()))
+                .map(|data| u128::from_le_bytes(data.raw_data().as_ref().try_into().unwrap()))
                 .sum();
 
             let mut inputs_sudt_amount = 0;
@@ -133,7 +133,7 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
             for input in sudt_input_iter {
                 let input = input?;
                 let input_amount =
-                    u64::from_le_bytes(input.live_cell.output_data.as_ref().try_into().unwrap());
+                    u128::from_le_bytes(input.live_cell.output_data.as_ref().try_into().unwrap());
                 inputs_sudt_amount += input_amount;
                 input_iter.push_input(input);
                 if inputs_sudt_amount >= outputs_sudt_amount {
