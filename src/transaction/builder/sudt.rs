@@ -8,6 +8,7 @@ use crate::{
     tx_builder::{BalanceTxCapacityError, TxBuilderError},
     NetworkInfo, NetworkType, TransactionWithScriptGroups,
 };
+use anyhow::anyhow;
 
 use ckb_types::{
     core::{Capacity, ScriptHashType},
@@ -125,8 +126,25 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
             let outputs_sudt_amount: u128 = tx
                 .outputs_data
                 .iter()
-                .map(|data| u128::from_le_bytes(data.raw_data().as_ref().try_into().unwrap()))
-                .sum();
+                .map(|data| {
+                    if data.len() > std::mem::size_of::<u128>() {
+                        return Err(TxBuilderError::Other(anyhow!(
+                            "stdt_amount bytes length greater than 128"
+                        )));
+                    }
+                    if data.len() % std::mem::size_of::<u8>() != 0 {
+                        return Err(TxBuilderError::Other(anyhow!(
+                            "stdt_amount bytes length is not a multiple of u8 size"
+                        )));
+                    }
+
+                    let mut data_bytes: Vec<u8> =
+                        vec![0_u8; std::mem::size_of::<u128>() - data.len()];
+                    data_bytes.extend_from_slice(data.as_slice());
+                    Ok(u128::from_le_bytes(data_bytes.try_into().unwrap()))
+                })
+                .collect::<Result<Vec<u128>, TxBuilderError>>()
+                .map(|u128_vec| u128_vec.iter().sum())?;
 
             let mut inputs_sudt_amount = 0;
 
