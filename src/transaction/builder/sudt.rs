@@ -8,6 +8,7 @@ use crate::{
     tx_builder::{BalanceTxCapacityError, TxBuilderError},
     NetworkInfo, NetworkType, TransactionWithScriptGroups,
 };
+use anyhow::anyhow;
 
 use ckb_types::{
     core::{Capacity, ScriptHashType},
@@ -67,7 +68,7 @@ impl SudtTransactionBuilder {
     }
 
     /// Add an output cell with the given lock script and sudt amount
-    pub fn add_output<S: Into<Script>>(&mut self, output_lock_script: S, sudt_amount: u64) {
+    pub fn add_output<S: Into<Script>>(&mut self, output_lock_script: S, sudt_amount: u128) {
         let type_script = build_sudt_type_script(
             self.configuration.network_info(),
             &self.sudt_owner_lock_script,
@@ -87,6 +88,18 @@ impl SudtTransactionBuilder {
             .build();
         self.add_output_and_data(output, output_data);
     }
+}
+
+fn parse_u128(data: &[u8]) -> Result<u128, TxBuilderError> {
+    if data.len() > std::mem::size_of::<u128>() {
+        return Err(TxBuilderError::Other(anyhow!(
+            "stdt_amount bytes length greater than 128"
+        )));
+    }
+
+    let mut data_bytes: Vec<u8> = data.into();
+    data_bytes.extend(std::iter::repeat(0_u8).take(std::mem::size_of::<u128>() - data.len()));
+    Ok(u128::from_le_bytes(data_bytes.try_into().unwrap()))
 }
 
 impl CkbTransactionBuilder for SudtTransactionBuilder {
@@ -122,18 +135,18 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
             let mut sudt_input_iter = input_iter.clone();
             sudt_input_iter.set_type_script(Some(sudt_type_script));
 
-            let outputs_sudt_amount: u64 = tx
+            let outputs_sudt_amount: u128 = tx
                 .outputs_data
                 .iter()
-                .map(|data| u64::from_le_bytes(data.raw_data().as_ref().try_into().unwrap()))
-                .sum();
+                .map(|data| parse_u128(data.as_slice()))
+                .collect::<Result<Vec<u128>, TxBuilderError>>()
+                .map(|u128_vec| u128_vec.iter().sum())?;
 
             let mut inputs_sudt_amount = 0;
 
             for input in sudt_input_iter {
                 let input = input?;
-                let input_amount =
-                    u64::from_le_bytes(input.live_cell.output_data.as_ref().try_into().unwrap());
+                let input_amount = parse_u128(input.live_cell.output_data.as_ref())?;
                 inputs_sudt_amount += input_amount;
                 input_iter.push_input(input);
                 if inputs_sudt_amount >= outputs_sudt_amount {
