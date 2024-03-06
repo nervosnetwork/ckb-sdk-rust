@@ -90,6 +90,18 @@ impl SudtTransactionBuilder {
     }
 }
 
+fn parse_u128(data: &[u8]) -> Result<u128, TxBuilderError> {
+    if data.len() > std::mem::size_of::<u128>() {
+        return Err(TxBuilderError::Other(anyhow!(
+            "stdt_amount bytes length greater than 128"
+        )));
+    }
+
+    let mut data_bytes: Vec<u8> = data.into();
+    data_bytes.extend(std::iter::repeat(0_u8).take(std::mem::size_of::<u128>() - data.len()));
+    Ok(u128::from_le_bytes(data_bytes.try_into().unwrap()))
+}
+
 impl CkbTransactionBuilder for SudtTransactionBuilder {
     fn build(
         mut self,
@@ -126,23 +138,7 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
             let outputs_sudt_amount: u128 = tx
                 .outputs_data
                 .iter()
-                .map(|data| {
-                    if data.len() > std::mem::size_of::<u128>() {
-                        return Err(TxBuilderError::Other(anyhow!(
-                            "stdt_amount bytes length greater than 128"
-                        )));
-                    }
-                    if data.len() % std::mem::size_of::<u8>() != 0 {
-                        return Err(TxBuilderError::Other(anyhow!(
-                            "stdt_amount bytes length is not a multiple of u8 size"
-                        )));
-                    }
-
-                    let mut data_bytes: Vec<u8> =
-                        vec![0_u8; std::mem::size_of::<u128>() - data.len()];
-                    data_bytes.extend_from_slice(data.as_slice());
-                    Ok(u128::from_le_bytes(data_bytes.try_into().unwrap()))
-                })
+                .map(|data| parse_u128(data.as_slice()))
                 .collect::<Result<Vec<u128>, TxBuilderError>>()
                 .map(|u128_vec| u128_vec.iter().sum())?;
 
@@ -150,8 +146,7 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
 
             for input in sudt_input_iter {
                 let input = input?;
-                let input_amount =
-                    u128::from_le_bytes(input.live_cell.output_data.as_ref().try_into().unwrap());
+                let input_amount = parse_u128(input.live_cell.output_data.as_ref())?;
                 inputs_sudt_amount += input_amount;
                 input_iter.push_input(input);
                 if inputs_sudt_amount >= outputs_sudt_amount {
