@@ -40,7 +40,7 @@ pub trait ChangeBuilder {
     fn finalize(&self, tx: TransactionBuilder) -> TransactionView;
 }
 
-/// A simple implementation for the chhange output builder trait.
+/// A simple implementation for the change output builder trait.
 pub struct DefaultChangeBuilder<'a> {
     configuration: &'a TransactionBuilderConfiguration,
     change_lock: Script,
@@ -48,6 +48,20 @@ pub struct DefaultChangeBuilder<'a> {
 }
 
 impl<'a> DefaultChangeBuilder<'a> {
+    /// Creates a new instance of `DefaultChangeBuilder`.
+    pub fn new(
+        configuration: &'a TransactionBuilderConfiguration,
+        change_lock: Script,
+        inputs: Vec<TransactionInput>,
+    ) -> Self {
+        Self {
+            configuration,
+            change_lock,
+            inputs,
+        }
+    }
+
+    /// Returns the change output and its data.
     pub fn get_change(&self) -> (CellOutput, packed::Bytes) {
         let change_output = CellOutput::new_builder()
             .lock(self.change_lock.clone())
