@@ -6,8 +6,8 @@ use ckb_types::{
 };
 
 use crate::{
-    constants, core::TransactionBuilder, tx_builder::TxBuilderError, NetworkInfo, NetworkType,
-    ScriptGroup,
+    constants, core::TransactionBuilder, tx_builder::TxBuilderError, unlock::UnlockError,
+    NetworkInfo, NetworkType, ScriptGroup,
 };
 
 use super::{HandlerContext, ScriptHandler};
@@ -46,11 +46,22 @@ impl ScriptHandler for Secp256k1Blake160SighashAllScriptHandler {
             .downcast_ref::<Secp256k1Blake160SighashAllScriptContext>()
         {
             tx_builder.dedup_cell_deps(self.cell_deps.clone());
-            let index = script_group.input_indices.first().unwrap();
-            let witness = WitnessArgs::new_builder()
-                .lock(Some(bytes::Bytes::from(vec![0u8; 65])).pack())
-                .build();
-            tx_builder.set_witness(*index, witness.as_bytes().pack());
+            let index = *script_group.input_indices.first().unwrap();
+            let witness = if let Some(witness) = tx_builder.get_witnesses().get(index) {
+                let witness_data = witness.raw_data();
+                if witness_data.is_empty() {
+                    WitnessArgs::new_builder()
+                } else {
+                    WitnessArgs::from_slice(witness_data.as_ref())
+                        .map_err(|_| UnlockError::InvalidWitnessArgs(index))?
+                        .as_builder()
+                }
+            } else {
+                WitnessArgs::new_builder()
+            }
+            .lock(Some(bytes::Bytes::from(vec![0u8; 65])).pack())
+            .build();
+            tx_builder.set_witness(index, witness.as_bytes().pack());
             Ok(true)
         } else {
             Ok(false)
