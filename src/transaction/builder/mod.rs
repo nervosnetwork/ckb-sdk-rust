@@ -29,7 +29,7 @@ pub trait CkbTransactionBuilder {
 }
 
 /// Change output builder trait.
-trait ChangeBuilder {
+pub trait ChangeBuilder {
     /// Initialize the change output and data, and add it to the transaction builder.
     fn init(&self, tx: &mut TransactionBuilder);
 
@@ -40,14 +40,15 @@ trait ChangeBuilder {
     fn finalize(&self, tx: TransactionBuilder) -> TransactionView;
 }
 
-struct DefaultChangeBuilder<'a> {
+/// A simple implementation for the chhange output builder trait.
+pub struct DefaultChangeBuilder<'a> {
     configuration: &'a TransactionBuilderConfiguration,
     change_lock: Script,
     inputs: Vec<TransactionInput>,
 }
 
 impl<'a> DefaultChangeBuilder<'a> {
-    fn get_change(&self) -> (CellOutput, packed::Bytes) {
+    pub fn get_change(&self) -> (CellOutput, packed::Bytes) {
         let change_output = CellOutput::new_builder()
             .lock(self.change_lock.clone())
             .build();
