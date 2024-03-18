@@ -1,5 +1,6 @@
 //! Basic ckb sdk types
 mod address;
+pub mod cobuild;
 mod human_capacity;
 mod network_type;
 #[allow(clippy::all)]
