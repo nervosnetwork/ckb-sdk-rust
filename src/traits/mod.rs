@@ -67,13 +67,7 @@ pub trait Signer {
     /// different length of message:
     ///   * secp256k1 => 256bits
     ///   * RSA       => 512bits (when key size is 1024bits)
-    fn sign(
-        &self,
-        id: &[u8],
-        message: &[u8],
-        recoverable: bool,
-        tx: &TransactionView,
-    ) -> Result<Bytes, SignerError>;
+    fn sign(&self, id: &[u8], message: &[u8], recoverable: bool) -> Result<Bytes, SignerError>;
 }
 
 /// Transaction dependency provider errors
