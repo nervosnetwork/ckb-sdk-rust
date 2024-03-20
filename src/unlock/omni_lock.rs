@@ -133,7 +133,7 @@ impl Identity {
             return Err("Not enough bytes to parse".to_string());
         }
         let flag = IdentityFlag::try_from(slice[0])
-            .map_err(|e| format!("can't parse {} to valide IdentityFlat.", e))?;
+            .map_err(|e| format!("can't parse {} to validate IdentityFlag.", e))?;
         let auth_content = H160::from_slice(&slice[1..21]).map_err(|e| e.to_string())?;
         Ok(Identity { flag, auth_content })
     }
