@@ -1,6 +1,8 @@
 use core::hash;
+use std::convert::TryFrom;
 use std::fmt::Display;
 
+use super::{MultisigConfig, OmniUnlockMode};
 use crate::{
     tx_builder::SinceSource,
     types::{
@@ -8,21 +10,17 @@ use crate::{
         xudt_rce_mol::SmtProofEntryVec,
     },
 };
+
+use bitflags::bitflags;
+pub use ckb_types::prelude::Pack;
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     packed::WitnessArgs,
     prelude::*,
     H160, H256,
 };
-
-pub use ckb_types::prelude::Pack;
 use enum_repr_derive::{FromEnumToRepr, TryFromReprToEnum};
 use serde::{de::Unexpected, Deserialize, Serialize};
-use std::convert::TryFrom;
-
-use bitflags::bitflags;
-
-use super::{MultisigConfig, OmniUnlockMode};
 use thiserror::Error;
 
 #[derive(
@@ -56,6 +54,9 @@ pub enum IdentityFlag {
     Dogecoin = 5,
     /// It follows the same unlocking method used by CKB MultiSig.
     Multisig = 6,
+
+    /// New ethereum with signing message with prefix
+    EthereumDisplaying = 18,
 
     /// The auth content that represents the blake160 hash of a lock script.
     /// The lock script will check if the current transaction contains an input cell with a matching lock script.
@@ -413,7 +414,7 @@ pub struct OmniLockConfig {
     acp_config: Option<OmniLockAcpConfig>,
     /// 8 bytes since for time lock
     time_lock_config: Option<u64>,
-    // 32 bytes type script hash
+    // 32 bytes type script hash for supply mode
     info_cell: Option<H256>,
 }
 
@@ -444,7 +445,7 @@ impl OmniLockConfig {
     ///
     /// # Arguments
     ///
-    /// * `pubkey_hash` - a ehtereum address of an account.
+    /// * `pubkey_hash` - a ethereum address of an account.
     ///
     /// ```
     /// // pubkey is a public ethereum address
