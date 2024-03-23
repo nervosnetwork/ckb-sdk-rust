@@ -148,11 +148,11 @@ impl Context {
         ctx
     }
 
-    /// Adds a live cell to the set.
+    /// Adds or updates a live cell in the set.
     ///
-    /// If the set did not have this input present, old live cell is returned.
+    /// If the set did not have this input present, None is returned.
     ///
-    /// If the set did have this input present, None is returned.
+    /// If the set did have this input present, the old live cell is returned.
     pub fn add_live_cell(
         &mut self,
         input: CellInput,
