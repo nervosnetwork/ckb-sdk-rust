@@ -1,2 +1,2 @@
-pub mod sighash;
-pub mod typeid;
+mod sighash;
+mod typeid;

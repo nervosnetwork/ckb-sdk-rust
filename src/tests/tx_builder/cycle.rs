@@ -22,7 +22,7 @@ use crate::{
     ScriptGroup, ScriptId,
 };
 
-const CYCLE_BIN: &[u8] = include_bytes!("../test-data/cycle");
+const CYCLE_BIN: &[u8] = include_bytes!("../../test-data/cycle");
 
 pub struct CycleUnlocker {
     loops: u64,
