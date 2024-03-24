@@ -4,7 +4,7 @@ use crate::{
     constants::{ONE_CKB, SIGHASH_TYPE_HASH},
     test_util::random_out_point,
     tests::{
-        build_sighash_script, init_context, omni_lock_util::generate_rc, ACCOUNT0_ARG,
+        build_sighash_script, init_context, tx_builder::omni_lock_util::generate_rc, ACCOUNT0_ARG,
         ACCOUNT0_KEY, ACCOUNT1_ARG, ACCOUNT1_KEY, ACCOUNT2_ARG, ACCOUNT2_KEY, ACCOUNT3_ARG,
         ACCOUNT3_KEY, ALWAYS_SUCCESS_BIN, FEE_RATE, SUDT_BIN,
     },
@@ -14,7 +14,7 @@ use crate::{
         balance_tx_capacity, fill_placeholder_witnesses,
         omni_lock::OmniLockTransferBuilder,
         udt::{UdtTargetReceiver, UdtTransferBuilder},
-        CapacityProvider, TransferAction,
+        unlock_tx, CapacityBalancer, CapacityProvider, TransferAction, TxBuilder,
     },
     types::xudt_rce_mol::SmtProofEntryVec,
     unlock::{
@@ -27,7 +27,6 @@ use crate::{
     ScriptId, Since,
 };
 
-use crate::tx_builder::{unlock_tx, CapacityBalancer, TxBuilder};
 use ckb_crypto::secp::{Pubkey, SECP256K1};
 use ckb_hash::blake2b_256;
 use ckb_types::{
@@ -39,7 +38,7 @@ use ckb_types::{
 };
 use rand::Rng;
 
-const OMNILOCK_BIN: &[u8] = include_bytes!("../test-data/omni_lock");
+const OMNILOCK_BIN: &[u8] = include_bytes!("../../test-data/omni_lock");
 
 fn build_omnilock_script(cfg: &OmniLockConfig) -> Script {
     let omnilock_data_hash = H256::from(blake2b_256(OMNILOCK_BIN));
@@ -1457,5 +1456,65 @@ fn test_omnilock_sudt_supply() {
     assert_eq!(witnesses.len(), 1);
     assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
 
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
+fn test_cobuild_omnilock_transfer_from_ethereum() {
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
+    let cfg = OmniLockConfig::new_ethereum(keccak160(Pubkey::from(pubkey).as_ref()));
+
+    let unlock_mode = OmniUnlockMode::Normal;
+    let sender = build_omnilock_script(&cfg);
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+
+    let ctx = init_context(
+        vec![(OMNILOCK_BIN, true)],
+        vec![
+            (sender.clone(), Some(100 * ONE_CKB)),
+            (sender.clone(), Some(200 * ONE_CKB)),
+            (sender.clone(), Some(300 * ONE_CKB)),
+        ],
+    );
+
+    let output = CellOutput::new_builder()
+        .capacity((120 * ONE_CKB).pack())
+        .lock(receiver)
+        .build();
+    let builder =
+        OmniLockTransferBuilder::new(vec![(output.clone(), Bytes::default())], cfg.clone(), None);
+    let placeholder_witness = cfg.placeholder_witness(unlock_mode).unwrap();
+    let balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+
+    let mut cell_collector = ctx.to_live_cells_context();
+    let account2_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let unlockers = build_omnilock_unlockers(account2_key, cfg, unlock_mode);
+    let mut tx = builder
+        .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
+        .unwrap();
+
+    let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
+    assert!(new_locked_groups.is_empty());
+    tx = new_tx;
+
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 1);
+    assert_eq!(tx.inputs().len(), 2);
+    for out_point in tx.input_pts_iter() {
+        assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    assert_eq!(tx.output(0).unwrap(), output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender);
+    let witnesses = tx
+        .witnesses()
+        .into_iter()
+        .map(|w| w.raw_data())
+        .collect::<Vec<_>>();
+    assert_eq!(witnesses.len(), 2);
+    assert_eq!(witnesses[0].len(), placeholder_witness.as_slice().len());
+    assert_eq!(witnesses[1].len(), 0);
     ctx.verify(tx, FEE_RATE).unwrap();
 }

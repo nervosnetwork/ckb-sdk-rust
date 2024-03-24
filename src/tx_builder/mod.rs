@@ -12,8 +12,6 @@ use anyhow::anyhow;
 use ckb_chain_spec::consensus::Consensus;
 use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
 use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
-use thiserror::Error;
-
 use ckb_types::core::cell::{CellProvider, HeaderChecker};
 use ckb_types::core::HeaderView;
 use ckb_types::{
@@ -24,6 +22,7 @@ use ckb_types::{
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
 };
+use thiserror::Error;
 
 use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};

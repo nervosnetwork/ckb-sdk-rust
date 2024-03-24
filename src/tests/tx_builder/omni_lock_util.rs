@@ -1,16 +1,14 @@
-use bytes::Bytes;
-use ckb_types::core::{DepType, ScriptHashType};
-
 use crate::constants::ONE_CKB;
 use crate::test_util::{random_out_point, Context};
+use crate::tests::{build_sighash_script, ALWAYS_SUCCESS_BIN};
 use crate::types::xudt_rce_mol::{RCCellVecBuilder, RCDataBuilder, RCDataUnion, SmtProofEntryVec};
 use crate::unlock::rc_data::ListType;
 use crate::unlock::rc_data::{Mask, RcRuleVecBuilder};
 
+use bytes::Bytes;
+use ckb_types::core::{DepType, ScriptHashType};
 use ckb_types::{packed::*, prelude::*, H160};
 use sparse_merkle_tree::H256 as SmtH256;
-
-use super::{build_sighash_script, ALWAYS_SUCCESS_BIN};
 
 pub fn generate_rc(
     ctx: &mut Context,
