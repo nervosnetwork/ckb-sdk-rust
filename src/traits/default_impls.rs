@@ -614,13 +614,7 @@ impl Signer for SecpCkbRawKeySigner {
         id.len() == 20 && self.keys.contains_key(&H160::from_slice(id).unwrap())
     }
 
-    fn sign(
-        &self,
-        id: &[u8],
-        message: &[u8],
-        recoverable: bool,
-        _tx: &TransactionView,
-    ) -> Result<Bytes, SignerError> {
+    fn sign(&self, id: &[u8], message: &[u8], recoverable: bool) -> Result<Bytes, SignerError> {
         if !self.match_id(id) {
             return Err(SignerError::IdNotFound);
         }
