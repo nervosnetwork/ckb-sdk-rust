@@ -9,6 +9,7 @@ use crate::{
         omni_lock::{Auth, Identity as IdentityType, IdentityOpt, OmniLockWitnessLock},
         xudt_rce_mol::SmtProofEntryVec,
     },
+    Address,
 };
 
 use bitflags::bitflags;
@@ -361,6 +362,16 @@ impl AdminConfig {
             rce_in_input,
         }
     }
+
+    pub fn from_type_id(rc_type_id: H256) -> Self {
+        AdminConfig {
+            rc_type_id,
+            proofs: SmtProofEntryVec::default(),
+            auth: Identity::default(),
+            multisig_config: None,
+            rce_in_input: false,
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -389,6 +400,16 @@ impl OmniLockAcpConfig {
             ckb_minimum,
             udt_minimum,
         }
+    }
+
+    pub fn from_slice(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() < 2 {
+            return Err(format!("expect minimum 2 bytes, got {}", bytes.len()));
+        }
+        Ok(Self {
+            ckb_minimum: bytes[0],
+            udt_minimum: bytes[1],
+        })
     }
 }
 
@@ -424,6 +445,56 @@ impl OmniLockConfig {
     /// * `lock_arg` blake160 hash of a public key.
     pub fn new_pubkey_hash(lock_arg: H160) -> Self {
         Self::new(IdentityFlag::PubkeyHash, lock_arg)
+    }
+
+    pub fn from_slice(args: &[u8]) -> Result<Self, String> {
+        let id = Identity::from_slice(args)?;
+        let omni_lock_flags = OmniLockFlags::from_bits(args[21]).unwrap_or(OmniLockFlags::empty());
+        let mut idx = 22;
+        let admin_config = if omni_lock_flags.contains(OmniLockFlags::ADMIN) {
+            let rc_type_id = H256::from_slice(&args[idx..])
+                .map_err(|e| format!("parse admin type id error {}", e))?;
+            idx += 32;
+            Some(AdminConfig::from_type_id(rc_type_id))
+        } else {
+            None
+        };
+        let acp_config = if omni_lock_flags.contains(OmniLockFlags::ACP) {
+            let acp_config = OmniLockAcpConfig::from_slice(&args[idx..])?;
+            idx += 2;
+            Some(acp_config)
+        } else {
+            None
+        };
+        let time_lock_config = if omni_lock_flags.contains(OmniLockFlags::TIME_LOCK) {
+            let mut time_bytes = [0u8; 8];
+            time_bytes.copy_from_slice(&args[idx..idx + 8]);
+            idx += 8;
+            let time = u64::from_le_bytes(time_bytes);
+            Some(time)
+        } else {
+            None
+        };
+        let info_cell = if omni_lock_flags.contains(OmniLockFlags::SUPPLY) {
+            let info_cell = H256::from_slice(&args[idx..])
+                .map_err(|e| format!("parse admin type id error {}", e))?;
+            Some(info_cell)
+        } else {
+            None
+        };
+        Ok(Self {
+            id,
+            multisig_config: None,
+            omni_lock_flags,
+            admin_config,
+            acp_config,
+            time_lock_config,
+            info_cell,
+        })
+    }
+
+    pub fn from_addr(addr: &Address) -> Result<Self, String> {
+        Self::from_slice(&addr.payload().args())
     }
 
     pub fn new_multisig(multisig_config: MultisigConfig) -> Self {
