@@ -441,24 +441,19 @@ impl OmniLockConfig {
             info_cell: None,
         }
     }
+
     /// Create an ethereum algorithm omnilock with pubkey
     ///
     /// # Arguments
     ///
-    /// * `pubkey_hash` - a ethereum address of an account.
-    ///
-    /// ```
-    /// // pubkey is a public ethereum address
-    /// use ckb_sdk::unlock::OmniLockConfig;
-    /// use ckb_sdk::util::keccak160;
-    /// use ckb_crypto::secp::Pubkey;
-    ///
-    /// let pubkey = Pubkey::from([0u8; 64]);
-    /// let pubkey_hash = keccak160(pubkey.as_ref());
-    /// let config = OmniLockConfig::new_ethereum(pubkey_hash);
-    /// ```
+    /// * `pubkey_hash` - a ehtereum address of an account.
     pub fn new_ethereum(pubkey_hash: H160) -> Self {
         Self::new(IdentityFlag::Ethereum, pubkey_hash)
+    }
+
+    pub fn new_ethereum_from_pubkey(pubkey: &ckb_crypto::secp::Pubkey) -> Self {
+        let pubkey_hash = crate::util::keccak160(pubkey.as_ref());
+        OmniLockConfig::new_ethereum(pubkey_hash)
     }
 
     /// Create an ownerlock omnilock with according script hash.

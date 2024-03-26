@@ -5,6 +5,7 @@ mod tx_builder;
 
 use std::collections::HashMap;
 
+use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types as json_types;
 use ckb_types::{
     bytes::Bytes,
@@ -17,7 +18,7 @@ use ckb_types::{
 
 use crate::constants::{DAO_TYPE_HASH, MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_TYPE_HASH};
 use crate::traits::SecpCkbRawKeySigner;
-use crate::unlock::{MultisigConfig, ScriptUnlocker, SecpMultisigUnlocker};
+use crate::unlock::{MultisigConfig, OmniLockConfig, ScriptUnlocker, SecpMultisigUnlocker};
 use crate::ScriptId;
 
 use crate::test_util::{random_out_point, Context};
@@ -48,6 +49,7 @@ const SUDT_BIN: &[u8] = include_bytes!("../test-data/simple_udt");
 const ACP_BIN: &[u8] = include_bytes!("../test-data/anyone_can_pay");
 const CHEQUE_BIN: &[u8] = include_bytes!("../test-data/ckb-cheque-script");
 const ALWAYS_SUCCESS_BIN: &[u8] = include_bytes!("../test-data/always_success");
+const OMNILOCK_BIN: &[u8] = include_bytes!("../test-data/omni_lock");
 
 fn build_sighash_script(args: H160) -> Script {
     Script::new_builder()
@@ -98,6 +100,15 @@ fn build_multisig_unlockers(
         Box::new(multisig_unlocker) as Box<dyn ScriptUnlocker>,
     );
     unlockers
+}
+
+fn build_omnilock_script(cfg: &OmniLockConfig) -> Script {
+    let omnilock_data_hash = H256::from(blake2b_256(OMNILOCK_BIN));
+    Script::new_builder()
+        .code_hash(omnilock_data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .args(cfg.build_args().pack())
+        .build()
 }
 
 fn init_context(contracts: Vec<(&[u8], bool)>, live_cells: Vec<(Script, Option<u64>)>) -> Context {

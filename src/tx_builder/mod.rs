@@ -24,7 +24,6 @@ use ckb_types::{
 };
 use thiserror::Error;
 
-use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::calculate_dao_maximum_withdraw4;
@@ -36,6 +35,7 @@ use crate::{
     },
     RpcError,
 };
+use crate::{types::ScriptGroup, unlock::omni_lock::ConfigError};
 
 /// Transaction builder errors
 #[derive(Error, Debug)]
@@ -74,6 +74,9 @@ pub enum TxBuilderError {
     UnsupportedNetworkType(NetworkType),
     #[error("can not find specifed output to put small change")]
     NoOutputForSmallChange,
+
+    #[error("configuration error: `{0}`")]
+    ConfigError(#[from] ConfigError),
 
     #[error("other error: `{0}`")]
     Other(anyhow::Error),
