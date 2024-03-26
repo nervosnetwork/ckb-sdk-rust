@@ -91,40 +91,41 @@ impl ScriptHandler for OmnilockScriptHandler {
 
     fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError> {
         if network.network_type == NetworkType::Mainnet {
+            self.sighash_dep = cell_dep!(
+                "0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c",
+                0u32,
+                DepType::DepGroup
+            );
+            self.multisig_dep = cell_dep!(
+                "0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c",
+                1u32,
+                DepType::DepGroup
+            );
+            self.cell_deps.push(self.sighash_dep.clone());
             self.cell_deps.push(cell_dep!(
-                "0xdfdb40f5d229536915f2d5403c66047e162e25dedd70a79ef5164356e1facdc8",
+                "0xc76edf469816aa22f416503c38d0b533d2a018e253e379f134c3985b3472c842",
                 0u32,
                 DepType::Code
             ));
             self.lock_script_id = MAINNET_OMNILOCK_SCRIPT_ID.clone();
-
+        } else if network.network_type == NetworkType::Testnet {
             self.sighash_dep = cell_dep!(
-                "0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c",
+                "0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37",
                 0u32,
                 DepType::DepGroup
             );
             self.multisig_dep = cell_dep!(
-                "0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c",
+                "0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37",
                 1u32,
                 DepType::DepGroup
             );
-        } else if network.network_type == NetworkType::Testnet {
+            self.cell_deps.push(self.sighash_dep.clone());
             self.cell_deps.push(cell_dep!(
-                "0x27b62d8be8ed80b9f56ee0fe41355becdb6f6a40aeba82d3900434f43b1c8b60",
+                "0x3d4296df1bd2cc2bd3f483f61ab7ebeac462a2f336f2b944168fe6ba5d81c014",
                 0u32,
                 DepType::Code
             ));
             self.lock_script_id = get_testnet_omnilock_script_id().clone();
-            self.sighash_dep = cell_dep!(
-                "0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37",
-                0u32,
-                DepType::DepGroup
-            );
-            self.multisig_dep = cell_dep!(
-                "0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37",
-                1u32,
-                DepType::DepGroup
-            );
         } else {
             return Err(TxBuilderError::UnsupportedNetworkType(network.network_type));
         };
