@@ -1,4 +1,8 @@
-use ckb_types::{constants, core, packed, prelude::*};
+use ckb_types::{
+    constants, core,
+    packed::{self, WitnessArgs},
+    prelude::*,
+};
 use derive_getters::Getters;
 
 /// An advanced builder for [`TransactionView`].
@@ -222,6 +226,26 @@ impl TransactionBuilder {
         set_outputs_data,
         set_output_data
     );
+
+    fn get_witness_args(&self, i: usize) -> WitnessArgs {
+        let witness_data = self.witnesses[i].raw_data();
+        if witness_data.is_empty() {
+            WitnessArgs::default()
+        } else {
+            WitnessArgs::from_slice(witness_data.as_ref()).unwrap()
+        }
+    }
+
+    pub fn set_witness_lock(&mut self, i: usize, v: Option<bytes::Bytes>) -> &mut Self {
+        let current_witness = self.get_witness_args(i);
+        self.witnesses[i] = current_witness
+            .as_builder()
+            .lock(v.pack())
+            .build()
+            .as_bytes()
+            .pack();
+        self
+    }
 
     /// Converts into [`TransactionView`](struct.TransactionView.html).
     pub fn build(self) -> core::TransactionView {
