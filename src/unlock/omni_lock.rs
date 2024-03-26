@@ -602,6 +602,10 @@ impl OmniLockConfig {
         self.info_cell = None;
     }
 
+    pub fn set_multisig_config(&mut self, multisig_config: Option<MultisigConfig>) {
+        self.multisig_config = multisig_config;
+    }
+
     pub fn id(&self) -> &Identity {
         &self.id
     }
