@@ -85,7 +85,7 @@ fn test_omnilock_simple_hash(cfg: OmniLockConfig) {
     let sender = build_omnilock_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(OMNILOCK_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -190,7 +190,7 @@ fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig) {
     let unlock_mode = OmniUnlockMode::Admin;
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(OMNILOCK_BIN, true), (ALWAYS_SUCCESS_BIN, false)],
         vec![],
     );
@@ -376,7 +376,7 @@ fn test_omnilock_transfer_from_ethereum_wl_admin() {
 fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig, unlock_mode: OmniUnlockMode) {
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
+    let (mut ctx, _) = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
     let (rce_cells, rce_cells_len) = match unlock_mode {
         OmniUnlockMode::Admin => {
             let mut admin_config = cfg.get_admin_config().unwrap().clone();
@@ -490,7 +490,7 @@ fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
     let unlock_mode = OmniUnlockMode::Admin;
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
+    let (mut ctx, _) = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
     let alternative_auth =
         build_alternative_auth(ACCOUNT1_KEY.as_bytes(), IdentityFlag::PubkeyHash);
     let (proof_vec, rc_type_id, rce_cells) = generate_rc(
@@ -584,7 +584,7 @@ fn test_omnilock_transfer_from_multisig() {
     let sender = build_omnilock_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(OMNILOCK_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -667,7 +667,7 @@ fn test_omnilock_transfer_from_multisig_wl_commnon(unlock_mode: OmniUnlockMode) 
     ];
     let multi_cfg = MultisigConfig::new_with(lock_args, 0, 2).unwrap();
     let admin_id = Identity::new_multisig(multi_cfg.clone());
-    let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
+    let (mut ctx, _) = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
     let (proof_vec, rc_type_id, rce_cells) =
         generate_rc(&mut ctx, admin_id.to_smt_key().into(), false, ACCOUNT0_ARG);
     cfg.set_admin_config(AdminConfig::new(
@@ -765,7 +765,7 @@ fn test_omnilock_transfer_from_ownerlock() {
     let cfg = OmniLockConfig::new_ownerlock(hash);
     let sender0 = build_omnilock_script(&cfg);
 
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(OMNILOCK_BIN, true)],
         vec![
             (sender0.clone(), Some(50 * ONE_CKB)),
@@ -849,7 +849,7 @@ fn test_omnilock_transfer_from_ownerlock_wl_admin() {
     let mut cfg = OmniLockConfig::new_ownerlock(hash);
 
     let owner_sender = build_sighash_script(ACCOUNT3_ARG);
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(OMNILOCK_BIN, true)],
         vec![(owner_sender.clone(), Some(61 * ONE_CKB))],
     );
@@ -972,7 +972,7 @@ fn test_omnilock_transfer_from_acp() {
     let unlock_mode = OmniUnlockMode::Normal;
     let sender = build_omnilock_script(&cfg);
 
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(OMNILOCK_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -1044,7 +1044,7 @@ fn test_omnilock_transfer_to_acp() {
     let unlock_mode = OmniUnlockMode::Normal;
     let receiver = build_omnilock_script(&cfg);
 
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(OMNILOCK_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -1135,7 +1135,7 @@ fn test_omnilock_udt_transfer() {
         .hash_type(ScriptHashType::Data1.into())
         .args(owner.calc_script_hash().as_bytes().pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(OMNILOCK_BIN, true), (SUDT_BIN, false)],
         vec![
             // transaction fee pool
@@ -1245,7 +1245,7 @@ fn test_omnilock_simple_hash_timelock(mut cfg: OmniLockConfig) {
     let sender = build_omnilock_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
+    let (mut ctx, _) = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
 
     let prepare_out_point = random_out_point();
     let prepare_input = CellInput::new(prepare_out_point, since.value());
@@ -1345,7 +1345,7 @@ fn test_omnilock_sudt_supply() {
 
     let sender = build_omnilock_script(&cfg);
     let sudt_script = build_sudt_script(sender.calc_script_hash());
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![
             (OMNILOCK_BIN, true),
             (SUDT_BIN, false),

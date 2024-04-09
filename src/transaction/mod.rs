@@ -48,6 +48,15 @@ impl TransactionBuilderConfiguration {
         })
     }
 
+    pub fn new_with_empty_handlers(network: NetworkInfo) -> Self {
+        Self {
+            network,
+            script_handlers: Vec::new(),
+            fee_rate: 1000,
+            estimate_tx_size: 128000,
+        }
+    }
+
     fn generate_system_handlers(
         network: &NetworkInfo,
     ) -> Result<Vec<Box<dyn ScriptHandler>>, TxBuilderError> {

@@ -11,7 +11,7 @@ use ckb_types::{
     bytes::Bytes,
     core::{BlockView, ScriptHashType},
     h160, h256,
-    packed::Script,
+    packed::{OutPoint, Script},
     prelude::*,
     H160, H256,
 };
@@ -111,15 +111,18 @@ fn build_omnilock_script(cfg: &OmniLockConfig) -> Script {
         .build()
 }
 
-fn init_context(contracts: Vec<(&[u8], bool)>, live_cells: Vec<(Script, Option<u64>)>) -> Context {
+fn init_context(
+    contracts: Vec<(&[u8], bool)>,
+    live_cells: Vec<(Script, Option<u64>)>,
+) -> (Context, Vec<OutPoint>) {
     // ckb-cli --url https://testnet.ckb.dev rpc get_block_by_number --number 0 --output-format json --raw-data > genensis_block.json
     let genesis_block: json_types::BlockView = serde_json::from_str(GENESIS_JSON).unwrap();
     let genesis_block: BlockView = genesis_block.into();
-    let mut ctx = Context::new(&genesis_block, contracts);
+    let (mut ctx, outpoints) = Context::new(&genesis_block, contracts);
     for (lock, capacity_opt) in live_cells {
         ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
     }
-    ctx
+    (ctx, outpoints)
 }
 
 #[test]

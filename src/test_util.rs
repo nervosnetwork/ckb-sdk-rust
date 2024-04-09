@@ -79,7 +79,7 @@ impl Context {
     /// with secp256k1_data and map the script id to dep_group cell_dep. The
     /// contracts can only be referenced by data hash and with
     /// hash_type="data1".
-    pub fn new(block: &BlockView, contracts: Vec<(&[u8], bool)>) -> Context {
+    pub fn new(block: &BlockView, contracts: Vec<(&[u8], bool)>) -> (Context, Vec<OutPoint>) {
         let block_number: u64 = block.number();
         assert_eq!(block_number, 0);
         let cell_dep_resolver = DefaultCellDepResolver::from_genesis(block).expect("genesis info");
@@ -126,11 +126,14 @@ impl Context {
             }
         }
 
+        let mut contract_outpoints = Vec::with_capacity(contracts.len());
+
         if !contracts.is_empty() {
             let secp_data_out_point = OutPoint::new(block.transaction(0).unwrap().hash(), 3);
             for (bin, is_lock) in contracts {
                 let data_hash = H256::from(blake2b_256(bin));
                 let out_point = ctx.deploy_cell(Bytes::from(bin.to_vec()));
+                contract_outpoints.push(out_point.clone());
                 if is_lock {
                     let out_points: OutPointVec =
                         vec![secp_data_out_point.clone(), out_point].pack();
@@ -145,7 +148,7 @@ impl Context {
             }
         }
         ctx.add_header(block.header());
-        ctx
+        (ctx, contract_outpoints)
     }
 
     /// Adds or updates a live cell in the set.

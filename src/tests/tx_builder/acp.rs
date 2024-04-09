@@ -31,7 +31,7 @@ fn test_transfer_to_acp() {
         .hash_type(ScriptHashType::Data1.into())
         .args(Bytes::from(ACCOUNT2_ARG.0.to_vec()).pack())
         .build();
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(ACP_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),

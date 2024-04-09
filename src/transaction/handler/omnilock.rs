@@ -139,17 +139,8 @@ lazy_static! {
     ));
 }
 
-#[cfg(not(feature = "test"))]
 pub fn get_testnet_omnilock_script_id() -> ScriptId {
     ScriptId::new_type(h256!(
         "0xf329effd1c475a2978453c8600e1eaf0bc2087ee093c3ee64cc96ec6847752cb"
-    ))
-}
-
-// for unit test
-#[cfg(feature = "test")]
-pub fn get_testnet_omnilock_script_id() -> ScriptId {
-    ScriptId::new_data1(h256!(
-        "0xce6b8f2ba48b3ed6d84a851daad2c0bd28a084c6c31a6943a3f39cbb4d48df10"
     ))
 }

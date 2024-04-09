@@ -30,7 +30,7 @@ use crate::test_util::random_out_point;
 #[test]
 fn test_dao_deposit() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -95,7 +95,7 @@ fn test_dao_deposit() {
 #[test]
 fn test_dao_prepare() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -184,7 +184,7 @@ fn test_dao_prepare() {
 #[test]
 fn test_dao_withdraw() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),

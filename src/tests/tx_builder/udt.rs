@@ -29,7 +29,7 @@ fn test_udt_issue() {
     let sudt_data_hash = H256::from(blake2b_256(SUDT_BIN));
     let owner = build_sighash_script(ACCOUNT1_ARG);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(SUDT_BIN, false)],
         vec![
             (owner.clone(), Some(100 * ONE_CKB)),
@@ -123,7 +123,7 @@ fn test_udt_transfer() {
         .hash_type(ScriptHashType::Data1.into())
         .args(owner.calc_script_hash().as_bytes().pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(ACP_BIN, true), (SUDT_BIN, false)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),

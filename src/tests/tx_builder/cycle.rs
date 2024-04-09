@@ -99,10 +99,13 @@ fn test_change_enough(loops: u64) {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx: &'static Context = Box::leak(Box::new(init_context(
-        vec![(CYCLE_BIN, true)],
-        vec![(sender.clone(), Some(200 * ONE_CKB))],
-    )));
+    let ctx: &'static Context = Box::leak(Box::new(
+        init_context(
+            vec![(CYCLE_BIN, true)],
+            vec![(sender.clone(), Some(200 * ONE_CKB))],
+        )
+        .0,
+    ));
 
     let output = CellOutput::new_builder()
         .capacity((140 * ONE_CKB).pack())
@@ -145,10 +148,13 @@ fn vsize_big_and_fee_enough() {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx: &'static Context = Box::leak(Box::new(init_context(
-        vec![(CYCLE_BIN, true)],
-        vec![(sender.clone(), Some(200 * ONE_CKB + 123_456))],
-    )));
+    let ctx: &'static Context = Box::leak(Box::new(
+        init_context(
+            vec![(CYCLE_BIN, true)],
+            vec![(sender.clone(), Some(200 * ONE_CKB + 123_456))],
+        )
+        .0,
+    ));
 
     let output = CellOutput::new_builder()
         .capacity((200 * ONE_CKB).pack())
@@ -191,10 +197,13 @@ fn vsize_big_and_fee_not_enough() {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx: &'static Context = Box::leak(Box::new(init_context(
-        vec![(CYCLE_BIN, true)],
-        vec![(sender.clone(), Some(200 * ONE_CKB + 456))],
-    )));
+    let ctx: &'static Context = Box::leak(Box::new(
+        init_context(
+            vec![(CYCLE_BIN, true)],
+            vec![(sender.clone(), Some(200 * ONE_CKB + 456))],
+        )
+        .0,
+    ));
 
     let output = CellOutput::new_builder()
         .capacity((200 * ONE_CKB).pack())
@@ -224,13 +233,16 @@ fn vsize_big_and_can_find_more_capacity() {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx: &'static Context = Box::leak(Box::new(init_context(
-        vec![(CYCLE_BIN, true)],
-        vec![
-            (sender.clone(), Some(200 * ONE_CKB + 286)), // 286 is fee calculated from tx_size
-            (sender.clone(), Some(70 * ONE_CKB)),
-        ],
-    )));
+    let ctx: &'static Context = Box::leak(Box::new(
+        init_context(
+            vec![(CYCLE_BIN, true)],
+            vec![
+                (sender.clone(), Some(200 * ONE_CKB + 286)), // 286 is fee calculated from tx_size
+                (sender.clone(), Some(70 * ONE_CKB)),
+            ],
+        )
+        .0,
+    ));
 
     let output = CellOutput::new_builder()
         .capacity((200 * ONE_CKB).pack())
@@ -314,13 +326,16 @@ fn vsize_big_and_cannot_find_more_capacity() {
     let sender = build_script(loops);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx: &'static Context = Box::leak(Box::new(init_context(
-        vec![(CYCLE_BIN, true)],
-        vec![
-            (sender.clone(), Some(200 * ONE_CKB + 286)), // 286 is fee calculated from tx_size
-            (sender.clone(), Some(49 * ONE_CKB)),
-        ],
-    )));
+    let ctx: &'static Context = Box::leak(Box::new(
+        init_context(
+            vec![(CYCLE_BIN, true)],
+            vec![
+                (sender.clone(), Some(200 * ONE_CKB + 286)), // 286 is fee calculated from tx_size
+                (sender.clone(), Some(49 * ONE_CKB)),
+            ],
+        )
+        .0,
+    ));
 
     let output = CellOutput::new_builder()
         .capacity((200 * ONE_CKB).pack())
