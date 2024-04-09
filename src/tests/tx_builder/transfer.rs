@@ -25,7 +25,7 @@ use crate::ScriptId;
 fn test_transfer_from_sighash() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -90,7 +90,7 @@ fn test_transfer_from_multisig() {
     let sender = build_multisig_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -154,7 +154,7 @@ fn test_transfer_from_acp() {
         .args(Bytes::from(ACCOUNT1_ARG.0.to_vec()).pack())
         .build();
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(ACP_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),

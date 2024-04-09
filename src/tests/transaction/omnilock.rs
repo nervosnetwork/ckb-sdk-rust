@@ -1,5 +1,11 @@
 use ckb_crypto::secp::{Pubkey, SECP256K1};
-use ckb_types::{packed::CellOutput, prelude::*};
+use ckb_hash::blake2b_256;
+use ckb_types::{
+    core::DepType,
+    packed::{CellOutput, OutPoint},
+    prelude::*,
+    H256,
+};
 
 use crate::{
     constants::ONE_CKB,
@@ -9,7 +15,13 @@ use crate::{
     },
     transaction::{
         builder::{CkbTransactionBuilder, SimpleTransactionBuilder},
-        handler::{omnilock::OmnilockScriptContext, HandlerContexts},
+        handler::{
+            multisig::Secp256k1Blake160MultisigAllScriptHandler,
+            omnilock::{OmnilockScriptContext, OmnilockScriptHandler},
+            sighash::Secp256k1Blake160SighashAllScriptHandler,
+            typeid::TypeIdHandler,
+            HandlerContexts,
+        },
         input::InputIterator,
         signer::{SignContexts, TransactionSigner},
         TransactionBuilderConfiguration,
@@ -19,8 +31,40 @@ use crate::{
     NetworkInfo,
 };
 
+fn test_omnilock_config(omnilock_outpoint: OutPoint) -> TransactionBuilderConfiguration {
+    let network_info = NetworkInfo::testnet();
+    let mut configuration =
+        TransactionBuilderConfiguration::new_with_empty_handlers(network_info.clone());
+    let mut omni_lock_handler = OmnilockScriptHandler::new_with_network(&network_info).unwrap();
+
+    omni_lock_handler.set_lock_script_id(crate::ScriptId::new_data1(H256::from(blake2b_256(
+        OMNILOCK_BIN,
+    ))));
+    omni_lock_handler.set_cell_deps(vec![
+        crate::transaction::handler::cell_dep!(
+            "0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37",
+            0u32,
+            DepType::DepGroup
+        ),
+        ckb_types::packed::CellDep::new_builder()
+            .out_point(omnilock_outpoint)
+            .dep_type(DepType::Code.into())
+            .build(),
+    ]);
+
+    configuration.register_script_handler(Box::new(
+        Secp256k1Blake160SighashAllScriptHandler::new_with_network(&network_info).unwrap(),
+    ));
+    configuration.register_script_handler(Box::new(
+        Secp256k1Blake160MultisigAllScriptHandler::new_with_network(&network_info).unwrap(),
+    ));
+    configuration.register_script_handler(Box::new(TypeIdHandler));
+    configuration.register_script_handler(Box::new(omni_lock_handler));
+
+    configuration
+}
+
 #[test]
-#[ignore]
 fn test_transfer_from_omnilock_ethereum() {
     let network_info = NetworkInfo::testnet();
     let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
@@ -30,7 +74,7 @@ fn test_transfer_from_omnilock_ethereum() {
     let sender = build_omnilock_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let (ctx, mut outpoints) = init_context(
         vec![(OMNILOCK_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -39,8 +83,7 @@ fn test_transfer_from_omnilock_ethereum() {
         ],
     );
 
-    let configuration =
-        TransactionBuilderConfiguration::new_with_network(network_info.clone()).unwrap();
+    let configuration = test_omnilock_config(outpoints.pop().unwrap());
 
     let iterator = InputIterator::new_with_cell_collector(
         vec![sender.clone()],
@@ -65,6 +108,11 @@ fn test_transfer_from_omnilock_ethereum() {
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
 
     TransactionSigner::new(&network_info)
+        // use unitest lock to verify
+        .insert_unlocker(
+            crate::ScriptId::new_data1(H256::from(blake2b_256(OMNILOCK_BIN))),
+            crate::transaction::signer::omnilock::OmnilockSigner {},
+        )
         .sign_transaction(
             &mut tx_with_groups,
             &SignContexts::new_omnilock(vec![account0_key], cfg),
@@ -78,7 +126,7 @@ fn test_transfer_from_omnilock_ethereum() {
     let script_groups = tx_with_groups.script_groups.clone();
     assert_eq!(script_groups.len(), 1);
     assert_eq!(tx.header_deps().len(), 0);
-    assert_eq!(tx.cell_deps().len(), 1);
+    assert_eq!(tx.cell_deps().len(), 2);
     assert_eq!(tx.inputs().len(), 2);
     for out_point in tx.input_pts_iter() {
         assert_eq!(ctx.get_input(&out_point).unwrap().0.lock(), sender);

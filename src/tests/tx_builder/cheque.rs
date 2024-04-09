@@ -36,7 +36,7 @@ fn test_cheque_claim() {
         .hash_type(ScriptHashType::Data1.into())
         .args(Bytes::from(vec![9u8; 32]).pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(CHEQUE_BIN, true), (SUDT_BIN, false)],
         vec![
             (receiver.clone(), Some(100 * ONE_CKB)),
@@ -156,7 +156,7 @@ fn test_cheque_withdraw() {
         .hash_type(ScriptHashType::Data1.into())
         .args(Bytes::from(vec![9u8; 32]).pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(CHEQUE_BIN, true), (SUDT_BIN, false)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),

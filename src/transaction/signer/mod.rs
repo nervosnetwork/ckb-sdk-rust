@@ -117,6 +117,16 @@ impl TransactionSigner {
         Self { unlockers }
     }
 
+    pub fn insert_unlocker(
+        mut self,
+        script_id: ScriptId,
+        unlocker: impl CKBScriptSigner + 'static,
+    ) -> Self {
+        self.unlockers
+            .insert(script_id, Box::new(unlocker) as Box<_>);
+        self
+    }
+
     pub fn sign_transaction(
         &self,
         transaction: &mut TransactionWithScriptGroups,
