@@ -8,7 +8,8 @@ use ckb_types::{
 
 };
 
-use ckb_jsonrpc_types::CellOutput;
+// use ckb_jsonrpc_types::CellOutput;
+use ckb_types::packed::CellOutput;
 use std::collections::HashMap;
 
 
@@ -60,14 +61,14 @@ fn inner_build_without_cb(
     
     // collect inputs
     for (input_index, previous_output) in prev_cells.iter().enumerate() {
-        let lock_script = previous_output.lock;
+        let lock_script = previous_output.lock();
         lock_groups
             .entry(lock_script.calc_script_hash())
             .or_insert_with(|| ScriptGroup::from_lock_script(&lock_script))
             .input_indices
             .push(input_index);
 
-        if let Some(type_script) = previous_output.type_.to_opt() {
+        if let Some(type_script) = previous_output.type_().to_opt() {
             type_groups
                 .entry(type_script.calc_script_hash())
                 .or_insert_with(|| ScriptGroup::from_type_script(&type_script))
