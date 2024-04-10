@@ -1,7 +1,7 @@
 use ckb_sdk::{
-    core::TransactionBuilder,
+    core::{convert_transaction_builder, TransactionBuilder},
     transaction::{
-        builder::{CkbTransactionBuilder, SimpleTransactionBuilder},
+        builder::{offline::OfflineTransactionBuilder, CkbTransactionBuilder, SimpleTransactionBuilder},
         input::InputIterator,
         psbt::PSBTransaction,
         signer::{SignContexts, TransactionSigner},
@@ -24,9 +24,14 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let a = serde_json::from_str::<PSBTransaction>(test_str).unwrap();
     println!("psbt transaction:{:?}", a);
     let c: packed::Transaction = a.inner.into();
+    let tb = convert_transaction_builder(c);
 
-    let tb = c.as_advanced_builder();
 
+    let network_info = NetworkInfo::mainnet();
+    let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
+
+    let mut builder = OfflineTransactionBuilder::new(configuration, tb);
+    let mut tx_with_groups = builder.build(&Default::default(), a.previous_output_cells.())?;
     // tb.build();
 
     // let tv = tb.build();

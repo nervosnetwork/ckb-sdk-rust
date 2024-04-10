@@ -1,5 +1,6 @@
 use ckb_types::{constants, core, packed, prelude::*};
 use derive_getters::Getters;
+use ckb_types::packed::Transaction;
 
 /// An advanced builder for [`TransactionView`].
 ///
@@ -250,3 +251,29 @@ impl TransactionBuilder {
         tx.into_view()
     }
 }
+
+
+pub fn convert_transaction_builder(tx: packed::Transaction) -> TransactionBuilder {
+    return TransactionBuilder::default()
+    .version(tx.raw().version())
+    .cell_deps(tx.raw().cell_deps())
+    .header_deps(tx.raw().header_deps())
+    .inputs(tx.raw().inputs())
+    .outputs(tx.raw().outputs())
+    .outputs_data(tx.raw().outputs_data())
+    .witnesses(tx.witnesses()).clone();
+}
+
+// impl AsTransactionBuilder for packed::Transaction {
+//     /// Creates an advanced builder base on current data.
+//     fn as_advanced_builder(&self) -> TransactionBuilder {
+//         TransactionBuilder::default()
+//             .version(self.raw().version())
+//             .cell_deps(self.raw().cell_deps())
+//             .header_deps(self.raw().header_deps())
+//             .inputs(self.raw().inputs())
+//             .outputs(self.raw().outputs())
+//             .outputs_data(self.raw().outputs_data())
+//             .witnesses(self.witnesses())
+//     }
+// }

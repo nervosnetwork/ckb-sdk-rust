@@ -16,6 +16,7 @@ use ckb_types::{
 pub mod fee_calculator;
 pub mod simple;
 pub mod sudt;
+pub mod offline;
 
 pub use fee_calculator::FeeCalculator;
 pub use simple::SimpleTransactionBuilder;
