@@ -6,6 +6,7 @@ pub mod builder;
 pub mod handler;
 pub mod input;
 pub mod signer;
+pub mod psbt;
 
 pub struct TransactionBuilderConfiguration {
     /// The network for transaction builder.
