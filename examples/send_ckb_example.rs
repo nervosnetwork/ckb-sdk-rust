@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let network_info = NetworkInfo::testnet();
     let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
 
-    let sender = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r")?;
+    let sender = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqw2y5vlymuuanzz8uhmptjc7zckueynezcayfj26")?;
     let receiver= Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqv5dsed9par23x4g58seaw58j3ym5ml2hs8ztche")?;
 
     let iterator = InputIterator::new_with_address(&[sender], &network_info);
@@ -24,7 +24,10 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let mut tx_with_groups = builder.build(&Default::default())?;
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
+
+    println!("+++++++++++++++++++++++++");
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
+    println!("+++++++++++++++++++++++++");
 
     let private_keys = vec![h256!(
         "0x6c9ed03816e3111e49384b8d180174ad08e29feb1393ea1b51cef1c505d4e36a"
