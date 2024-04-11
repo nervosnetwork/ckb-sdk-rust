@@ -1,4 +1,4 @@
-use ckb_sdk::{
+use ckb_sdk_offline::{
     core::convert_transaction_builder, transaction::{
         builder::offline::OfflineTransactionBuilder,
         psbt::PSBTransaction,
