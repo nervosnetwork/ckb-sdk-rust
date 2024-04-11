@@ -10,14 +10,6 @@ use ckb_types::{core, packed, prelude::*, H256};
 use ckb_types::{core::Capacity, h256};
 use std::{error::Error as StdErr, str::FromStr};
 
-// use ckb_types::{
-//     core::{ScriptHashType, TransactionView as CoreTransactionView},
-//     packed::Script,
-//     prelude::*,
-// };
-
-use secp256k1;
-
 fn main() -> Result<(), Box<dyn StdErr>> {
     use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 
