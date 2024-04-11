@@ -1,5 +1,4 @@
 use ckb_types::{constants, core, packed, prelude::*};
-use derive_getters::Getters;
 
 
 /// An advanced builder for [`TransactionView`].
@@ -8,22 +7,48 @@ use derive_getters::Getters;
 ///
 /// [`TransactionView`]: struct.TransactionView.html
 /// [`packed::TransactionBuilder`]: ../packed/struct.TransactionBuilder.html
-#[derive(Clone, Debug, Getters)]
+#[derive(Clone, Debug)]
 pub struct TransactionBuilder {
-    #[getter(skip)]
+    
     pub version: packed::Uint32,
-    #[getter(rename = "get_cell_deps")]
+    
     pub cell_deps: Vec<packed::CellDep>,
-    #[getter(rename = "get_header_deps")]
+    
     pub header_deps: Vec<packed::Byte32>,
-    #[getter(rename = "get_inputs")]
+    
     pub inputs: Vec<packed::CellInput>,
-    #[getter(rename = "get_outputs")]
+    
     pub outputs: Vec<packed::CellOutput>,
-    #[getter(rename = "get_witnesses")]
+    
     pub witnesses: Vec<packed::Bytes>,
-    #[getter(rename = "get_outputs_data")]
+    
     pub outputs_data: Vec<packed::Bytes>,
+}
+
+impl TransactionBuilder {
+    pub fn get_cell_deps(&self) -> &Vec<packed::CellDep> {
+        &self.cell_deps
+    }
+    
+    pub fn get_header_deps(&self) -> &Vec<packed::Byte32> {
+        &self.header_deps
+    }
+
+    pub fn get_inputs(&self) -> &Vec<packed::CellInput> {
+        &self.inputs
+    }
+
+    pub fn get_outputs(&self) -> &Vec<packed::CellOutput> {
+        &self.outputs
+    }
+
+    pub fn get_witnesses(&self) -> &Vec<packed::Bytes> {
+        &self.witnesses
+    }
+
+    pub fn get_outputs_data(&self) -> &Vec<packed::Bytes> {
+        &self.outputs_data
+    }
 }
 
 /*
