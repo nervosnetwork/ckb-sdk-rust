@@ -4,17 +4,17 @@ use ckb_sdk::{
         psbt::PSBTransaction,
         signer::{SignContexts, TransactionSigner},
         TransactionBuilderConfiguration,
-    }, Address, AddressPayload, CkbRpcClient, NetworkInfo, NetworkType
+    }, Address, AddressPayload, NetworkInfo, NetworkType
 };
 use ckb_types::{core, packed, prelude::*, H256};
 use ckb_types::{core::Capacity, h256};
 use std::{error::Error as StdErr, str::FromStr};
 
-use ckb_types::{
-    core::{ScriptHashType, TransactionView as CoreTransactionView},
-    packed::Script,
-    prelude::*,
-};
+// use ckb_types::{
+//     core::{ScriptHashType, TransactionView as CoreTransactionView},
+//     packed::Script,
+//     prelude::*,
+// };
 
 use secp256k1;
 
@@ -67,15 +67,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("==============================");
     println!(" sigend tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
+    // example tx: 1272c03a175cc51f6d09c606221b90ed03dfb66147903f45823e9685b96170fb
     println!("==============================");
-    
-
-    
-    let tx_hash = CkbRpcClient::new(network_info.url.as_str())
-        .send_transaction(json_tx.inner, None)
-        .expect("send transaction");
-    // example tx: 0x9ce266d45600abbd56467c9be59febe7b07336d7c1f439b9c06379f080bf0552
-    println!(">>> tx {} sent! <<<", tx_hash);
-
     Ok(())
 }

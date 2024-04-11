@@ -1,7 +1,5 @@
 pub mod constants;
 pub mod core;
-pub mod pubsub;
-pub mod rpc;
 pub mod traits;
 pub mod transaction;
 pub mod tx_builder;
