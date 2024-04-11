@@ -1,11 +1,11 @@
-use std::{convert::TryInto, ptr, sync::atomic};
+use std::{ptr, sync::atomic};
 
 use ckb_dao_utils::extract_dao_data;
 use ckb_types::{
     core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
     packed::CellOutput,
     prelude::*,
-    H160, H256, U256,
+    H160, H256,
 };
 use sha3::{Digest, Keccak256};
 

@@ -1,6 +1,6 @@
 use ckb_types::{constants, core, packed, prelude::*};
 use derive_getters::Getters;
-use ckb_types::packed::Transaction;
+
 
 /// An advanced builder for [`TransactionView`].
 ///

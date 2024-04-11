@@ -11,7 +11,7 @@ use ckb_types::core::cell::{CellProvider, HeaderChecker};
 use ckb_types::core::HeaderView;
 use ckb_types::{
     core::{
-        cell::resolve_transaction, error::OutPointError, Capacity, CapacityError, FeeRate,
+        cell::resolve_transaction, error::OutPointError, Capacity, CapacityError,
         TransactionView,
     },
     packed::{Byte32, Script, WitnessArgs},
@@ -19,13 +19,13 @@ use ckb_types::{
 };
 
 use crate::types::ScriptGroup;
-use crate::types::{HumanCapacity, ScriptId};
+use crate::types::{ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
 use crate::util::calculate_dao_maximum_withdraw4;
 use crate::{constants::DAO_TYPE_HASH, NetworkType};
 use crate::traits::{
-        CellCollectorError, CellDepResolver, HeaderDepResolver,
-        TransactionDependencyError, TransactionDependencyProvider, ValueRangeOption,
+        CellCollectorError, HeaderDepResolver,
+        TransactionDependencyError, TransactionDependencyProvider,
     };
 
 /// Transaction builder errors
