@@ -1,60 +1,13 @@
 use ckb_types::{
     bytes::Bytes,
     core::{HeaderView, TransactionView},
-    packed::{Byte32, CellOutput, OutPoint, Transaction},
+    packed::{Byte32, CellOutput, OutPoint},
 };
 
 use crate::traits::{
-    CellCollector, CellCollectorError, CellQueryOptions, HeaderDepResolver, LiveCell,
     TransactionDependencyError, TransactionDependencyProvider,
 };
 use anyhow::anyhow;
-
-/// A dummy CellCollector. All methods will return error if possible.
-#[derive(Clone, Default)]
-pub struct DummyCellCollector;
-
-impl CellCollector for DummyCellCollector {
-    fn collect_live_cells(
-        &mut self,
-        _query: &CellQueryOptions,
-        _apply_changes: bool,
-    ) -> Result<(Vec<LiveCell>, u64), CellCollectorError> {
-        Err(CellCollectorError::Other(anyhow!(
-            "dummy collect_live_cells"
-        )))
-    }
-
-    fn lock_cell(
-        &mut self,
-        _out_point: OutPoint,
-        _tip_block_num: u64,
-    ) -> Result<(), CellCollectorError> {
-        Err(CellCollectorError::Other(anyhow!("dummy lock_cell")))
-    }
-
-    fn apply_tx(
-        &mut self,
-        _tx: Transaction,
-        _tip_block_num: u64,
-    ) -> Result<(), CellCollectorError> {
-        Err(CellCollectorError::Other(anyhow!("dummy apply_tx")))
-    }
-    fn reset(&mut self) {}
-}
-
-/// A dummy HeaderDepResolver. All methods will return error if possible.
-#[derive(Default)]
-pub struct DummyHeaderDepResolver;
-
-impl HeaderDepResolver for DummyHeaderDepResolver {
-    fn resolve_by_tx(&self, _tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
-        Err(anyhow!("dummy resolve_by_tx"))
-    }
-    fn resolve_by_number(&self, _number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
-        Err(anyhow!("dummy resolve_by_number"))
-    }
-}
 
 /// A dummy HeaderDepResolver. All methods will return error if possible.
 #[derive(Default)]

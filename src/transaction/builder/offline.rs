@@ -20,6 +20,8 @@ pub struct OfflineTransactionBuilder {
     tx: TransactionBuilder,
 }
 
+
+// TODO: impl the CkbTransactionBuilder trait
 impl OfflineTransactionBuilder {
     pub fn new(configuration: TransactionBuilderConfiguration, tx: TransactionBuilder) -> Self {
         Self { configuration, tx }

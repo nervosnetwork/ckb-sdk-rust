@@ -3,23 +3,9 @@
 
 pub mod default_impls;
 pub mod dummy_impls;
-pub mod light_client_impls;
-pub mod offchain_impls;
 
-pub use default_impls::{
-    DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
-    DefaultTransactionDependencyProvider, SecpCkbRawKeySigner,
-};
-pub use light_client_impls::{
-    LightClientCellCollector, LightClientHeaderDepResolver,
-    LightClientTransactionDependencyProvider,
-};
-pub use offchain_impls::{
-    OffchainCellCollector, OffchainCellDepResolver, OffchainHeaderDepResolver,
-    OffchainTransactionDependencyProvider,
-};
 
-use dyn_clone::DynClone;
+pub use default_impls:: SecpCkbRawKeySigner;
 use thiserror::Error;
 
 use ckb_hash::blake2b_256;
@@ -31,11 +17,9 @@ use ckb_types::{
         error::OutPointError,
         HeaderView, TransactionView,
     },
-    packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction},
+    packed::{Byte32, CellDep, CellOutput, OutPoint, Script},
     prelude::*,
 };
-
-use crate::{rpc::ckb_indexer::SearchMode, util::is_mature};
 
 /// Signer errors
 #[derive(Error, Debug)]
@@ -235,180 +219,6 @@ pub enum QueryOrder {
     Asc,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct CellQueryOptions {
-    pub primary_script: Script,
-    pub primary_type: PrimaryScriptType,
-    pub with_data: Option<bool>,
-
-    // Options for SearchKeyFilter
-    pub secondary_script: Option<Script>,
-    pub secondary_script_len_range: Option<ValueRangeOption>,
-    pub data_len_range: Option<ValueRangeOption>,
-    pub capacity_range: Option<ValueRangeOption>,
-    pub block_range: Option<ValueRangeOption>,
-
-    pub order: QueryOrder,
-    pub limit: Option<u32>,
-    /// Filter cell by its maturity
-    pub maturity: MaturityOption,
-    /// Try to collect at least `min_total_capacity` shannons of cells, if
-    /// satisfied will stop collecting. The default value is 1 shannon means
-    /// collect only one cell at most.
-    pub min_total_capacity: u64,
-    pub script_search_mode: Option<SearchMode>,
-}
-impl CellQueryOptions {
-    pub fn new(primary_script: Script, primary_type: PrimaryScriptType) -> CellQueryOptions {
-        CellQueryOptions {
-            primary_script,
-            primary_type,
-            secondary_script: None,
-            secondary_script_len_range: None,
-            data_len_range: None,
-            capacity_range: None,
-            block_range: None,
-            with_data: None,
-            order: QueryOrder::Asc,
-            limit: None,
-            maturity: MaturityOption::Mature,
-            min_total_capacity: 1,
-            script_search_mode: None,
-        }
-    }
-    pub fn new_lock(primary_script: Script) -> CellQueryOptions {
-        CellQueryOptions::new(primary_script, PrimaryScriptType::Lock)
-    }
-    pub fn new_type(primary_script: Script) -> CellQueryOptions {
-        CellQueryOptions::new(primary_script, PrimaryScriptType::Type)
-    }
-    pub fn match_cell(&self, cell: &LiveCell, max_mature_number: u64) -> bool {
-        fn extract_raw_data(script: &Script) -> Vec<u8> {
-            [
-                script.code_hash().as_slice(),
-                script.hash_type().as_slice(),
-                &script.args().raw_data(),
-            ]
-            .concat()
-        }
-        let filter_prefix = self.secondary_script.as_ref().map(|script| {
-            if script != &Script::default() {
-                extract_raw_data(script)
-            } else {
-                Vec::new()
-            }
-        });
-        match self.primary_type {
-            PrimaryScriptType::Lock => {
-                // check primary script
-                if cell.output.lock() != self.primary_script {
-                    return false;
-                }
-
-                // if primary is `lock`, secondary is `type`
-                if let Some(prefix) = filter_prefix {
-                    if prefix.is_empty() {
-                        if cell.output.type_().is_some() {
-                            return false;
-                        }
-                    } else if cell
-                        .output
-                        .type_()
-                        .to_opt()
-                        .as_ref()
-                        .map(extract_raw_data)
-                        .filter(|data| data.starts_with(&prefix))
-                        .is_none()
-                    {
-                        return false;
-                    }
-                }
-            }
-            PrimaryScriptType::Type => {
-                // check primary script
-                if cell.output.type_().to_opt().as_ref() != Some(&self.primary_script) {
-                    return false;
-                }
-
-                // if primary is `type`, secondary is `lock`
-                if let Some(prefix) = filter_prefix {
-                    if !extract_raw_data(&cell.output.lock()).starts_with(&prefix) {
-                        return false;
-                    }
-                }
-            }
-        }
-        if let Some(range) = self.secondary_script_len_range {
-            match self.primary_type {
-                PrimaryScriptType::Lock => {
-                    let script_len = cell
-                        .output
-                        .type_()
-                        .to_opt()
-                        .map(|script| extract_raw_data(&script).len())
-                        .unwrap_or_default();
-                    if !range.match_value(script_len as u64) {
-                        return false;
-                    }
-                }
-                PrimaryScriptType::Type => {
-                    let script_len = extract_raw_data(&cell.output.lock()).len();
-                    if !range.match_value(script_len as u64) {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        if let Some(range) = self.data_len_range {
-            if !range.match_value(cell.output_data.len() as u64) {
-                return false;
-            }
-        }
-        if let Some(range) = self.capacity_range {
-            let capacity: u64 = cell.output.capacity().unpack();
-            if !range.match_value(capacity) {
-                return false;
-            }
-        }
-        if let Some(range) = self.block_range {
-            if !range.match_value(cell.block_number) {
-                return false;
-            }
-        }
-        let cell_is_mature = is_mature(cell, max_mature_number);
-        match self.maturity {
-            MaturityOption::Mature => cell_is_mature,
-            MaturityOption::Immature => !cell_is_mature,
-            MaturityOption::Both => true,
-        }
-    }
-}
-pub trait CellCollector: DynClone {
-    /// Collect live cells by query options, if `apply_changes` is true will
-    /// mark all collected cells as dead cells.
-    fn collect_live_cells(
-        &mut self,
-        query: &CellQueryOptions,
-        apply_changes: bool,
-    ) -> Result<(Vec<LiveCell>, u64), CellCollectorError>;
-
-    /// Mark this cell as dead cell
-    fn lock_cell(
-        &mut self,
-        out_point: OutPoint,
-        tip_block_number: u64,
-    ) -> Result<(), CellCollectorError>;
-    /// Mark all inputs as dead cells and outputs as live cells in the transaction.
-    fn apply_tx(
-        &mut self,
-        tx: Transaction,
-        tip_block_number: u64,
-    ) -> Result<(), CellCollectorError>;
-
-    /// Clear cache and locked cells
-    fn reset(&mut self);
-}
 
 pub trait CellDepResolver {
     /// Resolve cell dep by script.

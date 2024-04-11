@@ -1,6 +1,6 @@
 use crate::{tx_builder::TxBuilderError, NetworkInfo};
 
-use self::{builder::FeeCalculator, handler::ScriptHandler};
+use self::{handler::ScriptHandler};
 
 pub mod builder;
 pub mod handler;
@@ -76,7 +76,7 @@ impl TransactionBuilderConfiguration {
         self.fee_rate
     }
 
-    pub fn fee_calculator(&self) -> FeeCalculator {
-        FeeCalculator::new(self.fee_rate)
-    }
+    // pub fn fee_calculator(&self) -> FeeCalculator {
+    //     FeeCalculator::new(self.fee_rate)
+    // }
 }
