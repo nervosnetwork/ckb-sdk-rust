@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use hashbrown::HashMap;
+use alloc::{format, string::String, vec::Vec};
 use ckb_crypto::secp::Pubkey;
 use thiserror::Error;
 
@@ -19,7 +20,7 @@ use crate::util::keccak160;
 use super::{Signer, SignerError};
 
 /// Parse Genesis Info errors
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
 pub enum ParseGenesisInfoError {
     #[error("invalid block number, expected: 0, got: `{0}`")]
     InvalidBlockNumber(u64),
@@ -111,6 +112,7 @@ impl Drop for SecpCkbRawKeySigner {
 }
 #[cfg(test)]
 mod anyhow_tests {
+    use alloc::string::ToString;
     use anyhow::anyhow;
     #[test]
     fn test_parse_genesis_info_error() {

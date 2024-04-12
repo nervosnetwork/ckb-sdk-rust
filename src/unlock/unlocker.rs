@@ -1,3 +1,4 @@
+use alloc::{boxed::Box, vec::Vec};
 use anyhow::anyhow;
 use ckb_types::{
     bytes::Bytes,
@@ -727,6 +728,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
 }
 #[cfg(test)]
 mod anyhow_tests {
+    use alloc::string::ToString;
     use anyhow::anyhow;
     #[test]
     fn test_unlock_error() {

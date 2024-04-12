@@ -1,3 +1,10 @@
+#![cfg_attr(feature = "alloc", no_std)]
+#![cfg_attr(feature = "alloc", feature(error_in_core))]
+
+#[cfg(feature = "alloc")]
+#[macro_use]
+extern crate alloc;
+
 pub mod constants;
 pub mod core;
 pub mod traits;

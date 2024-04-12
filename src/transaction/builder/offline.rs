@@ -3,6 +3,7 @@ use crate::{
         handler::HandlerContexts, TransactionBuilderConfiguration,
     }, tx_builder::{BalanceTxCapacityError, TxBuilderError}, ScriptGroup, TransactionWithScriptGroups
 };
+use alloc::{string::ToString, vec::Vec};
 use ckb_types::{
     packed::Byte32,
 
@@ -10,8 +11,7 @@ use ckb_types::{
 
 // use ckb_jsonrpc_types::CellOutput;
 use ckb_types::packed::CellOutput;
-use std::collections::HashMap;
-
+use hashbrown::HashMap;
 
 pub struct OfflineTransactionBuilder {
     /// The transaction builder configuration

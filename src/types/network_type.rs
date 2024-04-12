@@ -1,4 +1,4 @@
-use std::fmt;
+use alloc::{fmt, string::{String, ToString}};
 
 use serde_derive::{Deserialize, Serialize};
 

@@ -2,6 +2,8 @@
 
 #![allow(unused_imports)]
 
+use alloc::borrow::ToOwned;
+use alloc::vec::Vec;
 use ckb_types::molecule;
 use ckb_types::packed::*;
 use ckb_types::prelude::*;

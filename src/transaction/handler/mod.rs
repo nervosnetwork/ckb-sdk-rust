@@ -1,4 +1,6 @@
-use std::any::Any;
+use core::any::Any;
+
+use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
     core::TransactionBuilder, tx_builder::TxBuilderError, unlock::MultisigConfig, NetworkInfo,

@@ -4,7 +4,7 @@
 pub mod default_impls;
 pub mod dummy_impls;
 
-
+use alloc::{borrow::ToOwned, string::String};
 pub use default_impls:: SecpCkbRawKeySigner;
 use thiserror::Error;
 
@@ -22,7 +22,7 @@ use ckb_types::{
 };
 
 /// Signer errors
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
 pub enum SignerError {
     #[error("the id is not found in the signer")]
     IdNotFound,
@@ -237,6 +237,7 @@ pub trait HeaderDepResolver {
 // test cases make sure new added exception won't breadk `anyhow!(e_variable)` usage,
 #[cfg(test)]
 mod anyhow_tests {
+    use alloc::string::ToString;
     use anyhow::anyhow;
     #[test]
     fn test_signer_error() {

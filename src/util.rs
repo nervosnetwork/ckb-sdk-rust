@@ -1,5 +1,6 @@
-use std::{ptr, sync::atomic};
+use core::{ptr, sync::atomic};
 
+use alloc::string::String;
 use ckb_dao_utils::extract_dao_data;
 use ckb_types::{
     core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
@@ -115,6 +116,7 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
 mod tests {
     use super::*;
     use crate::test_util::MockRpcResult;
+    use alloc::vec;
     use ckb_chain_spec::consensus::ConsensusBuilder;
     use ckb_dao_utils::pack_dao_data;
     use ckb_jsonrpc_types::{Consensus, EpochView, HeaderView};

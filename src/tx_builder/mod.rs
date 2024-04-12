@@ -1,5 +1,9 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use alloc::boxed::Box;
+use alloc::fmt::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+use hashbrown::{HashMap, HashSet};
+use alloc::sync::Arc;
 
 use anyhow::anyhow;
 use ckb_chain_spec::consensus::Consensus;
@@ -254,57 +258,57 @@ pub const fn bytes_per_cycle() -> f64 {
     DEFAULT_BYTES_PER_CYCLE
 }
 
-pub struct CycleResolver<DL> {
-    tx_dep_provider: DL,
-    tip_header: HeaderView,
-    consensus: Arc<Consensus>,
-}
+// pub struct CycleResolver<DL> {
+//     tx_dep_provider: DL,
+//     tip_header: HeaderView,
+//     consensus: Arc<Consensus>,
+// }
 
-impl<
-        DL: CellDataProvider
-            + HeaderProvider
-            + ExtensionProvider
-            + CellProvider
-            + HeaderChecker
-            + Send
-            + Sync
-            + Clone
-            + 'static,
-    > CycleResolver<DL>
-{
-    pub fn new(tx_dep_provider: DL) -> Self {
-        CycleResolver {
-            tx_dep_provider,
-            tip_header: HeaderView::new_advanced_builder().build(), // TODO
-            consensus: Default::default(),                          // TODO
-        }
-    }
+// impl<
+//         DL: CellDataProvider
+//             + HeaderProvider
+//             + ExtensionProvider
+//             + CellProvider
+//             + HeaderChecker
+//             + Send
+//             + Sync
+//             + Clone
+//             + 'static,
+//     > CycleResolver<DL>
+// {
+//     pub fn new(tx_dep_provider: DL) -> Self {
+//         CycleResolver {
+//             tx_dep_provider,
+//             tip_header: HeaderView::new_advanced_builder().build(), // TODO
+//             consensus: Default::default(),                          // TODO
+//         }
+//     }
 
-    fn estimate_cycles(&self, tx: &TransactionView) -> Result<u64, BalanceTxCapacityError> {
-        let rtx = resolve_transaction(
-            tx.clone(),
-            &mut HashSet::new(),
-            &self.tx_dep_provider,
-            &self.tx_dep_provider,
-        )
-        .map_err(|err| {
-            BalanceTxCapacityError::VerifyScript(format!("Resolve transaction error: {:?}", err))
-        })?;
+//     fn estimate_cycles(&self, tx: &TransactionView) -> Result<u64, BalanceTxCapacityError> {
+//         let rtx = resolve_transaction(
+//             tx.clone(),
+//             &mut HashSet::new(),
+//             &self.tx_dep_provider,
+//             &self.tx_dep_provider,
+//         )
+//         .map_err(|err| {
+//             BalanceTxCapacityError::VerifyScript(format!("Resolve transaction error: {:?}", err))
+//         })?;
 
-        let mut verifier = TransactionScriptsVerifier::new(
-            Arc::new(rtx),
-            self.tx_dep_provider.clone(),
-            Arc::clone(&self.consensus),
-            Arc::new(TxVerifyEnv::new_submit(&self.tip_header)),
-        );
-        verifier.set_debug_printer(|script_hash, message| {
-            println!("script: {:x}, debug: {}", script_hash, message);
-        });
-        verifier.verify(u64::max_value()).map_err(|err| {
-            BalanceTxCapacityError::VerifyScript(format!("Verify script error : {:?}", err))
-        })
-    }
-}
+//         let mut verifier = TransactionScriptsVerifier::new(
+//             Arc::new(rtx),
+//             self.tx_dep_provider.clone(),
+//             Arc::clone(&self.consensus),
+//             Arc::new(TxVerifyEnv::new_submit(&self.tip_header)),
+//         );
+//         verifier.set_debug_printer(|script_hash, message| {
+//             // println!("script: {:x}, debug: {}", script_hash, message);
+//         });
+//         verifier.verify(u64::max_value()).map_err(|err| {
+//             BalanceTxCapacityError::VerifyScript(format!("Verify script error : {:?}", err))
+//         })
+//     }
+// }
 
 pub struct ScriptGroups {
     pub lock_groups: HashMap<Byte32, ScriptGroup>,
@@ -410,6 +414,7 @@ pub fn unlock_tx(
 
 #[cfg(test)]
 mod anyhow_tests {
+    use alloc::string::ToString;
     use anyhow::anyhow;
     #[test]
     fn test_signer_error() {

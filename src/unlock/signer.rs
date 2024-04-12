@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use alloc::{boxed::Box, string::String, vec::Vec};
+use hashbrown::HashSet;
 
 use anyhow::anyhow;
 use ckb_hash::{blake2b_256, new_blake2b};
@@ -171,10 +172,12 @@ impl MultisigConfig {
                 require_first_n, threshold
             )));
         }
+        let cloned = sighash_addresses.clone();
         Ok(MultisigConfig {
-            sighash_addresses,
             require_first_n,
             threshold,
+            sighash_addresses: cloned,
+            
         })
     }
 
@@ -814,6 +817,7 @@ impl ScriptSigner for OmniLockScriptSigner {
 
 #[cfg(test)]
 mod anyhow_tests {
+    use alloc::string::ToString;
     use anyhow::anyhow;
     #[test]
     fn test_script_sign_error() {

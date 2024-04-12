@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use ckb_types::{
     core::DepType,
     h256,

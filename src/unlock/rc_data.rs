@@ -1,3 +1,4 @@
+use alloc::{string::{String, ToString}, vec::Vec};
 use lazy_static::lazy_static;
 
 use sparse_merkle_tree::{default_store::DefaultStore, SparseMerkleTree, H256 as SmtH256};
@@ -409,6 +410,7 @@ mod tests {
 
 #[cfg(test)]
 mod anyhow_tests {
+    use alloc::string::ToString;
     // test cases make sure new added exception won't breadk `anyhow!(e_variable)` usage,
     use anyhow::anyhow;
     #[test]

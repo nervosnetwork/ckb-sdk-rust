@@ -1,5 +1,6 @@
+use alloc::{boxed::Box, vec::Vec};
 use ckb_types::{core, H256};
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use crate::{
     constants,

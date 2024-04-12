@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use ckb_types::{constants, core, packed, prelude::*};
 
 
@@ -54,7 +56,7 @@ impl TransactionBuilder {
 /*
  * Implement std traits.
  */
-impl ::std::default::Default for TransactionBuilder {
+impl ::core::default::Default for TransactionBuilder {
     fn default() -> Self {
         Self {
             version: constants::TX_VERSION.pack(),
@@ -116,7 +118,7 @@ macro_rules! def_setter_for_vector {
         #[doc = $comment_extend]
         pub fn $func_extend<T>(&mut self, v: T) -> &mut Self
         where
-            T: ::std::iter::IntoIterator<Item = $prefix::$type>,
+            T: ::core::iter::IntoIterator<Item = $prefix::$type>,
         {
             self.$field.extend(v);
             self
@@ -173,7 +175,7 @@ macro_rules! def_dedup_setter_for_vector {
         #[doc = $comment_extend]
         pub fn $func_extend<T>(&mut self, v: T) -> &mut Self
         where
-            T: ::std::iter::IntoIterator<Item = $prefix::$type>,
+            T: ::core::iter::IntoIterator<Item = $prefix::$type>,
         {
             v.into_iter().for_each(|item| {
                 if !self.$field.contains(&item) {

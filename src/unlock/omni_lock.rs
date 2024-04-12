@@ -1,5 +1,5 @@
 use core::hash;
-use std::fmt::Display;
+use core::fmt::Display;
 
 use crate::{
     tx_builder::SinceSource,
@@ -8,6 +8,7 @@ use crate::{
         xudt_rce_mol::SmtProofEntryVec,
     },
 };
+use alloc::{string::{String, ToString}, vec::Vec};
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
     packed::WitnessArgs,
@@ -18,7 +19,7 @@ use ckb_types::{
 pub use ckb_types::prelude::Pack;
 use enum_repr_derive::{FromEnumToRepr, TryFromReprToEnum};
 use serde::{de::Unexpected, Deserialize, Serialize};
-use std::convert::TryFrom;
+use core::convert::TryFrom;
 
 use bitflags::bitflags;
 
@@ -164,7 +165,7 @@ impl From<Identity> for ckb_types::bytes::Bytes {
 }
 
 impl Display for Identity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "(")?;
         let alternate = f.alternate();
         if alternate {
@@ -758,6 +759,7 @@ mod tests {
 }
 #[cfg(test)]
 mod anyhow_tests {
+    use alloc::string::ToString;
     use anyhow::anyhow;
     #[test]
     fn test_config_error() {

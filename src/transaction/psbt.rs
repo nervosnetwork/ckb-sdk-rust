@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use ckb_jsonrpc_types::{CellOutput, Transaction};
 use ckb_types::H256;
 use serde::{Deserialize, Serialize};

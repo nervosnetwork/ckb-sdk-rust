@@ -1,4 +1,4 @@
-use std::fmt;
+use alloc::{borrow::ToOwned, fmt, vec::{self, Vec}};
 
 use ckb_types::packed::Script;
 use serde_derive::{Deserialize, Serialize};
