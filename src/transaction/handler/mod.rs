@@ -71,7 +71,7 @@ impl HandlerContexts {
         }
     }
 
-    pub fn add_context(mut self, context: Box<dyn HandlerContext>) {
+    pub fn add_context(&mut self, context: Box<dyn HandlerContext>) {
         self.contexts.push(context);
     }
 }
