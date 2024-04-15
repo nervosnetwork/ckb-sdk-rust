@@ -6,7 +6,7 @@ use hashbrown::{HashMap, HashSet};
 use alloc::sync::Arc;
 
 use anyhow::anyhow;
-use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
+
 use thiserror::Error;
 
 use ckb_types::core::cell::{CellProvider, HeaderChecker};
