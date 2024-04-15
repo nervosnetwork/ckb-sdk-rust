@@ -9,7 +9,6 @@ pub use default_impls:: SecpCkbRawKeySigner;
 use thiserror::Error;
 
 use ckb_hash::blake2b_256;
-use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
 use ckb_types::{
     bytes::Bytes,
     core::{
@@ -94,24 +93,7 @@ pub trait TransactionDependencyProvider: Sync + Send {
     ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError>;
 }
 
-// Implement CellDataProvider trait is currently for `DaoCalculator`
-impl CellDataProvider for &dyn TransactionDependencyProvider {
-    fn get_cell_data(&self, out_point: &OutPoint) -> Option<Bytes> {
-        TransactionDependencyProvider::get_cell_data(*self, out_point).ok()
-    }
-    fn get_cell_data_hash(&self, out_point: &OutPoint) -> Option<Byte32> {
-        TransactionDependencyProvider::get_cell_data(*self, out_point)
-            .ok()
-            .map(|data| blake2b_256(data.as_ref()).pack())
-    }
-}
 
-// Implement CellDataProvider trait is currently for `DaoCalculator`
-impl HeaderProvider for &dyn TransactionDependencyProvider {
-    fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
-        TransactionDependencyProvider::get_header(*self, hash).ok()
-    }
-}
 impl HeaderChecker for &dyn TransactionDependencyProvider {
     fn check_valid(&self, block_hash: &Byte32) -> Result<(), OutPointError> {
         TransactionDependencyProvider::get_header(*self, block_hash)
@@ -139,15 +121,6 @@ impl CellProvider for &dyn TransactionDependencyProvider {
                 })
                 .unwrap_or(CellStatus::Unknown),
             Err(_err) => CellStatus::Unknown,
-        }
-    }
-}
-
-impl ExtensionProvider for &dyn TransactionDependencyProvider {
-    fn get_block_extension(&self, hash: &Byte32) -> Option<ckb_types::packed::Bytes> {
-        match TransactionDependencyProvider::get_block_extension(*self, hash).ok() {
-            Some(Some(bytes)) => Some(bytes),
-            _ => None,
         }
     }
 }

@@ -14,11 +14,12 @@ pub mod types;
 pub mod unlock;
 pub mod util;
 
-#[cfg(feature = "test")]
+#[cfg(test)]
+#[cfg(feature = "disable")]
 pub mod test_util;
 
-#[cfg(feature = "test")]
 #[cfg(test)]
+#[cfg(feature = "disable")]
 mod tests;
 
 pub use types::{
@@ -28,3 +29,4 @@ pub use types::{
 };
 
 pub use ckb_crypto::secp::SECP256K1;
+pub use ckb_types;

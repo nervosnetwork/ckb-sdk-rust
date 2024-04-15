@@ -6,9 +6,7 @@ use hashbrown::{HashMap, HashSet};
 use alloc::sync::Arc;
 
 use anyhow::anyhow;
-use ckb_chain_spec::consensus::Consensus;
 use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
-use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
 use thiserror::Error;
 
 use ckb_types::core::cell::{CellProvider, HeaderChecker};
@@ -25,7 +23,9 @@ use ckb_types::{
 use crate::types::ScriptGroup;
 use crate::types::{ScriptId};
 use crate::unlock::{ScriptUnlocker, UnlockError};
+#[cfg(feature = "dao")]
 use crate::util::calculate_dao_maximum_withdraw4;
+
 use crate::{constants::DAO_TYPE_HASH, NetworkType};
 use crate::traits::{
         CellCollectorError, HeaderDepResolver,
@@ -108,6 +108,7 @@ pub enum TransactionFeeError {
 /// Calculate the actual transaction fee of the transaction, include dao
 /// withdraw capacity.
 #[allow(clippy::unnecessary_lazy_evaluations)]
+#[cfg(feature = "dao")]
 pub fn tx_fee(
     tx: TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,

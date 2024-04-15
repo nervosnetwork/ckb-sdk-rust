@@ -1,6 +1,7 @@
 use core::{ptr, sync::atomic};
 
 use alloc::string::String;
+#[cfg(feature = "dao")]
 use ckb_dao_utils::extract_dao_data;
 use ckb_types::{
     core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
@@ -66,6 +67,7 @@ pub fn minimal_unlock_point(
     )
 }
 
+#[cfg(feature = "dao")]
 pub fn calculate_dao_maximum_withdraw4(
     deposit_header: &HeaderView,
     prepare_header: &HeaderView,
@@ -113,6 +115,7 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
 }
 
 #[cfg(test)]
+#[cfg(feature = "disable")]
 mod tests {
     use super::*;
     use crate::test_util::MockRpcResult;

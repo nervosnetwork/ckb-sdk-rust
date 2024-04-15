@@ -23,6 +23,8 @@ use crate::{
     ScriptId,
 };
 use ckb_hash::blake2b_256;
+
+#[cfg(test)]
 use ckb_mock_tx_types::{
     MockCellDep, MockInfo, MockInput, MockResourceLoader, MockTransaction, Resource,
 };
