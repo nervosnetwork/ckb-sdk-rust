@@ -6,6 +6,7 @@ use super::{MultisigConfig, OmniUnlockMode};
 use crate::{
     tx_builder::SinceSource,
     types::{
+        cobuild::basic::Message,
         omni_lock::{Auth, Identity as IdentityType, IdentityOpt, OmniLockWitnessLock},
         xudt_rce_mol::SmtProofEntryVec,
     },
@@ -16,7 +17,7 @@ use bitflags::bitflags;
 pub use ckb_types::prelude::Pack;
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
-    packed::WitnessArgs,
+    packed::{Byte, WitnessArgs},
     prelude::*,
     H160, H256,
 };
@@ -138,6 +139,16 @@ impl Identity {
             .map_err(|e| format!("can't parse {} to validate IdentityFlag.", e))?;
         let auth_content = H160::from_slice(&slice[1..21]).map_err(|e| e.to_string())?;
         Ok(Identity { flag, auth_content })
+    }
+
+    pub fn to_auth(&self) -> Auth {
+        let raw: [u8; 21] = self.clone().into();
+        let builder = Auth::new_builder();
+        let mut m_raw = [Byte::new(0); 21];
+        for (i, v) in IntoIterator::into_iter(raw).enumerate() {
+            m_raw[i] = Byte::new(v);
+        }
+        builder.set(m_raw).build()
     }
 }
 
@@ -437,6 +448,13 @@ pub struct OmniLockConfig {
     time_lock_config: Option<u64>,
     // 32 bytes type script hash for supply mode
     info_cell: Option<H256>,
+    // Whether to cobuild
+    pub(crate) enable_cobuild: bool,
+    // cobuild message
+    pub(crate) cobuild_message: Option<Bytes>,
+
+    pub(crate) enable_rc: bool,
+    pub(crate) use_rc_identify: bool,
 }
 
 impl OmniLockConfig {
@@ -490,6 +508,10 @@ impl OmniLockConfig {
             acp_config,
             time_lock_config,
             info_cell,
+            enable_cobuild: false,
+            cobuild_message: Some(Message::default().as_bytes()),
+            enable_rc: false,
+            use_rc_identify: false,
         })
     }
 
@@ -510,6 +532,10 @@ impl OmniLockConfig {
             acp_config: None,
             time_lock_config: None,
             info_cell: None,
+            enable_cobuild: false,
+            cobuild_message: Some(Message::default().as_bytes()),
+            enable_rc: false,
+            use_rc_identify: false,
         }
     }
 
@@ -551,7 +577,15 @@ impl OmniLockConfig {
             acp_config: None,
             time_lock_config: None,
             info_cell: None,
+            enable_cobuild: false,
+            cobuild_message: Some(Message::default().as_bytes()),
+            enable_rc: false,
+            use_rc_identify: false,
         }
+    }
+
+    pub fn enable_cobuild(&mut self, enable: bool) {
+        self.enable_cobuild = enable
     }
 
     /// Set the admin cofiguration, and set the OmniLockFlags::ADMIN flag.
@@ -790,6 +824,18 @@ impl OmniLockConfig {
             }
             _ => todo!("to support other placeholder_witness implementions"),
         }
+    }
+
+    pub fn build_proofs(&self) -> SmtProofEntryVec {
+        if let Some(ref admin) = self.admin_config {
+            admin.proofs.clone()
+        } else {
+            Default::default()
+        }
+    }
+
+    pub fn build_auth(&self) -> Auth {
+        self.id.to_auth()
     }
 }
 
