@@ -10,7 +10,7 @@ use crate::{
 };
 use ckb_types::{
     core::{Capacity, TransactionView},
-    packed::{self, Byte32, CellOutput, Script},
+    packed::{self, Byte32, CellOutput, OutPoint, Script},
     prelude::{Builder, Entity, Pack, Unpack},
 };
 pub mod fee_calculator;
@@ -146,6 +146,7 @@ fn inner_build<
 ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
     let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
     let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+    let mut inputs: HashMap<OutPoint, (CellOutput, bytes::Bytes)> = HashMap::default();
 
     // setup outputs' type script group
     for (output_idx, output) in tx.get_outputs().clone().iter().enumerate() {
@@ -166,6 +167,14 @@ fn inner_build<
         let input = input?;
         tx.input(input.cell_input());
         tx.witness(packed::Bytes::default());
+
+        inputs.insert(
+            input.live_cell.out_point.clone(),
+            (
+                input.live_cell.output.clone(),
+                input.live_cell.output_data.clone(),
+            ),
+        );
 
         let previous_output = input.previous_output();
         let lock_script = previous_output.lock();
@@ -203,7 +212,11 @@ fn inner_build<
 
             let tx_view = change_builder.finalize(tx);
 
-            return Ok(TransactionWithScriptGroups::new(tx_view, script_groups));
+            return Ok(TransactionWithScriptGroups::new(
+                tx_view,
+                script_groups,
+                inputs,
+            ));
         }
     }
 

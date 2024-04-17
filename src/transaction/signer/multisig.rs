@@ -1,4 +1,6 @@
-use ckb_types::core;
+use std::collections::HashMap;
+
+use ckb_types::{core, packed};
 
 use crate::{
     traits::{dummy_impls::DummyTransactionDependencyProvider, SecpCkbRawKeySigner},
@@ -45,6 +47,7 @@ impl CKBScriptSigner for Secp256k1Blake160MultisigAllSigner {
         transaction: &core::TransactionView,
         script_group: &crate::ScriptGroup,
         context: &dyn super::SignContext,
+        _inputs: &HashMap<packed::OutPoint, (packed::CellOutput, bytes::Bytes)>,
     ) -> Result<core::TransactionView, UnlockError> {
         if let Some(args) = context
             .as_any()

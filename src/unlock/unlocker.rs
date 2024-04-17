@@ -91,24 +91,30 @@ pub fn fill_witness_lock(
     tx: &TransactionView,
     script_group: &ScriptGroup,
     lock_field: Bytes,
+    enable_cobuild: bool,
 ) -> Result<TransactionView, UnlockError> {
     let witness_idx = script_group.input_indices[0];
     let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
     while witnesses.len() <= witness_idx {
         witnesses.push(Default::default());
     }
-    let witness_data = witnesses[witness_idx].raw_data();
-    let mut witness = if witness_data.is_empty() {
-        WitnessArgs::default()
+
+    if enable_cobuild {
+        Ok(tx.clone())
     } else {
-        WitnessArgs::from_slice(witness_data.as_ref())
-            .map_err(|_| UnlockError::InvalidWitnessArgs(witness_idx))?
-    };
-    if witness.lock().is_none() {
-        witness = witness.as_builder().lock(Some(lock_field).pack()).build();
+        let witness_data = witnesses[witness_idx].raw_data();
+        let mut witness = if witness_data.is_empty() {
+            WitnessArgs::default()
+        } else {
+            WitnessArgs::from_slice(witness_data.as_ref())
+                .map_err(|_| UnlockError::InvalidWitnessArgs(witness_idx))?
+        };
+        if witness.lock().is_none() {
+            witness = witness.as_builder().lock(Some(lock_field).pack()).build();
+            witnesses[witness_idx] = witness.as_bytes().pack();
+        }
+        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
     }
-    witnesses[witness_idx] = witness.as_bytes().pack();
-    Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
 }
 
 pub fn reset_witness_lock(
@@ -160,9 +166,9 @@ impl ScriptUnlocker for SecpSighashUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        _tx_dep_provider: &dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        Ok(self.signer.sign_tx(tx, script_group)?)
+        Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
     }
 
     fn fill_placeholder_witness(
@@ -171,7 +177,7 @@ impl ScriptUnlocker for SecpSighashUnlocker {
         script_group: &ScriptGroup,
         _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
+        fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]), false)
     }
 }
 
@@ -197,9 +203,9 @@ impl ScriptUnlocker for SecpMultisigUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        _tx_dep_provider: &dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        Ok(self.signer.sign_tx(tx, script_group)?)
+        Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
     }
 
     fn fill_placeholder_witness(
@@ -212,7 +218,7 @@ impl ScriptUnlocker for SecpMultisigUnlocker {
         let config_data = config.to_witness_data();
         let mut zero_lock = vec![0u8; config_data.len() + 65 * (config.threshold() as usize)];
         zero_lock[0..config_data.len()].copy_from_slice(&config_data);
-        fill_witness_lock(tx, script_group, Bytes::from(zero_lock))
+        fill_witness_lock(tx, script_group, Bytes::from(zero_lock), false)
     }
 }
 
@@ -434,7 +440,7 @@ impl ScriptUnlocker for AcpUnlocker {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             self.clear_placeholder_witness(tx, script_group)
         } else {
-            Ok(self.signer.sign_tx(tx, script_group)?)
+            Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
         }
     }
 
@@ -456,7 +462,7 @@ impl ScriptUnlocker for AcpUnlocker {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             Ok(tx.clone())
         } else {
-            fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
+            fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]), false)
         }
     }
 }
@@ -580,7 +586,7 @@ impl ScriptUnlocker for ChequeUnlocker {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             self.clear_placeholder_witness(tx, script_group)
         } else {
-            Ok(self.signer.sign_tx(tx, script_group)?)
+            Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
         }
     }
 
@@ -602,7 +608,7 @@ impl ScriptUnlocker for ChequeUnlocker {
         if self.is_unlocked(tx, script_group, tx_dep_provider)? {
             Ok(tx.clone())
         } else {
-            fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
+            fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]), false)
         }
     }
 }
@@ -709,9 +715,9 @@ impl ScriptUnlocker for OmniLockUnlocker {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
-        _tx_dep_provider: &dyn TransactionDependencyProvider,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        Ok(self.signer.sign_tx(tx, script_group)?)
+        Ok(self.signer.sign_tx(tx, script_group, tx_dep_provider)?)
     }
 
     fn fill_placeholder_witness(
@@ -722,7 +728,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
     ) -> Result<TransactionView, UnlockError> {
         let config = self.signer.config();
         let lock_field = config.placeholder_witness_lock(self.signer.unlock_mode())?;
-        fill_witness_lock(tx, script_group, lock_field)
+        fill_witness_lock(tx, script_group, lock_field, config.enable_cobuild)
     }
 }
 #[cfg(test)]

@@ -9,6 +9,10 @@ use super::{cell_dep, HandlerContext, ScriptHandler};
 use crate::{
     core::TransactionBuilder,
     tx_builder::TxBuilderError,
+    types::cobuild::{
+        basic::{Message, SighashAll, SighashAllOnly},
+        top_level::WitnessLayout,
+    },
     unlock::{OmniLockConfig, OmniUnlockMode},
     NetworkInfo, NetworkType, ScriptGroup, ScriptId,
 };
@@ -79,10 +83,43 @@ impl ScriptHandler for OmnilockScriptHandler {
         if let Some(args) = context.as_any().downcast_ref::<OmnilockScriptContext>() {
             tx_builder.dedup_cell_deps(self.cell_deps.clone());
             let index = script_group.input_indices.first().unwrap();
-            let placeholder_witness = args.cfg.placeholder_witness(args.unlock_mode)?;
-            if let Some(lock) = placeholder_witness.lock().to_opt() {
-                tx_builder.set_witness_lock(*index, Some(lock.raw_data()));
+            if args.cfg.enable_cobuild {
+                let lock_field = args.cfg.placeholder_witness_lock(args.unlock_mode)?;
+
+                let witness = match &args.cfg.cobuild_message {
+                    None => {
+                        let sighash_all_only = SighashAllOnly::new_builder()
+                            .seal(
+                                [bytes::Bytes::copy_from_slice(&[0x00u8]), lock_field]
+                                    .concat()
+                                    .pack(),
+                            )
+                            .build();
+                        let sighash_all_only =
+                            WitnessLayout::new_builder().set(sighash_all_only).build();
+                        sighash_all_only.as_bytes().pack()
+                    }
+                    Some(msg) => {
+                        let sighash_all = SighashAll::new_builder()
+                            .message(Message::new_unchecked(msg.clone()))
+                            .seal(
+                                [bytes::Bytes::copy_from_slice(&[0x00u8]), lock_field]
+                                    .concat()
+                                    .pack(),
+                            )
+                            .build();
+                        let sighash_all = WitnessLayout::new_builder().set(sighash_all).build();
+                        sighash_all.as_bytes().pack()
+                    }
+                };
+                tx_builder.set_witness(*index, witness);
+            } else {
+                let placeholder_witness = args.cfg.placeholder_witness(args.unlock_mode)?;
+                if let Some(lock) = placeholder_witness.lock().to_opt() {
+                    tx_builder.set_witness_lock(*index, Some(lock.raw_data()));
+                }
             }
+
             Ok(true)
         } else {
             Ok(false)

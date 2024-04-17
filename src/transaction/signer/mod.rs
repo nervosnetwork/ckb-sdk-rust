@@ -1,4 +1,8 @@
-use ckb_types::{core, H256};
+use ckb_types::{
+    core,
+    packed::{CellOutput, OutPoint},
+    H256,
+};
 use std::collections::HashMap;
 
 use crate::{
@@ -22,6 +26,7 @@ pub trait CKBScriptSigner {
         tx_view: &core::TransactionView,
         script_group: &ScriptGroup,
         context: &dyn SignContext,
+        inputs: &HashMap<OutPoint, (CellOutput, bytes::Bytes)>,
     ) -> Result<core::TransactionView, UnlockError>;
 }
 
@@ -144,7 +149,12 @@ impl TransactionSigner {
                     if !unlocker.match_context(context.as_ref()) {
                         continue;
                     }
-                    tx = unlocker.sign_transaction(&tx, script_group, context.as_ref())?;
+                    tx = unlocker.sign_transaction(
+                        &tx,
+                        script_group,
+                        context.as_ref(),
+                        &transaction.inputs,
+                    )?;
                     signed_groups_indices.push(idx);
                     break;
                 }
