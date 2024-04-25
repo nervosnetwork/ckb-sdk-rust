@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use ckb_crypto::secp::Pubkey;
+use ed25519_dalek::ed25519::signature::SignerMut;
 use lru::LruCache;
 use parking_lot::Mutex;
 use thiserror::Error;
@@ -18,20 +19,15 @@ use ckb_types::{
     prelude::*,
     H160,
 };
+use openssl::pkey::{PKey, Private};
 
 use super::{
     offchain_impls::CollectResult, OffchainCellCollector, OffchainCellDepResolver,
     OffchainTransactionDependencyProvider,
 };
-use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
-use crate::rpc::{CkbRpcClient, IndexerRpcClient};
-use crate::traits::{
-    CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
-    LiveCell, QueryOrder, Signer, SignerError, TransactionDependencyError,
-    TransactionDependencyProvider,
+use crate::util::{
+    get_max_mature_number, iso9796_2_batch_sign, serialize_signature, zeroize_privkey,
 };
-use crate::types::ScriptId;
-use crate::util::{get_max_mature_number, serialize_signature, zeroize_privkey};
 use crate::SECP256K1;
 use crate::{
     constants::{
@@ -40,6 +36,24 @@ use crate::{
     },
     util::keccak160,
 };
+use crate::{
+    rpc::ckb_indexer::{Order, SearchKey, Tip},
+    unlock::omni_lock::BTCSignVtype,
+    util::btc_auth,
+};
+use crate::{
+    rpc::{CkbRpcClient, IndexerRpcClient},
+    util::eos_auth,
+};
+use crate::{
+    traits::{
+        CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+        LiveCell, QueryOrder, Signer, SignerError, TransactionDependencyError,
+        TransactionDependencyProvider,
+    },
+    util::blake160,
+};
+use crate::{types::ScriptId, util::rsa_sign};
 use ckb_resource::{
     CODE_HASH_DAO, CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
     CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL,
@@ -569,7 +583,7 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
     }
 }
 
-/// A signer use secp256k1 raw key, the id is `blake160(pubkey)`.
+/// A signer use secp256k1 raw key.
 #[derive(Default, Clone)]
 pub struct SecpCkbRawKeySigner {
     keys: HashMap<H160, secp256k1::SecretKey>,
@@ -579,6 +593,7 @@ impl SecpCkbRawKeySigner {
     pub fn new(keys: HashMap<H160, secp256k1::SecretKey>) -> SecpCkbRawKeySigner {
         SecpCkbRawKeySigner { keys }
     }
+
     pub fn new_with_secret_keys(keys: Vec<secp256k1::SecretKey>) -> SecpCkbRawKeySigner {
         let mut signer = SecpCkbRawKeySigner::default();
         for key in keys {
@@ -586,6 +601,7 @@ impl SecpCkbRawKeySigner {
         }
         signer
     }
+
     pub fn add_secret_key(&mut self, key: secp256k1::SecretKey) {
         let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
         let hash160 = H160::from_slice(&blake2b_256(&pubkey.serialize()[..])[0..20])
@@ -606,6 +622,34 @@ impl SecpCkbRawKeySigner {
         let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
         let hash160 = keccak160(Pubkey::from(pubkey).as_ref());
         self.keys.insert(hash160, key);
+    }
+
+    pub fn new_with_btc_secret_key(keys: Vec<secp256k1::SecretKey>, vtype: BTCSignVtype) -> Self {
+        let mut signer = SecpCkbRawKeySigner::default();
+        for key in keys {
+            signer.add_btc_secret_key(key, vtype);
+        }
+        signer
+    }
+
+    pub fn add_btc_secret_key(&mut self, key: secp256k1::SecretKey, vtype: BTCSignVtype) {
+        let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
+        let hash160 = btc_auth(&pubkey.into(), vtype);
+        self.keys.insert(hash160.into(), key);
+    }
+
+    pub fn new_with_eos_secret_key(keys: Vec<secp256k1::SecretKey>, vtype: BTCSignVtype) -> Self {
+        let mut signer = SecpCkbRawKeySigner::default();
+        for key in keys {
+            signer.add_eos_secret_key(key, vtype);
+        }
+        signer
+    }
+
+    pub fn add_eos_secret_key(&mut self, key: secp256k1::SecretKey, vtype: BTCSignVtype) {
+        let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &key);
+        let hash160 = eos_auth(&pubkey.into(), vtype);
+        self.keys.insert(hash160.into(), key);
     }
 }
 
@@ -650,6 +694,98 @@ impl Drop for SecpCkbRawKeySigner {
         }
     }
 }
+
+pub struct RsaSigner {
+    key: PKey<Private>,
+    use_rsa: bool,
+    use_iso9796_2: bool,
+}
+
+impl RsaSigner {
+    pub fn new(key: PKey<Private>, use_rsa: bool, use_iso9796_2: bool) -> Self {
+        Self {
+            key,
+            use_rsa,
+            use_iso9796_2,
+        }
+    }
+}
+
+impl Signer for RsaSigner {
+    fn match_id(&self, id: &[u8]) -> bool {
+        id.len() == 20 && id == blake160(&self.key.public_key_to_pem().unwrap()).as_bytes()
+    }
+
+    fn sign(
+        &self,
+        id: &[u8],
+        message: &[u8],
+        _recoverable: bool,
+        _tx: &TransactionView,
+    ) -> Result<Bytes, SignerError> {
+        if !self.match_id(id) {
+            return Err(SignerError::IdNotFound);
+        }
+        if message.len() != 32 {
+            return Err(SignerError::InvalidMessage(format!(
+                "expected length: 32, got: {}",
+                message.len()
+            )));
+        }
+        if self.use_rsa {
+            Ok(rsa_sign(message, &self.key).into())
+        } else if self.use_iso9796_2 {
+            Ok(iso9796_2_batch_sign(message, &self.key).into())
+        } else {
+            Ok(Default::default())
+        }
+    }
+}
+
+/// A signer use ed25519 raw key
+#[derive(Clone)]
+pub struct Ed25519Signer {
+    key: ed25519_dalek::SigningKey,
+}
+
+impl Ed25519Signer {
+    pub fn new(key: ed25519_dalek::SigningKey) -> Self {
+        Self { key }
+    }
+}
+
+impl Signer for Ed25519Signer {
+    fn match_id(&self, id: &[u8]) -> bool {
+        id.len() == 20 && blake160(&self.key.verifying_key().as_bytes()[..]).as_bytes() == id
+    }
+
+    fn sign(
+        &self,
+        id: &[u8],
+        message: &[u8],
+        _recoverable: bool,
+        _tx: &TransactionView,
+    ) -> Result<Bytes, SignerError> {
+        if !self.match_id(id) {
+            return Err(SignerError::IdNotFound);
+        }
+        if message.len() != 83 {
+            return Err(SignerError::InvalidMessage(format!(
+                "expected length: 83, got: {}",
+                message.len()
+            )));
+        }
+
+        let sig = self.key.clone().sign(message);
+
+        let verifying_key = self.key.verifying_key();
+        // 64 + 32
+        let mut sig_plus_pubkey = sig.to_vec();
+        sig_plus_pubkey.extend(verifying_key.as_bytes());
+        Ok(Bytes::from(sig_plus_pubkey))
+    }
+}
+
 #[cfg(test)]
 mod anyhow_tests {
     use anyhow::anyhow;

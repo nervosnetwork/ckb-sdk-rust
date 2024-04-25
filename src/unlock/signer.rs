@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use anyhow::anyhow;
 use ckb_hash::{blake2b_256, new_blake2b, Blake2b, Blake2bBuilder};
 use ckb_types::{
-    bytes::{Bytes, BytesMut},
+    bytes::{BufMut, Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
     error::VerificationError,
     packed::{self, BytesOpt, Script, WitnessArgs},
@@ -11,15 +11,20 @@ use ckb_types::{
     H160,
 };
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
 use thiserror::Error;
 
 use crate::{
-    constants::MULTISIG_TYPE_HASH,
+    constants::{COMMON_PREFIX, MULTISIG_TYPE_HASH},
     types::{cobuild::top_level::WitnessLayoutUnion, omni_lock::OmniLockWitnessLock},
+    util::{
+        btc_convert_message, btc_convert_sign, iso9796_2_signning_prepare_pubkey,
+        rsa_signning_prepare_pubkey,
+    },
 };
 use crate::{
     traits::{Signer, SignerError, TransactionDependencyProvider},
-    util::convert_keccak256_hash,
+    util::{calculate_sha256, convert_keccak256_hash, hex_encode},
 };
 use crate::{
     types::{
@@ -460,7 +465,6 @@ impl ScriptSigner for ChequeScriptSigner {
 
 pub const PERSONALIZATION_SIGHASH_ALL: &[u8] = b"ckb-tcob-sighash";
 pub const PERSONALIZATION_SIGHASH_ALL_ONLY: &[u8] = b"ckb-tcob-sgohash";
-pub const PERSONALIZATION_OTX: &[u8] = b"ckb-tcob-otxhash";
 
 /// return a blake2b instance with personalization for SighashAll
 pub fn new_sighash_all_blake2b() -> Blake2b {
@@ -476,13 +480,6 @@ pub fn new_sighash_all_only_blake2b() -> Blake2b {
         .build()
 }
 
-/// return a blake2b instance with personalization for OTX
-pub fn new_otx_blake2b() -> Blake2b {
-    Blake2bBuilder::new(32)
-        .personal(PERSONALIZATION_OTX)
-        .build()
-}
-
 pub fn cobuild_generate_signing_message_hash(
     message: &Option<bytes::Bytes>,
     tx_dep_provider: &dyn TransactionDependencyProvider,
@@ -492,7 +489,7 @@ pub fn cobuild_generate_signing_message_hash(
     let mut hasher = match message {
         Some(m) => {
             let mut hasher = new_sighash_all_blake2b();
-            hasher.update(&m);
+            hasher.update(m);
             hasher
         }
         None => new_sighash_all_only_blake2b(),
@@ -784,7 +781,14 @@ impl ScriptSigner for OmniLockScriptSigner {
             return false;
         }
         match self.config.id().flag() {
-            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => self
+            IdentityFlag::PubkeyHash
+            | IdentityFlag::Ethereum
+            | IdentityFlag::Bitcoin
+            | IdentityFlag::Dogecoin
+            | IdentityFlag::EthereumDisplaying
+            | IdentityFlag::Tron
+            | IdentityFlag::Solana
+            | IdentityFlag::Eos => self
                 .signer
                 .match_id(self.config.id().auth_content().as_ref()),
             IdentityFlag::Multisig => {
@@ -855,10 +859,133 @@ impl ScriptSigner for OmniLockScriptSigner {
                 witnesses[witness_idx].raw_data(),
                 self.config.enable_cobuild,
             )?,
-            // IdentityFlag::OwnerLock => {
-            //     // should not reach here, just return a clone for compatible reason.
-            //     Ok(tx.clone())
-            // }
+            IdentityFlag::Bitcoin => {
+                let msg = btc_convert_message(&message);
+
+                let sign =
+                    self.signer
+                        .sign(id.auth_content().as_ref(), msg.as_slice(), true, tx)?;
+                btc_convert_sign(sign, self.config.btc_sign_vtype)
+            }
+            IdentityFlag::EthereumDisplaying => {
+                let eth_prefix = b"\x19Ethereum Signed Message:\n";
+                let mut hasher = Keccak256::new();
+                hasher.update(eth_prefix);
+                hasher.update(Bytes::from(format!(
+                    "{}",
+                    COMMON_PREFIX.len() + message.len() * 2
+                )));
+                hasher.update(Bytes::from(COMMON_PREFIX));
+
+                hasher.update(hex_encode(&message));
+                let r = hasher.finalize();
+
+                self.signer
+                    .sign(id.auth_content().as_ref(), r.as_slice(), true, tx)?
+            }
+            IdentityFlag::Tron => {
+                let tron_prefix: &[u8; 24] = b"\x19TRON Signed Message:\n32";
+                let mut hasher = Keccak256::new();
+                hasher.update(tron_prefix);
+                hasher.update(message);
+                let r = hasher.finalize();
+                self.signer
+                    .sign(id.auth_content().as_ref(), r.as_slice(), true, tx)?
+            }
+            IdentityFlag::Eos => {
+                let sign = self
+                    .signer
+                    .sign(id.auth_content().as_ref(), &message, true, tx)?;
+                btc_convert_sign(sign, self.config.btc_sign_vtype)
+            }
+            IdentityFlag::Dogecoin => {
+                let message_magic = b"\x19Dogecoin Signed Message:\n\x40";
+                let msg_hex = hex_encode(&message);
+                assert_eq!(msg_hex.len(), 64);
+
+                let mut temp2 = Vec::with_capacity(message_magic.len() + msg_hex.len());
+                temp2.put(message_magic.as_slice());
+                temp2.put(msg_hex.as_bytes());
+
+                let msg = calculate_sha256(&temp2);
+                let r = calculate_sha256(&msg);
+                let sign = self
+                    .signer
+                    .sign(id.auth_content().as_ref(), r.as_slice(), true, tx)?;
+                btc_convert_sign(sign, self.config.btc_sign_vtype)
+            }
+            IdentityFlag::Solana => {
+                // should we impl phantom signature mode?
+                let msg = {
+                    let mut preifx = b"CKB transaction: 0x".to_vec();
+                    preifx.extend(hex_encode(&message).as_bytes());
+                    preifx
+                };
+                self.signer
+                    .sign(id.auth_content().as_ref(), msg.as_slice(), true, tx)?
+            }
+            IdentityFlag::OwnerLock => {
+                self.signer
+                    .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?
+            }
+            IdentityFlag::Dl => {
+                let (sig, _pubkey) = if self.config.use_rsa {
+                    (
+                        self.signer.sign(
+                            self.config
+                                .rsa_pubkey
+                                .as_ref()
+                                .expect("rsa pubkey must exist"),
+                            &message,
+                            true,
+                            tx,
+                        )?,
+                        {
+                            let pubkey = openssl::pkey::PKey::public_key_from_pem(
+                                self.config
+                                    .rsa_pubkey
+                                    .as_ref()
+                                    .expect("rsa pubkey must exist"),
+                            )
+                            .unwrap();
+                            rsa_signning_prepare_pubkey(&pubkey)
+                        },
+                    )
+                } else if self.config.use_iso9796_2 {
+                    (
+                        self.signer.sign(
+                            self.config
+                                .rsa_pubkey
+                                .as_ref()
+                                .expect("rsa pubkey must exist"),
+                            &message,
+                            true,
+                            tx,
+                        )?,
+                        {
+                            let pubkey = openssl::pkey::PKey::public_key_from_pem(
+                                self.config
+                                    .rsa_pubkey
+                                    .as_ref()
+                                    .expect("rsa pubkey must exist"),
+                            )
+                            .unwrap();
+                            iso9796_2_signning_prepare_pubkey(&pubkey)
+                        },
+                    )
+                } else {
+                    (Default::default(), Default::default())
+                };
+
+                // Question?
+                //
+                // let hash = blake160(pubkey.as_ref());
+                // let preimage = gen_exec_preimage(&self.config.rsa_script, &hash);
+                // preimage_hash = blake160(preimage.as_ref());
+                // write_back_preimage_hash(dummy, IDENTITY_FLAGS_DL, preimage_hash);
+
+                sig
+            }
             _ => {
                 todo!("not supported yet");
             }

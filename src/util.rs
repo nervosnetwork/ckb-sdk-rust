@@ -1,16 +1,28 @@
 use std::{convert::TryInto, ptr, sync::atomic};
 
+use bytes::{BufMut, Bytes, BytesMut};
+use ckb_crypto::secp::Pubkey;
 use ckb_dao_utils::extract_dao_data;
+use ckb_hash::blake2b_256;
 use ckb_types::{
     core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
-    packed::CellOutput,
+    packed::{CellOutput, Script},
     prelude::*,
     H160, H256, U256,
 };
+use openssl::{
+    hash::MessageDigest,
+    pkey::{PKey, Private, Public},
+    sign::Signer,
+};
 use sha3::{Digest, Keccak256};
 
-use crate::rpc::CkbRpcClient;
 use crate::traits::LiveCell;
+use crate::{
+    constants::{BTC_PREFIX, SECP256K1_TAG_PUBKEY_UNCOMPRESSED},
+    rpc::CkbRpcClient,
+    unlock::omni_lock::BTCSignVtype,
+};
 
 use secp256k1::ffi::CPtr;
 
@@ -154,6 +166,189 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
     hasher.update(message);
     let r = hasher.finalize();
     H256::from_slice(r.as_slice()).expect("convert_keccak256_hash")
+}
+
+pub fn calculate_sha256(buf: &[u8]) -> [u8; 32] {
+    use sha2::Sha256;
+
+    let mut c = Sha256::new();
+    c.update(buf);
+    c.finalize().into()
+}
+
+pub fn calculate_ripemd160(buf: &[u8]) -> [u8; 20] {
+    use ripemd::Ripemd160;
+
+    let mut hasher = Ripemd160::new();
+    hasher.update(buf);
+    let buf = hasher.finalize().to_vec();
+
+    buf.try_into().unwrap()
+}
+
+pub fn bitcoin_hash160(buf: &[u8]) -> [u8; 20] {
+    calculate_ripemd160(&calculate_sha256(buf))
+}
+
+pub fn btc_auth(pubkey: &Pubkey, vtype: BTCSignVtype) -> [u8; 20] {
+    match vtype {
+        BTCSignVtype::P2PKHUncompressed => {
+            let mut pk_data = vec![0; 65];
+            pk_data[0] = SECP256K1_TAG_PUBKEY_UNCOMPRESSED;
+            pk_data[1..].copy_from_slice(pubkey.as_bytes());
+
+            bitcoin_hash160(&pk_data)
+        }
+        BTCSignVtype::P2PKHCompressed | BTCSignVtype::SegwitBech32 => {
+            bitcoin_hash160(&pubkey.serialize())
+        }
+        BTCSignVtype::SegwitP2SH => {
+            let mut pk_data = vec![0; 22];
+            pk_data[0] = 0;
+            pk_data[1] = 20;
+            pk_data[2..].copy_from_slice(&bitcoin_hash160(&pubkey.serialize()));
+            bitcoin_hash160(&pk_data)
+        }
+    }
+}
+
+pub fn eos_auth(pubkey: &Pubkey, vtype: BTCSignVtype) -> [u8; 20] {
+    let buf = match vtype {
+        BTCSignVtype::P2PKHUncompressed => {
+            let mut temp = Vec::with_capacity(65);
+            temp.put_u8(SECP256K1_TAG_PUBKEY_UNCOMPRESSED);
+            temp.put(pubkey.as_bytes());
+            temp
+        }
+        BTCSignVtype::P2PKHCompressed => pubkey.serialize(),
+        _ => panic!("unsupport vtype"),
+    };
+    blake2b_256(buf)[..20].try_into().unwrap()
+}
+
+pub fn btc_convert_message(msg: &[u8]) -> [u8; 32] {
+    let message_magic = b"Bitcoin Signed Message:\n";
+    let msg_hex = hex_encode(msg);
+    assert_eq!(msg_hex.len(), 64);
+
+    let mut temp2 =
+        Vec::with_capacity(1 + message_magic.len() + 1 + BTC_PREFIX.len() + msg_hex.len());
+    temp2.put_u8(message_magic.len() as u8);
+    temp2.put(message_magic.as_slice());
+
+    temp2.put_u8(0x40 + BTC_PREFIX.len() as u8);
+
+    temp2.put(format!("{}{}", BTC_PREFIX, msg_hex).as_bytes());
+
+    let msg = calculate_sha256(&temp2);
+    calculate_sha256(&msg)
+}
+
+pub fn btc_convert_sign(sign: Bytes, vtype: BTCSignVtype) -> Bytes {
+    let recid = sign[64];
+
+    let mark = recid + vtype as u8;
+
+    let mut ret = BytesMut::with_capacity(65);
+    ret.put_u8(mark);
+    ret.put(&sign[0..64]);
+    ret.freeze()
+}
+
+pub fn hex_encode(message: &[u8]) -> String {
+    let mut res = vec![0; message.len() * 2];
+    faster_hex::hex_encode(message, &mut res).unwrap();
+    String::from_utf8(res).unwrap()
+}
+
+pub fn rsa_signning_prepare_pubkey(pubkey: &PKey<Public>) -> Vec<u8> {
+    let mut sig = vec![
+        1, // algorithm id
+        1, // key size, 1024
+        0, // padding, PKCS# 1.5
+        6, // hash type SHA256
+    ];
+
+    let pubkey2 = pubkey.rsa().unwrap();
+    let mut e = pubkey2.e().to_vec();
+    let mut n = pubkey2.n().to_vec();
+    e.reverse();
+    n.reverse();
+
+    while e.len() < 4 {
+        e.push(0);
+    }
+    while n.len() < 128 {
+        n.push(0);
+    }
+    sig.append(&mut e); // 4 bytes E
+    sig.append(&mut n); // N
+
+    sig
+}
+
+pub fn rsa_sign(msg: &[u8], key: &PKey<Private>) -> Vec<u8> {
+    let pem: Vec<u8> = key.public_key_to_pem().unwrap();
+    let pubkey = PKey::public_key_from_pem(&pem).unwrap();
+
+    let mut sig = rsa_signning_prepare_pubkey(&pubkey);
+
+    let mut signer = Signer::new(MessageDigest::sha256(), key).unwrap();
+    signer.update(msg).unwrap();
+    sig.extend(signer.sign_to_vec().unwrap()); // sig
+
+    sig
+}
+
+pub fn iso9796_2_signning_prepare_pubkey(pubkey: &PKey<Public>) -> Vec<u8> {
+    let mut sig = vec![
+        3, // algorithm id, CKB_VERIFY_ISO9796_2_BATCH
+        1, // key size, 1024
+        0, // padding, PKCS# 1.5
+        6, // hash type SHA256
+    ];
+
+    let pubkey2 = pubkey.rsa().unwrap();
+    let mut e = pubkey2.e().to_vec();
+    let mut n = pubkey2.n().to_vec();
+    e.reverse();
+    n.reverse();
+
+    while e.len() < 4 {
+        e.push(0);
+    }
+    while n.len() < 128 {
+        n.push(0);
+    }
+    sig.append(&mut e); // 4 bytes E
+    sig.append(&mut n); // N
+
+    sig
+}
+
+pub fn iso9796_2_batch_sign(msg: &[u8], key: &PKey<Private>) -> Vec<u8> {
+    let pem: Vec<u8> = key.public_key_to_pem().unwrap();
+    let pubkey = PKey::public_key_from_pem(&pem).unwrap();
+
+    let mut sig = iso9796_2_signning_prepare_pubkey(&pubkey);
+
+    let mut signer = Signer::new(MessageDigest::sha256(), key).unwrap();
+    signer.update(msg).unwrap();
+    sig.extend(signer.sign_to_vec().unwrap()); // sig
+    sig.extend(signer.sign_to_vec().unwrap()); // sig
+    sig.extend(signer.sign_to_vec().unwrap()); // sig
+    sig.extend(signer.sign_to_vec().unwrap()); // sig
+
+    sig
+}
+
+pub fn gen_exec_preimage(script: &Script, blake160: &Bytes) -> Bytes {
+    let mut result = BytesMut::new();
+    result.put_slice(script.code_hash().as_slice());
+    result.put_slice(script.hash_type().as_slice());
+    result.put_slice(blake160.clone().as_ref());
+
+    result.freeze()
 }
 
 #[cfg(test)]

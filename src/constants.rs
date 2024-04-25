@@ -51,6 +51,11 @@ pub const ACP_TYPE_HASH_AGGRON: H256 =
 /// cheque withdraw since value
 pub const CHEQUE_CELL_SINCE: u64 = 0xA000000000000006;
 
+pub const COMMON_PREFIX: &str = "CKB transaction: 0x";
+pub const BTC_PREFIX: &str = "CKB (Bitcoin Layer) transaction: 0x";
+
+pub const SECP256K1_TAG_PUBKEY_UNCOMPRESSED: u8 = 0x04;
+
 #[cfg(test)]
 mod test {
     use super::*;

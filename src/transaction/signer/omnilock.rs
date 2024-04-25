@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 
 use ckb_types::{core, packed};
+use openssl::pkey::{PKey, Private};
 
 use crate::{
-    traits::SecpCkbRawKeySigner,
+    traits::{
+        default_impls::{Ed25519Signer, RsaSigner},
+        SecpCkbRawKeySigner, Signer,
+    },
     unlock::{
-        OmniLockConfig, OmniLockScriptSigner, OmniLockUnlocker, OmniUnlockMode, ScriptUnlocker,
-        UnlockError,
+        IdentityFlag, OmniLockConfig, OmniLockScriptSigner, OmniLockUnlocker, OmniUnlockMode,
+        ScriptUnlocker, UnlockError,
     },
 };
 
@@ -16,6 +20,8 @@ pub struct OmnilockSigner {}
 
 pub struct OmnilockSignerContext {
     keys: Vec<secp256k1::SecretKey>,
+    ed25519_key: Option<ed25519_dalek::SigningKey>,
+    rsa_key: Option<PKey<Private>>,
     cfg: OmniLockConfig,
     unlock_mode: OmniUnlockMode,
 }
@@ -24,19 +30,61 @@ impl OmnilockSignerContext {
     pub fn new(keys: Vec<secp256k1::SecretKey>, cfg: OmniLockConfig) -> Self {
         Self {
             keys,
+            ed25519_key: None,
+            rsa_key: None,
+            cfg,
+            unlock_mode: OmniUnlockMode::Normal,
+        }
+    }
+
+    pub fn new_with_ed25519_key(key: ed25519_dalek::SigningKey, cfg: OmniLockConfig) -> Self {
+        Self {
+            keys: Default::default(),
+            ed25519_key: Some(key),
+            rsa_key: None,
+            cfg,
+            unlock_mode: OmniUnlockMode::Normal,
+        }
+    }
+
+    pub fn new_with_rsa_key(key: PKey<Private>, cfg: OmniLockConfig) -> Self {
+        Self {
+            keys: Default::default(),
+            ed25519_key: None,
+            rsa_key: Some(key),
             cfg,
             unlock_mode: OmniUnlockMode::Normal,
         }
     }
 
     pub fn build_omnilock_unlocker(&self) -> OmniLockUnlocker {
-        let signer = if self.cfg.is_ethereum() {
-            SecpCkbRawKeySigner::new_with_ethereum_secret_keys(self.keys.clone())
-        } else {
-            SecpCkbRawKeySigner::new_with_secret_keys(self.keys.clone())
+        let signer: Box<dyn Signer> = match self.cfg.id().flag() {
+            IdentityFlag::Ethereum | IdentityFlag::EthereumDisplaying | IdentityFlag::Tron => {
+                Box::new(SecpCkbRawKeySigner::new_with_ethereum_secret_keys(
+                    self.keys.clone(),
+                ))
+            }
+            IdentityFlag::Bitcoin | IdentityFlag::Dogecoin => {
+                Box::new(SecpCkbRawKeySigner::new_with_btc_secret_key(
+                    self.keys.clone(),
+                    self.cfg.btc_sign_vtype,
+                ))
+            }
+            IdentityFlag::Eos => Box::new(SecpCkbRawKeySigner::new_with_eos_secret_key(
+                self.keys.clone(),
+                self.cfg.btc_sign_vtype,
+            )),
+            IdentityFlag::Solana => Box::new(Ed25519Signer::new(
+                self.ed25519_key.clone().expect("must have ed25519"),
+            )),
+            IdentityFlag::Dl => Box::new(RsaSigner::new(
+                self.rsa_key.clone().expect("muse have rsa"),
+                self.cfg.use_rsa,
+                self.cfg.use_iso9796_2,
+            )),
+            _ => Box::new(SecpCkbRawKeySigner::new_with_secret_keys(self.keys.clone())),
         };
-        let omnilock_signer =
-            OmniLockScriptSigner::new(Box::new(signer), self.cfg.clone(), self.unlock_mode);
+        let omnilock_signer = OmniLockScriptSigner::new(signer, self.cfg.clone(), self.unlock_mode);
         OmniLockUnlocker::new(omnilock_signer, self.cfg.clone())
     }
 }
