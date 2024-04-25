@@ -51,6 +51,7 @@ pub fn build_always_success_script() -> Script {
 // * build RCE cell, is_type = true. Only the Script.code_hash is kept for further use.
 //   when in this case, to make "args" passed in unique
 // when in_input_cell is on, the cell is not in deps but in input.
+#[allow(clippy::useless_vec)]
 fn build_script(
     ctx: &mut Context,
     is_type: bool,

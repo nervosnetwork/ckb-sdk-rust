@@ -161,7 +161,6 @@ fn inner_build<
 
     // setup change output and data
     change_builder.init(&mut tx);
-
     // collect inputs
     for (input_index, input) in input_iter.enumerate() {
         let input = input?;

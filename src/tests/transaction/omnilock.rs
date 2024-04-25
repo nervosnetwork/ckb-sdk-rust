@@ -6,7 +6,7 @@ use ckb_types::{
     core::DepType,
     packed::{CellOutput, OutPoint},
     prelude::*,
-    H256,
+    H160, H256,
 };
 
 use crate::{
@@ -289,17 +289,6 @@ fn test_omnilock_solana() {
     omnilock_test(cfg, &sign_context_2);
 }
 
-#[ignore]
-#[test]
-fn test_omnilock_owner() {
-    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
-    let pubkey = secp256k1::PublicKey::from_secret_key(&SECP256K1, &account0_key);
-    let cfg = OmniLockConfig::new_ownerlock(blake160(&Pubkey::from(pubkey).serialize()));
-    // cfg.enable_cobuild(true);
-    let sign_context = SignContexts::new_omnilock(vec![account0_key], cfg.clone());
-    omnilock_test(cfg, &sign_context)
-}
-
 fn omnilock_test(cfg: OmniLockConfig, sign_context: &SignContexts) {
     let network_info = NetworkInfo::testnet();
 
@@ -345,7 +334,7 @@ fn omnilock_test(cfg: OmniLockConfig, sign_context: &SignContexts) {
             crate::ScriptId::new_data1(H256::from(blake2b_256(OMNILOCK_BIN))),
             crate::transaction::signer::omnilock::OmnilockSigner {},
         )
-        .sign_transaction(&mut tx_with_groups, &sign_context)
+        .sign_transaction(&mut tx_with_groups, sign_context)
         .unwrap();
 
     // let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
@@ -367,5 +356,90 @@ fn omnilock_test(cfg: OmniLockConfig, sign_context: &SignContexts) {
     let fee = (100 + 200 - 120) * ONE_CKB - change_capacity;
     assert_eq!(tx.data().as_reader().serialized_size_in_block() as u64, fee);
 
+    ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
+fn test_omnilock_owner_lock() {
+    test_omnilock_owner_lock_tranfer(false);
+    test_omnilock_owner_lock_tranfer(true)
+}
+
+fn test_omnilock_owner_lock_tranfer(cobuild: bool) {
+    let network_info = NetworkInfo::testnet();
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+    let sender1 = build_sighash_script(ACCOUNT0_ARG);
+    let account0_key = secp256k1::SecretKey::from_slice(ACCOUNT0_KEY.as_bytes()).unwrap();
+    let hash = H160::from_slice(&sender1.calc_script_hash().as_slice()[0..20]).unwrap();
+    let mut cfg = OmniLockConfig::new_ownerlock(hash);
+    cfg.enable_cobuild(cobuild);
+    let sender0 = build_omnilock_script(&cfg);
+    let mut sign_context = SignContexts::new_omnilock(vec![account0_key.clone()], cfg.clone());
+    let hashall_unlock =
+        crate::transaction::signer::sighash::Secp256k1Blake160SighashAllSignerContext::new(vec![
+            account0_key.clone(),
+        ]);
+    sign_context.add_context(Box::new(hashall_unlock));
+
+    let (ctx, mut outpoints) = init_context(
+        vec![(OMNILOCK_BIN, true)],
+        vec![
+            (sender0.clone(), Some(150 * ONE_CKB)),
+            (sender1.clone(), Some(61 * ONE_CKB)),
+        ],
+    );
+
+    let configuration = test_omnilock_config(outpoints.pop().unwrap());
+    let iterator = InputIterator::new_with_cell_collector(
+        vec![sender0.clone(), sender1.clone()],
+        Box::new(ctx.to_live_cells_context()) as Box<_>,
+    );
+    let mut builder = SimpleTransactionBuilder::new(configuration, iterator);
+    let output = CellOutput::new_builder()
+        .capacity((110 * ONE_CKB).pack())
+        .lock(receiver.clone())
+        .build();
+    builder.add_output_and_data(output.clone(), ckb_types::packed::Bytes::default());
+    builder.set_change_lock(sender0.clone());
+
+    let context = OmnilockScriptContext::new(cfg.clone(), network_info.url.clone());
+    let mut contexts = HandlerContexts::default();
+    contexts.add_context(Box::new(context) as Box<_>);
+
+    let mut tx_with_groups = builder.build(&contexts).expect("build failed");
+
+    // let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
+    // println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
+
+    TransactionSigner::new(&network_info)
+        // use unitest lock to verify
+        .insert_unlocker(
+            crate::ScriptId::new_data1(H256::from(blake2b_256(OMNILOCK_BIN))),
+            crate::transaction::signer::omnilock::OmnilockSigner {},
+        )
+        .sign_transaction(&mut tx_with_groups, &sign_context)
+        .unwrap();
+
+    let tx = tx_with_groups.get_tx_view().clone();
+    // let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
+    // println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
+
+    let script_groups = tx_with_groups.script_groups.clone();
+    assert_eq!(script_groups.len(), 2);
+    assert_eq!(tx.header_deps().len(), 0);
+    assert_eq!(tx.cell_deps().len(), 2);
+    assert_eq!(tx.inputs().len(), 2);
+    let mut senders = vec![sender0.clone(), sender1.clone()];
+    for out_point in tx.input_pts_iter() {
+        let sender = ctx.get_input(&out_point).unwrap().0.lock();
+        assert!(senders.contains(&sender));
+        senders.retain(|x| x != &sender);
+    }
+    assert_eq!(tx.outputs().len(), 2);
+    assert_eq!(tx.output(0).unwrap(), output);
+    assert_eq!(tx.output(1).unwrap().lock(), sender0);
+    let change_capacity: u64 = tx.output(1).unwrap().capacity().unpack();
+    let fee = (150 + 61 - 110) * ONE_CKB - change_capacity;
+    assert_eq!(tx.data().as_reader().serialized_size_in_block() as u64, fee);
     ctx.verify(tx, FEE_RATE).unwrap();
 }

@@ -810,6 +810,9 @@ fn test_omnilock_transfer_from_ownerlock() {
         .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
         .unwrap();
 
+    let json_tx = ckb_jsonrpc_types::TransactionView::from(tx.clone());
+    println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
+
     let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
     assert!(new_locked_groups.is_empty());
     tx = new_tx;
