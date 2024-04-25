@@ -207,7 +207,7 @@ fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig) {
     cfg.set_admin_config(admin_config);
 
     let sender = build_omnilock_script(&cfg);
-    for (lock, capacity_opt) in vec![(sender.clone(), Some(100 * ONE_CKB))] {
+    for (lock, capacity_opt) in [(sender.clone(), Some(100 * ONE_CKB))] {
         ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
     }
 
@@ -399,7 +399,7 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig, unlock_mode: OmniUnlock
         OmniUnlockMode::Normal => (None, 0),
     };
     let sender = build_omnilock_script(&cfg);
-    for (lock, capacity_opt) in vec![(sender.clone(), Some(300 * ONE_CKB))] {
+    for (lock, capacity_opt) in [(sender.clone(), Some(300 * ONE_CKB))] {
         ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
     }
 
@@ -509,7 +509,7 @@ fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
     cfg.set_admin_config(admin_config);
 
     let sender = build_omnilock_script(&cfg);
-    for (lock, capacity_opt) in vec![(sender.clone(), Some(300 * ONE_CKB))] {
+    for (lock, capacity_opt) in [(sender.clone(), Some(300 * ONE_CKB))] {
         ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
     }
 
@@ -678,7 +678,7 @@ fn test_omnilock_transfer_from_multisig_wl_commnon(unlock_mode: OmniUnlockMode) 
         false,
     ));
     let sender = build_omnilock_script(&cfg);
-    for (lock, capacity_opt) in vec![
+    for (lock, capacity_opt) in [
         (sender.clone(), Some(100 * ONE_CKB)),
         (sender.clone(), Some(200 * ONE_CKB)),
         (sender.clone(), Some(300 * ONE_CKB)),
@@ -810,6 +810,9 @@ fn test_omnilock_transfer_from_ownerlock() {
         .build_balanced(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers)
         .unwrap();
 
+    let json_tx = ckb_jsonrpc_types::TransactionView::from(tx.clone());
+    println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());
+
     let (new_tx, new_locked_groups) = unlock_tx(tx.clone(), &ctx, &unlockers).unwrap();
     assert!(new_locked_groups.is_empty());
     tx = new_tx;
@@ -866,7 +869,7 @@ fn test_omnilock_transfer_from_ownerlock_wl_admin() {
         false,
     ));
     let sender0 = build_omnilock_script(&cfg);
-    for (lock, capacity_opt) in vec![(sender0.clone(), Some(50 * ONE_CKB))] {
+    for (lock, capacity_opt) in [(sender0.clone(), Some(50 * ONE_CKB))] {
         ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
     }
 

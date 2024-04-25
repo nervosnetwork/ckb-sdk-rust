@@ -82,6 +82,10 @@ impl OmnilockSignerContext {
                 self.cfg.use_rsa,
                 self.cfg.use_iso9796_2,
             )),
+            IdentityFlag::OwnerLock => Box::new(SecpCkbRawKeySigner::new_with_owner_lock(
+                self.keys.clone(),
+                self.cfg.id().auth_content().clone(),
+            )),
             _ => Box::new(SecpCkbRawKeySigner::new_with_secret_keys(self.keys.clone())),
         };
         let omnilock_signer = OmniLockScriptSigner::new(signer, self.cfg.clone(), self.unlock_mode);

@@ -651,6 +651,14 @@ impl SecpCkbRawKeySigner {
         let hash160 = eos_auth(&pubkey.into(), vtype);
         self.keys.insert(hash160.into(), key);
     }
+
+    pub fn new_with_owner_lock(keys: Vec<secp256k1::SecretKey>, hash: H160) -> Self {
+        let mut signer = SecpCkbRawKeySigner::default();
+        for key in keys {
+            signer.keys.insert(hash.clone(), key);
+        }
+        signer
+    }
 }
 
 impl Signer for SecpCkbRawKeySigner {

@@ -843,7 +843,7 @@ impl ScriptSigner for OmniLockScriptSigner {
             generate_message(&tx_new, script_group, zero_lock)?
         };
         let signature = match id.flag() {
-            IdentityFlag::PubkeyHash => {
+            IdentityFlag::PubkeyHash | IdentityFlag::OwnerLock => {
                 self.signer
                     .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?
             }
@@ -923,10 +923,6 @@ impl ScriptSigner for OmniLockScriptSigner {
                 };
                 self.signer
                     .sign(id.auth_content().as_ref(), msg.as_slice(), true, tx)?
-            }
-            IdentityFlag::OwnerLock => {
-                self.signer
-                    .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?
             }
             IdentityFlag::Dl => {
                 let (sig, _pubkey) = if self.config.use_rsa {
