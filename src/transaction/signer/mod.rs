@@ -3,6 +3,7 @@ use ckb_types::{
     packed::{CellOutput, OutPoint},
     H256,
 };
+use openssl::pkey::{PKey, Private};
 use std::collections::HashMap;
 
 use crate::{
@@ -77,6 +78,25 @@ impl SignContexts {
 
     pub fn new_omnilock(keys: Vec<secp256k1::SecretKey>, omnilock_config: OmniLockConfig) -> Self {
         let omnilock_context = omnilock::OmnilockSignerContext::new(keys, omnilock_config);
+        Self {
+            contexts: vec![Box::new(omnilock_context)],
+        }
+    }
+
+    pub fn new_omnilock_solana(
+        key: ed25519_dalek::SigningKey,
+        omnilock_config: OmniLockConfig,
+    ) -> Self {
+        let omnilock_context =
+            omnilock::OmnilockSignerContext::new_with_ed25519_key(key, omnilock_config);
+        Self {
+            contexts: vec![Box::new(omnilock_context)],
+        }
+    }
+
+    pub fn new_omnilock_dl(key: PKey<Private>, omnilock_config: OmniLockConfig) -> Self {
+        let omnilock_context =
+            omnilock::OmnilockSignerContext::new_with_rsa_key(key, omnilock_config);
         Self {
             contexts: vec![Box::new(omnilock_context)],
         }
