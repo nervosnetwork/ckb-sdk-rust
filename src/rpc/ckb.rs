@@ -1,11 +1,12 @@
 use ckb_jsonrpc_types::{
     Alert, BannedAddr, Block, BlockEconomicState, BlockFilter, BlockNumber, BlockResponse,
     BlockTemplate, BlockView, Capacity, CellWithStatus, ChainInfo, Consensus,
-    DaoWithdrawingCalculationKind, DeploymentsInfo, EpochNumber, EpochNumberWithFraction,
-    EpochView, EstimateCycles, ExtraLoggerConfig, FeeRateStatistics, HeaderView, JsonBytes,
-    LocalNode, MainLoggerConfig, OutPoint, OutputsValidator, PoolTxDetailInfo, RawTxPool,
-    RemoteNode, SyncState, Timestamp, Transaction, TransactionAndWitnessProof, TransactionProof,
-    TransactionWithStatusResponse, TxPoolInfo, Uint32, Uint64, Version,
+    DaoWithdrawingCalculationKind, DeploymentsInfo, EntryCompleted, EpochNumber,
+    EpochNumberWithFraction, EpochView, EstimateCycles, ExtraLoggerConfig, FeeRateStatistics,
+    HeaderView, JsonBytes, LocalNode, MainLoggerConfig, OutPoint, OutputsValidator,
+    PoolTxDetailInfo, RawTxPool, RemoteNode, SyncState, Timestamp, Transaction,
+    TransactionAndWitnessProof, TransactionProof, TransactionWithStatusResponse, TxPoolInfo,
+    Uint32, Uint64, Version,
 };
 use ckb_types::{core::Cycle, H256};
 
@@ -78,6 +79,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn clear_tx_pool(&self) -> ();
     pub fn get_raw_tx_pool(&self, verbose: Option<bool>) -> RawTxPool;
     pub fn tx_pool_ready(&self) -> bool;
+    pub fn test_tx_pool_accept(&self, tx: Transaction, outputs_validator: Option<OutputsValidator>) -> EntryCompleted;
 
     // Stats
     pub fn get_blockchain_info(&self) -> ChainInfo;
