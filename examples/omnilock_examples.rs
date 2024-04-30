@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let mut contexts = HandlerContexts::default();
     contexts.add_context(Box::new(context) as Box<_>);
 
-    let mut tx_with_groups = builder.build(&mut contexts)?;
+    let mut tx_with_groups = builder.build(&contexts)?;
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());

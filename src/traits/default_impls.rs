@@ -19,15 +19,13 @@ use ckb_types::{
     prelude::*,
     H160,
 };
-use openssl::pkey::{PKey, Private};
 
 use super::{
     offchain_impls::CollectResult, OffchainCellCollector, OffchainCellDepResolver,
     OffchainTransactionDependencyProvider,
 };
-use crate::util::{
-    get_max_mature_number, iso9796_2_batch_sign, serialize_signature, zeroize_privkey,
-};
+use crate::types::ScriptId;
+use crate::util::{get_max_mature_number, serialize_signature, zeroize_privkey};
 use crate::SECP256K1;
 use crate::{
     constants::{
@@ -53,7 +51,6 @@ use crate::{
     },
     util::blake160,
 };
-use crate::{types::ScriptId, util::rsa_sign};
 use ckb_resource::{
     CODE_HASH_DAO, CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
     CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL,
@@ -699,53 +696,6 @@ impl Drop for SecpCkbRawKeySigner {
     fn drop(&mut self) {
         for (_, mut secret_key) in self.keys.drain() {
             zeroize_privkey(&mut secret_key);
-        }
-    }
-}
-
-pub struct RsaSigner {
-    key: PKey<Private>,
-    use_rsa: bool,
-    use_iso9796_2: bool,
-}
-
-impl RsaSigner {
-    pub fn new(key: PKey<Private>, use_rsa: bool, use_iso9796_2: bool) -> Self {
-        Self {
-            key,
-            use_rsa,
-            use_iso9796_2,
-        }
-    }
-}
-
-impl Signer for RsaSigner {
-    fn match_id(&self, id: &[u8]) -> bool {
-        id.len() == 20 && id == blake160(&self.key.public_key_to_pem().unwrap()).as_bytes()
-    }
-
-    fn sign(
-        &self,
-        id: &[u8],
-        message: &[u8],
-        _recoverable: bool,
-        _tx: &TransactionView,
-    ) -> Result<Bytes, SignerError> {
-        if !self.match_id(id) {
-            return Err(SignerError::IdNotFound);
-        }
-        if message.len() != 32 {
-            return Err(SignerError::InvalidMessage(format!(
-                "expected length: 32, got: {}",
-                message.len()
-            )));
-        }
-        if self.use_rsa {
-            Ok(rsa_sign(message, &self.key).into())
-        } else if self.use_iso9796_2 {
-            Ok(iso9796_2_batch_sign(message, &self.key).into())
-        } else {
-            Ok(Default::default())
         }
     }
 }

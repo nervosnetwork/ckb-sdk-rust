@@ -1,13 +1,9 @@
-use ckb_types::{
-    core,
-    packed::{CellOutput, OutPoint},
-    H256,
-};
-use openssl::pkey::{PKey, Private};
+use ckb_types::{core, packed, H256};
 use std::collections::HashMap;
 
 use crate::{
     constants,
+    traits::TransactionDependencyProvider,
     unlock::{MultisigConfig, OmniLockConfig, UnlockError},
     NetworkInfo, NetworkType, ScriptGroup, ScriptId, TransactionWithScriptGroups,
 };
@@ -27,7 +23,7 @@ pub trait CKBScriptSigner {
         tx_view: &core::TransactionView,
         script_group: &ScriptGroup,
         context: &dyn SignContext,
-        inputs: &HashMap<OutPoint, (CellOutput, bytes::Bytes)>,
+        inputs: &dyn TransactionDependencyProvider,
     ) -> Result<core::TransactionView, UnlockError>;
 }
 
@@ -94,9 +90,12 @@ impl SignContexts {
         }
     }
 
-    pub fn new_omnilock_dl(key: PKey<Private>, omnilock_config: OmniLockConfig) -> Self {
+    pub fn new_omnilock_exec_dl_custom<T: crate::traits::Signer + 'static>(
+        signer: T,
+        omnilock_config: OmniLockConfig,
+    ) -> Self {
         let omnilock_context =
-            omnilock::OmnilockSignerContext::new_with_rsa_key(key, omnilock_config);
+            omnilock::OmnilockSignerContext::new_with_dl_exec_signer(signer, omnilock_config);
         Self {
             contexts: vec![Box::new(omnilock_context)],
         }
@@ -173,7 +172,9 @@ impl TransactionSigner {
                         &tx,
                         script_group,
                         context.as_ref(),
-                        &transaction.inputs,
+                        &InputsProvider {
+                            inputs: &transaction.inputs,
+                        },
                     )?;
                     signed_groups_indices.push(idx);
                     break;
@@ -182,5 +183,58 @@ impl TransactionSigner {
         }
         transaction.set_tx_view(tx);
         Ok(signed_groups_indices)
+    }
+}
+
+struct InputsProvider<'a> {
+    inputs: &'a HashMap<packed::OutPoint, (packed::CellOutput, bytes::Bytes)>,
+}
+
+impl<'a> crate::traits::TransactionDependencyProvider for InputsProvider<'a> {
+    /// For verify certain cell belong to certain transaction
+    fn get_transaction(
+        &self,
+        _tx_hash: &packed::Byte32,
+    ) -> Result<core::TransactionView, crate::traits::TransactionDependencyError> {
+        Err(crate::traits::TransactionDependencyError::NotFound(
+            "not support".to_string(),
+        ))
+    }
+    /// For get the output information of inputs or cell_deps, those cell should be live cell
+    fn get_cell(
+        &self,
+        out_point: &packed::OutPoint,
+    ) -> Result<packed::CellOutput, crate::traits::TransactionDependencyError> {
+        self.inputs.get(out_point).map(|a| a.0.clone()).ok_or(
+            crate::traits::TransactionDependencyError::NotFound("not found".to_string()),
+        )
+    }
+    /// For get the output data information of inputs or cell_deps
+    fn get_cell_data(
+        &self,
+        out_point: &packed::OutPoint,
+    ) -> Result<bytes::Bytes, crate::traits::TransactionDependencyError> {
+        self.inputs.get(out_point).map(|a| a.1.clone()).ok_or(
+            crate::traits::TransactionDependencyError::NotFound("not found".to_string()),
+        )
+    }
+    /// For get the header information of header_deps
+    fn get_header(
+        &self,
+        _block_hash: &packed::Byte32,
+    ) -> Result<core::HeaderView, crate::traits::TransactionDependencyError> {
+        Err(crate::traits::TransactionDependencyError::NotFound(
+            "not support".to_string(),
+        ))
+    }
+
+    /// For get_block_extension
+    fn get_block_extension(
+        &self,
+        _block_hash: &packed::Byte32,
+    ) -> Result<Option<ckb_types::packed::Bytes>, crate::traits::TransactionDependencyError> {
+        Err(crate::traits::TransactionDependencyError::NotFound(
+            "not support".to_string(),
+        ))
     }
 }

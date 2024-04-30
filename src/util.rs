@@ -6,14 +6,9 @@ use ckb_dao_utils::extract_dao_data;
 use ckb_hash::blake2b_256;
 use ckb_types::{
     core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
-    packed::{CellOutput, Script},
+    packed::CellOutput,
     prelude::*,
     H160, H256, U256,
-};
-use openssl::{
-    hash::MessageDigest,
-    pkey::{PKey, Private, Public},
-    sign::Signer,
 };
 use sha3::{Digest, Keccak256};
 
@@ -259,96 +254,6 @@ pub fn hex_encode(message: &[u8]) -> String {
     let mut res = vec![0; message.len() * 2];
     faster_hex::hex_encode(message, &mut res).unwrap();
     String::from_utf8(res).unwrap()
-}
-
-pub fn rsa_signning_prepare_pubkey(pubkey: &PKey<Public>) -> Vec<u8> {
-    let mut sig = vec![
-        1, // algorithm id
-        1, // key size, 1024
-        0, // padding, PKCS# 1.5
-        6, // hash type SHA256
-    ];
-
-    let pubkey2 = pubkey.rsa().unwrap();
-    let mut e = pubkey2.e().to_vec();
-    let mut n = pubkey2.n().to_vec();
-    e.reverse();
-    n.reverse();
-
-    while e.len() < 4 {
-        e.push(0);
-    }
-    while n.len() < 128 {
-        n.push(0);
-    }
-    sig.append(&mut e); // 4 bytes E
-    sig.append(&mut n); // N
-
-    sig
-}
-
-pub fn rsa_sign(msg: &[u8], key: &PKey<Private>) -> Vec<u8> {
-    let pem: Vec<u8> = key.public_key_to_pem().unwrap();
-    let pubkey = PKey::public_key_from_pem(&pem).unwrap();
-
-    let mut sig = rsa_signning_prepare_pubkey(&pubkey);
-
-    let mut signer = Signer::new(MessageDigest::sha256(), key).unwrap();
-    signer.update(msg).unwrap();
-    sig.extend(signer.sign_to_vec().unwrap()); // sig
-
-    sig
-}
-
-pub fn iso9796_2_signning_prepare_pubkey(pubkey: &PKey<Public>) -> Vec<u8> {
-    let mut sig = vec![
-        3, // algorithm id, CKB_VERIFY_ISO9796_2_BATCH
-        1, // key size, 1024
-        0, // padding, PKCS# 1.5
-        6, // hash type SHA256
-    ];
-
-    let pubkey2 = pubkey.rsa().unwrap();
-    let mut e = pubkey2.e().to_vec();
-    let mut n = pubkey2.n().to_vec();
-    e.reverse();
-    n.reverse();
-
-    while e.len() < 4 {
-        e.push(0);
-    }
-    while n.len() < 128 {
-        n.push(0);
-    }
-    sig.append(&mut e); // 4 bytes E
-    sig.append(&mut n); // N
-
-    sig
-}
-
-pub fn iso9796_2_batch_sign(msg: &[u8], key: &PKey<Private>) -> Vec<u8> {
-    let pem: Vec<u8> = key.public_key_to_pem().unwrap();
-    let pubkey = PKey::public_key_from_pem(&pem).unwrap();
-
-    let mut sig = iso9796_2_signning_prepare_pubkey(&pubkey);
-
-    let mut signer = Signer::new(MessageDigest::sha256(), key).unwrap();
-    signer.update(msg).unwrap();
-    sig.extend(signer.sign_to_vec().unwrap()); // sig
-    sig.extend(signer.sign_to_vec().unwrap()); // sig
-    sig.extend(signer.sign_to_vec().unwrap()); // sig
-    sig.extend(signer.sign_to_vec().unwrap()); // sig
-
-    sig
-}
-
-pub fn gen_exec_preimage(script: &Script, blake160: &Bytes) -> Bytes {
-    let mut result = BytesMut::new();
-    result.put_slice(script.code_hash().as_slice());
-    result.put_slice(script.hash_type().as_slice());
-    result.put_slice(blake160.clone().as_ref());
-
-    result.freeze()
 }
 
 #[cfg(test)]

@@ -50,6 +50,7 @@ const ACP_BIN: &[u8] = include_bytes!("../test-data/anyone_can_pay");
 const CHEQUE_BIN: &[u8] = include_bytes!("../test-data/ckb-cheque-script");
 const ALWAYS_SUCCESS_BIN: &[u8] = include_bytes!("../test-data/always_success");
 const OMNILOCK_BIN: &[u8] = include_bytes!("../test-data/omni_lock");
+// const ALWAYS_SUCCESS_BIN_DL: &[u8] = include_bytes!("../test-data/always_success_dl");
 
 fn build_sighash_script(args: H160) -> Script {
     Script::new_builder()
@@ -66,6 +67,22 @@ fn build_multisig_script(cfg: &MultisigConfig) -> Script {
         .args(Bytes::from(cfg.hash160().0.to_vec()).pack())
         .build()
 }
+
+fn build_always_success_script() -> Script {
+    let data_hash = H256::from(blake2b_256(ALWAYS_SUCCESS_BIN));
+    Script::new_builder()
+        .code_hash(data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .build()
+}
+
+// fn build_always_success_script_dl() -> Script {
+//     let data_hash = H256::from(blake2b_256(ALWAYS_SUCCESS_BIN_DL));
+//     Script::new_builder()
+//         .code_hash(data_hash.pack())
+//         .hash_type(ScriptHashType::Data1.into())
+//         .build()
+// }
 
 fn build_dao_script() -> Script {
     Script::new_builder()

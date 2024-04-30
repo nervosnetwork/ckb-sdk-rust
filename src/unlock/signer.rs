@@ -17,10 +17,7 @@ use thiserror::Error;
 use crate::{
     constants::{COMMON_PREFIX, MULTISIG_TYPE_HASH},
     types::{cobuild::top_level::WitnessLayoutUnion, omni_lock::OmniLockWitnessLock},
-    util::{
-        btc_convert_message, btc_convert_sign, iso9796_2_signning_prepare_pubkey,
-        rsa_signning_prepare_pubkey,
-    },
+    util::{btc_convert_message, btc_convert_sign},
 };
 use crate::{
     traits::{Signer, SignerError, TransactionDependencyProvider},
@@ -754,7 +751,7 @@ impl ScriptSigner for OmniLockScriptSigner {
         if args.len() != self.config.get_args_len() {
             return false;
         }
-
+        dbg!(1);
         if self.unlock_mode == OmniUnlockMode::Admin {
             if let Some(admin_config) = self.config.get_admin_config() {
                 if args.len() < 54 {
@@ -924,66 +921,9 @@ impl ScriptSigner for OmniLockScriptSigner {
                 self.signer
                     .sign(id.auth_content().as_ref(), msg.as_slice(), true, tx)?
             }
-            IdentityFlag::Dl => {
-                let (sig, _pubkey) = if self.config.use_rsa {
-                    (
-                        self.signer.sign(
-                            self.config
-                                .rsa_pubkey
-                                .as_ref()
-                                .expect("rsa pubkey must exist"),
-                            &message,
-                            true,
-                            tx,
-                        )?,
-                        {
-                            let pubkey = openssl::pkey::PKey::public_key_from_pem(
-                                self.config
-                                    .rsa_pubkey
-                                    .as_ref()
-                                    .expect("rsa pubkey must exist"),
-                            )
-                            .unwrap();
-                            rsa_signning_prepare_pubkey(&pubkey)
-                        },
-                    )
-                } else if self.config.use_iso9796_2 {
-                    (
-                        self.signer.sign(
-                            self.config
-                                .rsa_pubkey
-                                .as_ref()
-                                .expect("rsa pubkey must exist"),
-                            &message,
-                            true,
-                            tx,
-                        )?,
-                        {
-                            let pubkey = openssl::pkey::PKey::public_key_from_pem(
-                                self.config
-                                    .rsa_pubkey
-                                    .as_ref()
-                                    .expect("rsa pubkey must exist"),
-                            )
-                            .unwrap();
-                            iso9796_2_signning_prepare_pubkey(&pubkey)
-                        },
-                    )
-                } else {
-                    (Default::default(), Default::default())
-                };
-
-                // Question?
-                //
-                // let hash = blake160(pubkey.as_ref());
-                // let preimage = gen_exec_preimage(&self.config.rsa_script, &hash);
-                // preimage_hash = blake160(preimage.as_ref());
-                // write_back_preimage_hash(dummy, IDENTITY_FLAGS_DL, preimage_hash);
-
-                sig
-            }
-            _ => {
-                todo!("not supported yet");
+            IdentityFlag::Dl | IdentityFlag::Exec => {
+                self.signer
+                    .sign(id.auth_content().as_ref(), &message, true, tx)?
             }
         };
         if self.config.enable_cobuild {
@@ -1014,7 +954,10 @@ impl ScriptSigner for OmniLockScriptSigner {
                 matches!(self.unlock_mode, OmniUnlockMode::Admin),
                 &self.config.build_proofs(),
                 &id.to_auth(),
-                None,
+                self.config
+                    .exec_dl_config
+                    .clone()
+                    .map(|i| i.preimage().to_vec().into()),
             )?;
             match &self.config.cobuild_message {
                 Some(msg) => {
@@ -1052,7 +995,10 @@ impl ScriptSigner for OmniLockScriptSigner {
                 matches!(self.unlock_mode, OmniUnlockMode::Admin),
                 &self.config.build_proofs(),
                 &id.to_auth(),
-                None,
+                self.config
+                    .exec_dl_config
+                    .clone()
+                    .map(|i| i.preimage().to_vec().into()),
             )?;
             current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
             witnesses[witness_idx] = current_witness.as_bytes().pack();

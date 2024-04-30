@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
 use ckb_types::{core, packed};
-use openssl::pkey::{PKey, Private};
 
 use crate::{
     traits::{
-        default_impls::{Ed25519Signer, RsaSigner},
-        SecpCkbRawKeySigner, Signer,
+        default_impls::Ed25519Signer, SecpCkbRawKeySigner, Signer, TransactionDependencyProvider,
     },
     unlock::{
         IdentityFlag, OmniLockConfig, OmniLockScriptSigner, OmniLockUnlocker, OmniUnlockMode,
@@ -21,7 +19,7 @@ pub struct OmnilockSigner {}
 pub struct OmnilockSignerContext {
     keys: Vec<secp256k1::SecretKey>,
     ed25519_key: Option<ed25519_dalek::SigningKey>,
-    rsa_key: Option<PKey<Private>>,
+    custom_signer: Option<Box<dyn Signer>>,
     cfg: OmniLockConfig,
     unlock_mode: OmniUnlockMode,
 }
@@ -31,7 +29,7 @@ impl OmnilockSignerContext {
         Self {
             keys,
             ed25519_key: None,
-            rsa_key: None,
+            custom_signer: None,
             cfg,
             unlock_mode: OmniUnlockMode::Normal,
         }
@@ -41,17 +39,17 @@ impl OmnilockSignerContext {
         Self {
             keys: Default::default(),
             ed25519_key: Some(key),
-            rsa_key: None,
+            custom_signer: None,
             cfg,
             unlock_mode: OmniUnlockMode::Normal,
         }
     }
 
-    pub fn new_with_rsa_key(key: PKey<Private>, cfg: OmniLockConfig) -> Self {
+    pub fn new_with_dl_exec_signer<T: Signer + 'static>(signer: T, cfg: OmniLockConfig) -> Self {
         Self {
             keys: Default::default(),
             ed25519_key: None,
-            rsa_key: Some(key),
+            custom_signer: Some(Box::new(signer)),
             cfg,
             unlock_mode: OmniUnlockMode::Normal,
         }
@@ -77,16 +75,20 @@ impl OmnilockSignerContext {
             IdentityFlag::Solana => Box::new(Ed25519Signer::new(
                 self.ed25519_key.clone().expect("must have ed25519"),
             )),
-            IdentityFlag::Dl => Box::new(RsaSigner::new(
-                self.rsa_key.clone().expect("muse have rsa"),
-                self.cfg.use_rsa,
-                self.cfg.use_iso9796_2,
-            )),
             IdentityFlag::OwnerLock => Box::new(SecpCkbRawKeySigner::new_with_owner_lock(
                 self.keys.clone(),
                 self.cfg.id().auth_content().clone(),
             )),
-            _ => Box::new(SecpCkbRawKeySigner::new_with_secret_keys(self.keys.clone())),
+            IdentityFlag::Dl | IdentityFlag::Exec => {
+                let signer = self
+                    .custom_signer
+                    .as_ref()
+                    .expect("must have custom signer");
+                dyn_clone::clone_box(&**signer)
+            }
+            IdentityFlag::Multisig | IdentityFlag::PubkeyHash => {
+                Box::new(SecpCkbRawKeySigner::new_with_secret_keys(self.keys.clone()))
+            }
         };
         let omnilock_signer = OmniLockScriptSigner::new(signer, self.cfg.clone(), self.unlock_mode);
         OmniLockUnlocker::new(omnilock_signer, self.cfg.clone())
@@ -104,11 +106,11 @@ impl CKBScriptSigner for OmnilockSigner {
         transaction: &core::TransactionView,
         script_group: &crate::ScriptGroup,
         context: &dyn super::SignContext,
-        inputs: &HashMap<packed::OutPoint, (packed::CellOutput, bytes::Bytes)>,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<core::TransactionView, UnlockError> {
         if let Some(args) = context.as_any().downcast_ref::<OmnilockSignerContext>() {
             let unlocker = args.build_omnilock_unlocker();
-            let tx = unlocker.unlock(transaction, script_group, &InputsProvider { inputs } as _)?;
+            let tx = unlocker.unlock(transaction, script_group, tx_dep_provider)?;
             Ok(tx)
         } else {
             Err(UnlockError::SignContextTypeIncorrect)
