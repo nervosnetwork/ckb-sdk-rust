@@ -16,6 +16,7 @@ use crate::{
 };
 
 use bitflags::bitflags;
+use ckb_types::packed::Script;
 pub use ckb_types::prelude::Pack;
 use ckb_types::{
     bytes::{BufMut, Bytes, BytesMut},
@@ -24,7 +25,6 @@ use ckb_types::{
     H160, H256,
 };
 use enum_repr_derive::{FromEnumToRepr, TryFromReprToEnum};
-use openssl::pkey::{PKey, Public};
 use serde::{de::Unexpected, Deserialize, Serialize};
 use thiserror::Error;
 
@@ -211,6 +211,66 @@ bitflags! {
         const TIME_LOCK = 1<<2;
         /// supply mode, flag is 1<<3, affected args: type script hash for supply
         const SUPPLY = 1<<3;
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ExecDlConfig {
+    preimage: Preimage,
+    signature_len: usize,
+}
+
+impl ExecDlConfig {
+    pub fn new(preimage: Preimage, signature_len: usize) -> Self {
+        Self {
+            preimage,
+            signature_len,
+        }
+    }
+
+    pub fn auth(&self) -> H160 {
+        self.preimage.auth()
+    }
+
+    pub fn preimage(&self) -> &[u8] {
+        self.preimage.preimage()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Preimage {
+    preimage: Vec<u8>,
+}
+
+impl Preimage {
+    pub fn new_with_exec(script: Script, place: u8, bounds: [u8; 8], pubkey_hash: H160) -> Self {
+        let mut preimage = Vec::with_capacity(32 + 1 + 1 + 8 + 20);
+
+        preimage.put(script.code_hash().as_slice());
+        preimage.put(script.hash_type().as_slice());
+        preimage.put_u8(place);
+        preimage.put(bounds.as_slice());
+        preimage.put(pubkey_hash.as_bytes());
+
+        Self { preimage }
+    }
+
+    pub fn new_with_dl(script: Script, pubkey_hash: H160) -> Self {
+        let mut preimage = Vec::with_capacity(32 + 1 + 20);
+
+        preimage.put(script.code_hash().as_slice());
+        preimage.put(script.hash_type().as_slice());
+        preimage.put(pubkey_hash.as_bytes());
+
+        Self { preimage }
+    }
+
+    pub fn auth(&self) -> H160 {
+        blake160(&self.preimage)
+    }
+
+    pub fn preimage(&self) -> &[u8] {
+        &self.preimage
     }
 }
 
@@ -461,11 +521,7 @@ pub struct OmniLockConfig {
 
     pub(crate) btc_sign_vtype: BTCSignVtype,
 
-    pub(crate) use_rsa: bool,
-
-    pub(crate) use_iso9796_2: bool,
-
-    pub(crate) rsa_pubkey: Option<Vec<u8>>,
+    pub(crate) exec_dl_config: Option<ExecDlConfig>,
 }
 
 impl OmniLockConfig {
@@ -522,9 +578,7 @@ impl OmniLockConfig {
             enable_cobuild: false,
             cobuild_message: Some(Message::default().as_bytes()),
             btc_sign_vtype: BTCSignVtype::P2PKHUncompressed,
-            use_rsa: false,
-            use_iso9796_2: false,
-            rsa_pubkey: None,
+            exec_dl_config: None,
         })
     }
 
@@ -548,9 +602,7 @@ impl OmniLockConfig {
             enable_cobuild: false,
             cobuild_message: Some(Message::default().as_bytes()),
             btc_sign_vtype: BTCSignVtype::P2PKHUncompressed,
-            use_rsa: false,
-            use_iso9796_2: false,
-            rsa_pubkey: None,
+            exec_dl_config: None,
         }
     }
 
@@ -598,15 +650,6 @@ impl OmniLockConfig {
         Self::new(IdentityFlag::Solana, blake160(pubkey.as_bytes()))
     }
 
-    pub fn new_rsa_from_pubkey(pubkey: &PKey<Public>) -> Self {
-        let mut c = Self::new(
-            IdentityFlag::Dl,
-            blake160(&pubkey.public_key_to_pem().unwrap()),
-        );
-        c.rsa_pubkey = Some(pubkey.public_key_to_pem().unwrap());
-        c
-    }
-
     /// Create an ownerlock omnilock with according script hash.
     /// # Arguments
     /// * `script_hash` the proper blake160 hash of according ownerlock script.
@@ -614,22 +657,22 @@ impl OmniLockConfig {
         Self::new(IdentityFlag::OwnerLock, script_hash)
     }
 
-    /// Create a new OmniLockConfig
-    pub fn new(flag: IdentityFlag, hash: H160) -> Self {
-        let auth_content = match flag {
-            IdentityFlag::PubkeyHash
-            | IdentityFlag::Ethereum
-            | IdentityFlag::EthereumDisplaying
-            | IdentityFlag::Bitcoin
-            | IdentityFlag::Dogecoin
-            | IdentityFlag::Eos
-            | IdentityFlag::Tron
-            | IdentityFlag::Solana
-            | IdentityFlag::OwnerLock
-            | IdentityFlag::Dl => hash,
-            _ => H160::from_slice(&[0; 20]).unwrap(),
-        };
+    pub fn new_with_exec_preimage(config: ExecDlConfig) -> Self {
+        assert_eq!(config.preimage().len(), 32 + 1 + 1 + 8 + 20);
+        let mut c = Self::new(IdentityFlag::Exec, config.auth());
+        c.exec_dl_config = Some(config);
+        c
+    }
 
+    pub fn new_with_dl_preimage(config: ExecDlConfig) -> Self {
+        assert_eq!(config.preimage().len(), 32 + 1 + 20);
+        let mut c = Self::new(IdentityFlag::Dl, config.auth());
+        c.exec_dl_config = Some(config);
+        c
+    }
+
+    /// Create a new OmniLockConfig
+    pub fn new(flag: IdentityFlag, auth_content: H160) -> Self {
         OmniLockConfig {
             id: Identity { flag, auth_content },
             multisig_config: None,
@@ -641,9 +684,7 @@ impl OmniLockConfig {
             enable_cobuild: false,
             cobuild_message: Some(Message::default().as_bytes()),
             btc_sign_vtype: BTCSignVtype::P2PKHUncompressed,
-            use_rsa: false,
-            use_iso9796_2: false,
-            rsa_pubkey: None,
+            exec_dl_config: None,
         }
     }
 
@@ -847,7 +888,21 @@ impl OmniLockConfig {
             // IdentityFlag::OwnerLock => OmniLockWitnessLock::new_builder(),
             IdentityFlag::Solana => OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 96])).pack()),
-            _ => todo!("to support other placeholder_witness_lock implementions"),
+            IdentityFlag::Dl | IdentityFlag::Exec => {
+                let sig_len = self
+                    .exec_dl_config
+                    .as_ref()
+                    .map(|c| c.signature_len)
+                    .unwrap_or(65);
+                OmniLockWitnessLock::new_builder()
+                    .signature(Some(Bytes::from(vec![0u8; sig_len])).pack())
+                    .preimage(
+                        self.exec_dl_config
+                            .as_ref()
+                            .map(|i| Into::<Bytes>::into(i.preimage().to_vec()))
+                            .pack(),
+                    )
+            }
         };
 
         if unlock_mode == OmniUnlockMode::Admin {
@@ -898,7 +953,10 @@ impl OmniLockConfig {
                 let lock = self.placeholder_witness_lock(unlock_mode)?;
                 Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
             }
-            _ => todo!("to support other placeholder_witness implementions"),
+            IdentityFlag::Dl | IdentityFlag::Exec => {
+                let lock = self.placeholder_witness_lock(unlock_mode)?;
+                Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
+            }
         }
     }
 
