@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     )];
     TransactionSigner::new(&network_info).sign_transaction(
         &mut tx_with_groups,
-        &SignContexts::new_sighash_h256(private_keys)?,
+        &SignContexts::new_sighash_h256(private_keys).unwrap(),
     )?;
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
