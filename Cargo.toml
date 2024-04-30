@@ -19,21 +19,9 @@ bech32 = { version = "0.8.1", default-features = false }
 secp256k1 = { version = "0.24", default-features = false, features = ["recovery"] }
 bytes = { version = "1", default-features = false}
 
-# need_rewrite
-# ckb-types = "0.115.0-rc2"
 ckb-types = { version = "0.115.0-rc2", git = "https://github.com/KeystoneHQ/ckb-util-offline.git" }
-# need_rewrite
-# ckb-jsonrpc-types = "0.115.0-rc2"
-
 ckb-jsonrpc-types = { version = "0.115.0-rc2", git = "https://github.com/KeystoneHQ/ckb-util-offline.git" }
-
-# ckb-hash = "0.115.0-rc2"
-
 ckb-hash = { version = "0.115.0-rc2", git = "https://github.com/KeystoneHQ/ckb-util-offline.git" }
-
-
-# need_rewrite
-# ckb-crypto = { version = "=0.115.0-rc2",features = ["secp"] }
 ckb-crypto = {version = "0.115.0-rc2-offline", git = "https://github.com/KeystoneHQ/ckb-util-offline.git" }
 
 bitflags = "1.3.2"
