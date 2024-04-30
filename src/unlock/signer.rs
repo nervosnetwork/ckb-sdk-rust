@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, string::{String, ToString}, vec::Vec};
 use hashbrown::HashSet;
 
 use anyhow::anyhow;
@@ -29,6 +29,8 @@ use super::{
     IdentityFlag, OmniLockConfig,
 };
 
+
+
 #[derive(Error, Debug)]
 pub enum ScriptSignError {
     #[error("signer error: `{0}`")]
@@ -38,7 +40,7 @@ pub enum ScriptSignError {
     WitnessNotEnough,
 
     #[error("the witness is not empty and not WitnessArgs format: `{0}`")]
-    InvalidWitnessArgs(#[from] VerificationError),
+    InvalidWitnessArgs(String),
 
     #[error("the Omni lock witness lock field is invalid: `{0}`")]
     InvalidOmniLockWitnessLock(String),
@@ -52,9 +54,16 @@ pub enum ScriptSignError {
     #[error("there is an configuration error: `{0}`")]
     InvalidConfig(#[from] ConfigError),
 
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    #[error("ScriptSignError::OtherError: `{0}`")]
+    Other(anyhow::Error),
 }
+
+impl  From<VerificationError> for ScriptSignError {
+    fn from(err: VerificationError) -> Self {
+        ScriptSignError::InvalidWitnessArgs(err.to_string())
+    }
+ }
+
 
 /// Script signer logic:
 ///   * Generate message to sign

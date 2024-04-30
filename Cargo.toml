@@ -16,25 +16,33 @@ thiserror = { version = "1.0", package = "thiserror-core", default-features = fa
 hashbrown = "0.14"
 anyhow = { version = "1.0.63", default-features = false }
 bech32 = { version = "0.8.1", default-features = false }
-secp256k1 = { version = "0.24", features = ["recovery"] }
-bytes = "1"
+secp256k1 = { version = "0.24", default-features = false, features = ["recovery"] }
+bytes = { version = "1", default-features = false}
 
 # need_rewrite
-ckb-types = "0.115.0-rc2"
+# ckb-types = "0.115.0-rc2"
+ckb-types = { version = "0.115.0-rc2", git = "https://github.com/KeystoneHQ/ckb-util-offline.git" }
 # need_rewrite
-ckb-jsonrpc-types = "0.115.0-rc2"
+# ckb-jsonrpc-types = "0.115.0-rc2"
 
-ckb-hash = "0.115.0-rc2"
+ckb-jsonrpc-types = { version = "0.115.0-rc2", git = "https://github.com/KeystoneHQ/ckb-util-offline.git" }
+
+# ckb-hash = "0.115.0-rc2"
+
+ckb-hash = { version = "0.115.0-rc2", git = "https://github.com/KeystoneHQ/ckb-util-offline.git" }
+
 
 # need_rewrite
-ckb-crypto = { version = "=0.115.0-rc2", features = ["secp"] }
+# ckb-crypto = { version = "=0.115.0-rc2",features = ["secp"] }
+ckb-crypto = {version = "0.115.0-rc2-offline", git = "https://github.com/KeystoneHQ/ckb-util-offline.git" }
+
 bitflags = "1.3.2"
 sha3 = { version = "0.10.1", default-features = false }
 enum-repr-derive = "0.2.0"
 
 # disable it for now
 # This package also should be change to support no_std
-ckb-dao-utils = { version = "0.115.0-rc2", optional=true }
+# ckb-dao-utils = { version = "0.115.0-rc2", optional=true }
 
 # for feature test
 sparse-merkle-tree = { version = "0.6.1", default-features = false }
@@ -44,14 +52,14 @@ lazy_static = { version = "1.3.0", features=["spin_no_std"] }
 default = ["alloc"]
 alloc = []
 # enable this for future usage and add no_std support
-dao = ["dep:ckb-dao-utils"]
+# dao = ["dep:ckb-dao-utils"]
 disable = []
 
 [dev-dependencies]
-clap = { version = "=4.4.18", features = [ "derive" ] } # TODO clap v4.5 requires rustc v1.74.0+
-httpmock = "0.6"
-async-global-executor = "2.3.1"
+# clap = { version = "=4.4.18", features = [ "derive" ] } # TODO clap v4.5 requires rustc v1.74.0+
+# httpmock = "0.6"
+# async-global-executor = "2.3.1"
 hex = "0.4"
-ckb-mock-tx-types = { version = "0.115.0-rc2" }
-ckb-chain-spec =  {  version = "0.115.0-rc2" }
-rand = { version = "0.7.3"}
+# ckb-mock-tx-types = { version = "0.115.0-rc2" }
+# ckb-chain-spec =  {  version = "0.115.0-rc2" }
+# rand = { version = "0.7.3"}

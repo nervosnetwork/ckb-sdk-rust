@@ -90,7 +90,7 @@ pub enum TransactionFeeError {
     TxDep(#[from] TransactionDependencyError),
 
     #[error("header dependency provider error: `{0}`")]
-    HeaderDep(#[from] anyhow::Error),
+    HeaderDep(anyhow::Error),
 
     #[error("out point error: `{0}`")]
     OutPoint(#[from] OutPointError),

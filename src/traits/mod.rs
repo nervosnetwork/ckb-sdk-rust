@@ -33,8 +33,8 @@ pub enum SignerError {
     InvalidTransaction(String),
 
     // maybe hardware wallet error or io error
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    #[error("SignerError::other: {0}")]
+    Other(anyhow::Error),
 }
 
 /// A signer abstraction, support signer type:
@@ -65,8 +65,8 @@ pub enum TransactionDependencyError {
     #[error("the resource is not found in the provider: `{0}`")]
     NotFound(String),
 
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    #[error("TransactionDependencyError, Other:{0}")]
+    Other(anyhow::Error),
 }
 
 /// Provider dependency information of a transaction:
@@ -128,10 +128,10 @@ impl CellProvider for &dyn TransactionDependencyProvider {
 /// Cell collector errors
 #[derive(Error, Debug)]
 pub enum CellCollectorError {
-    #[error(transparent)]
+    #[error("CellCollectorError, Internal:{0}")]
     Internal(anyhow::Error),
 
-    #[error(transparent)]
+    #[error("CellCollectorError, other:{0}")]
     Other(anyhow::Error),
 }
 

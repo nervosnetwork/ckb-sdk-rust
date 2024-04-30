@@ -371,8 +371,8 @@ pub enum ConfigError {
     #[error("there is no multisig config in the OmniLockConfig")]
     NoMultiSigConfig,
 
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    #[error("ConfigError, Other:{0}")]
+    Other(anyhow::Error),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Default)]
