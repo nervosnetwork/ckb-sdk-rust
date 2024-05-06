@@ -456,24 +456,163 @@ fn test_omnilock_owner_lock_tranfer(cobuild: bool) {
     ctx.verify(tx, FEE_RATE).unwrap();
 }
 
+#[cfg(unix)]
+mod rsa_dl_test {
+    use super::test_omnilock_dl_exec;
+    use crate::{
+        tests::build_rsa_script_dl,
+        traits::{Signer, SignerError},
+        unlock::omni_lock::{ExecDlConfig, Preimage},
+        util::blake160,
+    };
+
+    use ckb_types::core::TransactionView;
+    use openssl::{
+        hash::MessageDigest,
+        pkey::{PKey, Private, Public},
+        rsa::Rsa,
+        sign::Signer as RSASigner,
+    };
+
+    #[derive(Clone)]
+    struct RSASinger {
+        key: PKey<Private>,
+    }
+
+    impl Signer for RSASinger {
+        fn match_id(&self, id: &[u8]) -> bool {
+            let rsa_script = build_rsa_script_dl();
+            let public_key_pem: Vec<u8> = self.key.public_key_to_pem().unwrap();
+            let rsa_pubkey = PKey::public_key_from_pem(&public_key_pem).unwrap();
+            let signning_pubkey = rsa_signning_prepare_pubkey(&rsa_pubkey);
+
+            let preimage = Preimage::new_with_dl(rsa_script, blake160(&signning_pubkey));
+            id.len() == 20 && id == preimage.auth().as_bytes()
+        }
+
+        fn sign(
+            &self,
+            id: &[u8],
+            message: &[u8],
+            _recoverable: bool,
+            _tx: &TransactionView,
+        ) -> Result<bytes::Bytes, SignerError> {
+            if !self.match_id(id) {
+                return Err(SignerError::IdNotFound);
+            }
+            Ok(bytes::Bytes::from(rsa_sign(message, &self.key)))
+        }
+    }
+
+    fn rsa_signning_prepare_pubkey(pubkey: &PKey<Public>) -> Vec<u8> {
+        let mut sig = vec![
+            1, // algorithm id
+            1, // key size, 1024
+            0, // padding, PKCS# 1.5
+            6, // hash type SHA256
+        ];
+
+        let pubkey2 = pubkey.rsa().unwrap();
+        let mut e = pubkey2.e().to_vec();
+        let mut n = pubkey2.n().to_vec();
+        e.reverse();
+        n.reverse();
+
+        while e.len() < 4 {
+            e.push(0);
+        }
+        while n.len() < 128 {
+            n.push(0);
+        }
+        sig.append(&mut e); // 4 bytes E
+        sig.append(&mut n); // N
+
+        sig
+    }
+
+    pub fn rsa_sign(msg: &[u8], key: &PKey<Private>) -> Vec<u8> {
+        let pem: Vec<u8> = key.public_key_to_pem().unwrap();
+        let pubkey = PKey::public_key_from_pem(&pem).unwrap();
+
+        let mut sig = rsa_signning_prepare_pubkey(&pubkey);
+
+        let mut signer = RSASigner::new(MessageDigest::sha256(), key).unwrap();
+        signer.update(msg).unwrap();
+        sig.extend(signer.sign_to_vec().unwrap()); // sig
+
+        sig
+    }
+
+    #[test]
+    fn test_omnilock_dl() {
+        let rsa_script = build_rsa_script_dl();
+        let bits = 1024;
+        let rsa = Rsa::generate(bits).unwrap();
+        let rsa_private_key = PKey::from_rsa(rsa).unwrap();
+        let public_key_pem: Vec<u8> = rsa_private_key.public_key_to_pem().unwrap();
+        let rsa_pubkey = PKey::public_key_from_pem(&public_key_pem).unwrap();
+        let signning_pubkey = rsa_signning_prepare_pubkey(&rsa_pubkey);
+
+        let preimage = Preimage::new_with_dl(rsa_script, blake160(&signning_pubkey));
+        let config = ExecDlConfig::new(preimage, 264);
+        let signer = RSASinger {
+            key: rsa_private_key,
+        };
+        test_omnilock_dl_exec(config.clone(), signer.clone(), false);
+        test_omnilock_dl_exec(config, signer.clone(), true);
+    }
+}
+
 #[derive(Clone)]
 struct DummySinger {}
 
 impl Signer for DummySinger {
     fn match_id(&self, id: &[u8]) -> bool {
-        let always_success_script = build_always_success_script();
-        let preimage =
-            Preimage::new_with_exec(always_success_script, 0, [0; 8], blake160(&[0u8; 20]));
-        id.len() == 20 && id == preimage.auth().as_bytes()
+        let (preimage, preimage_dl) = if cfg!(unix) {
+            let always_success_script = build_always_success_script();
+
+            (
+                Preimage::new_with_exec(
+                    always_success_script.clone(),
+                    0,
+                    [0; 8],
+                    blake160(&[0u8; 20]),
+                ),
+                Preimage::new_with_exec(always_success_script, 0, [0; 8], blake160(&[0u8; 20])),
+            )
+        } else {
+            #[cfg(not(unix))]
+            {
+                use crate::tests::build_always_success_dl_script;
+                let always_success_script_dl = build_always_success_dl_script();
+                let always_success_script = build_always_success_script();
+                (
+                    Preimage::new_with_exec(
+                        always_success_script.clone(),
+                        0,
+                        [0; 8],
+                        blake160(&[0u8; 20]),
+                    ),
+                    Preimage::new_with_dl(always_success_script_dl, H160::from([0u8; 20])),
+                )
+            }
+            #[cfg(unix)]
+            unreachable!()
+        };
+
+        id.len() == 20 && (id == preimage.auth().as_bytes() || id == preimage_dl.auth().as_bytes())
     }
 
     fn sign(
         &self,
-        _id: &[u8],
+        id: &[u8],
         _message: &[u8],
         _recoverable: bool,
         _tx: &TransactionView,
     ) -> Result<bytes::Bytes, SignerError> {
+        if !self.match_id(id) {
+            return Err(SignerError::IdNotFound);
+        }
         Ok(bytes::Bytes::from(vec![0; 65]))
     }
 }
@@ -484,34 +623,63 @@ fn test_omnilock_exec() {
     let preimage = Preimage::new_with_exec(always_success_script, 0, [0; 8], blake160(&[0u8; 20]));
     let config = ExecDlConfig::new(preimage, 65);
 
-    test_omnilock_dl_exec(config.clone(), false);
-    test_omnilock_dl_exec(config, true)
+    test_omnilock_dl_exec(config.clone(), DummySinger {}, false);
+    test_omnilock_dl_exec(config, DummySinger {}, true)
 }
 
-#[ignore]
+#[cfg(not(unix))]
 #[test]
 fn test_omnilock_dl() {
-    // let always_success_script = build_always_success_script_dl();
-    //     let preimage = Preimage::new_with_dl(always_success_script, blake160(&[0u8; 20]));
-    //     test_omnilock_dl_exec(preimage)
+    use crate::tests::build_always_success_dl_script;
+    let always_success_script = build_always_success_dl_script();
+    let preimage = Preimage::new_with_dl(always_success_script, H160::from([0u8; 20]));
+    let config = ExecDlConfig::new(preimage, 65);
+
+    test_omnilock_dl_exec(config.clone(), DummySinger {}, false);
+    test_omnilock_dl_exec(config, DummySinger {}, true)
 }
 
-fn test_omnilock_dl_exec(config: ExecDlConfig, cobuild: bool) {
+#[cfg(unix)]
+fn dl_exec_cfg(config: ExecDlConfig) -> (OmniLockConfig, &'static [u8]) {
+    use crate::tests::RSA_DL_BIN;
+    if config.preimage().len() == 32 + 1 + 1 + 8 + 20 {
+        (
+            OmniLockConfig::new_with_exec_preimage(config),
+            ALWAYS_SUCCESS_BIN,
+        )
+    } else {
+        (OmniLockConfig::new_with_dl_preimage(config), RSA_DL_BIN)
+    }
+}
+
+#[cfg(not(unix))]
+fn dl_exec_cfg(config: ExecDlConfig) -> (OmniLockConfig, &'static [u8]) {
+    use crate::tests::ALWAYS_SUCCESS_DL_BIN;
+    if config.preimage().len() == 32 + 1 + 1 + 8 + 20 {
+        (
+            OmniLockConfig::new_with_exec_preimage(config),
+            ALWAYS_SUCCESS_BIN,
+        )
+    } else {
+        (
+            OmniLockConfig::new_with_dl_preimage(config),
+            ALWAYS_SUCCESS_DL_BIN,
+        )
+    }
+}
+
+fn test_omnilock_dl_exec<T: Signer + 'static>(config: ExecDlConfig, signer: T, cobuild: bool) {
     let network_info = NetworkInfo::testnet();
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let mut cfg = if config.preimage().len() == 32 + 1 + 1 + 8 + 20 {
-        OmniLockConfig::new_with_exec_preimage(config)
-    } else {
-        OmniLockConfig::new_with_dl_preimage(config)
-    };
+    let (mut cfg, bin) = dl_exec_cfg(config);
 
     cfg.enable_cobuild(cobuild);
     let sender = build_omnilock_script(&cfg);
-    let sign_context = SignContexts::new_omnilock_exec_dl_custom(DummySinger {}, cfg.clone());
+    let sign_context = SignContexts::new_omnilock_exec_dl_custom(signer, cfg.clone());
 
     let (ctx, outpoints) = init_context(
-        vec![(OMNILOCK_BIN, true), (ALWAYS_SUCCESS_BIN, true)],
+        vec![(OMNILOCK_BIN, true), (bin, true)],
         vec![(sender.clone(), Some(300 * ONE_CKB))],
     );
 

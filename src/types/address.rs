@@ -555,6 +555,8 @@ mod old_addr {
 
 #[cfg(test)]
 mod test {
+    use crate::util::hex_decode;
+
     use super::*;
     use ckb_types::{h160, h256};
 
@@ -651,7 +653,7 @@ mod test {
         assert_eq!(addr.payload().hash_type(), ScriptHashType::Type);
         assert_eq!(
             addr.payload().args().as_ref(),
-            hex::decode("0c4bec5862af847a2d852cb939c6dfb70c25e52e").unwrap()
+            hex_decode("0c4bec5862af847a2d852cb939c6dfb70c25e52e".as_bytes())
         );
     }
 
@@ -678,9 +680,9 @@ mod test {
             let mut data = vec![0u8; 23];
             data[0] = 0x01;
             data[1] = CodeHashIndex::Sighash as u8;
-            data[2..].copy_from_slice(
-                &hex::decode("4fb2be2e5d0c1a3b8694f832350a33c1685d477a33").unwrap(),
-            );
+            data[2..].copy_from_slice(&hex_decode(
+                "4fb2be2e5d0c1a3b8694f832350a33c1685d477a33".as_bytes(),
+            ));
             let variant = bech32::Variant::Bech32;
             let addr = bech32::encode("ckb", data.to_base32(), variant).unwrap();
             let expected_addr = "ckb1qyqylv479ewscx3ms620sv34pgeuz6zagaarxdzvx03";
@@ -712,7 +714,7 @@ mod test {
     fn test_invalid_old_full_address() {
         // INVALID bech32 encoding
         {
-            let args = hex::decode("4fb2be2e5d0c1a3b86").unwrap();
+            let args = hex_decode("4fb2be2e5d0c1a3b86".as_bytes());
             let mut data = vec![0u8; 33 + args.len()];
             data[0] = AddressType::FullData as u8;
             data[1..33].copy_from_slice(
@@ -751,7 +753,7 @@ mod test {
         ] {
             let code_hash =
                 h256!("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8");
-            let args = hex::decode("4fb2be2e5d0c1a3b86").unwrap();
+            let args = hex_decode("4fb2be2e5d0c1a3b86".as_bytes());
             let mut data = vec![0u8; 34 + args.len()];
             data[0] = 0x00;
             data[1..33].copy_from_slice(code_hash.as_bytes());
