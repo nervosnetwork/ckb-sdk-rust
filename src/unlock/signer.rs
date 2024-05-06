@@ -751,7 +751,7 @@ impl ScriptSigner for OmniLockScriptSigner {
         if args.len() != self.config.get_args_len() {
             return false;
         }
-        dbg!(1);
+
         if self.unlock_mode == OmniUnlockMode::Admin {
             if let Some(admin_config) = self.config.get_admin_config() {
                 if args.len() < 54 {
@@ -785,7 +785,9 @@ impl ScriptSigner for OmniLockScriptSigner {
             | IdentityFlag::EthereumDisplaying
             | IdentityFlag::Tron
             | IdentityFlag::Solana
-            | IdentityFlag::Eos => self
+            | IdentityFlag::Eos
+            | IdentityFlag::Dl
+            | IdentityFlag::Exec => self
                 .signer
                 .match_id(self.config.id().auth_content().as_ref()),
             IdentityFlag::Multisig => {
@@ -803,7 +805,6 @@ impl ScriptSigner for OmniLockScriptSigner {
                 // should not reach here, return true for compatible reason
                 true
             }
-            _ => todo!("other auth type not supported yet"),
         }
     }
 

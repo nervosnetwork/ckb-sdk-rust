@@ -688,8 +688,14 @@ impl OmniLockConfig {
         }
     }
 
+    /// Enable cobuild's build transaction standards
     pub fn enable_cobuild(&mut self, enable: bool) {
         self.enable_cobuild = enable
+    }
+
+    /// Set cobuild message value
+    pub fn cobuild_message(&mut self, message: Option<Message>) {
+        self.cobuild_message = message.map(|i| i.as_bytes());
     }
 
     /// Set the admin cofiguration, and set the OmniLockFlags::ADMIN flag.
@@ -740,6 +746,7 @@ impl OmniLockConfig {
         self.info_cell = None;
     }
 
+    /// Set multisignature config
     pub fn set_multisig_config(&mut self, multisig_config: Option<MultisigConfig>) {
         self.multisig_config = multisig_config;
     }
@@ -885,7 +892,6 @@ impl OmniLockConfig {
                 omni_sig[..config_data.len()].copy_from_slice(&config_data);
                 OmniLockWitnessLock::new_builder().signature(Some(Bytes::from(omni_sig)).pack())
             }
-            // IdentityFlag::OwnerLock => OmniLockWitnessLock::new_builder(),
             IdentityFlag::Solana => OmniLockWitnessLock::new_builder()
                 .signature(Some(Bytes::from(vec![0u8; 96])).pack()),
             IdentityFlag::Dl | IdentityFlag::Exec => {

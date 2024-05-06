@@ -9,10 +9,8 @@ pub mod types;
 pub mod unlock;
 pub mod util;
 
-#[cfg(feature = "test")]
 pub mod test_util;
 
-#[cfg(feature = "test")]
 #[cfg(test)]
 mod tests;
 

@@ -256,6 +256,12 @@ pub fn hex_encode(message: &[u8]) -> String {
     String::from_utf8(res).unwrap()
 }
 
+pub fn hex_decode(message: &[u8]) -> Vec<u8> {
+    let mut res = vec![0; message.len() / 2];
+    faster_hex::hex_decode(message, &mut res).unwrap();
+    res
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

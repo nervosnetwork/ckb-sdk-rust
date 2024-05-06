@@ -44,13 +44,18 @@ const ACCOUNT3_KEY: H256 =
 const ACCOUNT3_ARG: H160 = h160!("0xdabe88a65760c662ee3f07dee162409f7b20b694");
 
 const FEE_RATE: u64 = 1000;
-const GENESIS_JSON: &str = include_str!("../test-data/genesis_block.json");
-const SUDT_BIN: &[u8] = include_bytes!("../test-data/simple_udt");
-const ACP_BIN: &[u8] = include_bytes!("../test-data/anyone_can_pay");
-const CHEQUE_BIN: &[u8] = include_bytes!("../test-data/ckb-cheque-script");
-const ALWAYS_SUCCESS_BIN: &[u8] = include_bytes!("../test-data/always_success");
-const OMNILOCK_BIN: &[u8] = include_bytes!("../test-data/omni_lock");
-// const ALWAYS_SUCCESS_BIN_DL: &[u8] = include_bytes!("../test-data/always_success_dl");
+const GENESIS_JSON: &str = include_str!("../../test-data/genesis_block.json");
+const SUDT_BIN: &[u8] = include_bytes!("../../test-data/simple_udt");
+const ACP_BIN: &[u8] = include_bytes!("../../test-data/anyone_can_pay");
+const CHEQUE_BIN: &[u8] = include_bytes!("../../test-data/ckb-cheque-script");
+const ALWAYS_SUCCESS_BIN: &[u8] = include_bytes!("../../test-data/always_success");
+// https://github.com/XuJiandong/ckb-production-scripts/commit/f692e01ead9378093b57b47023f3408e4c35349f
+#[cfg(not(unix))]
+const ALWAYS_SUCCESS_DL_BIN: &[u8] = include_bytes!("../../test-data/always_success_dl");
+const OMNILOCK_BIN: &[u8] = include_bytes!("../../test-data/omni_lock");
+// https://github.com/nervosnetwork/ckb-production-scripts/blob/410b16c499a8888781d9ab03160eeef93182d8e6/c/validate_signature_rsa.c
+#[cfg(unix)]
+const RSA_DL_BIN: &[u8] = include_bytes!("../../test-data/validate_signature_rsa");
 
 fn build_sighash_script(args: H160) -> Script {
     Script::new_builder()
@@ -76,13 +81,23 @@ fn build_always_success_script() -> Script {
         .build()
 }
 
-// fn build_always_success_script_dl() -> Script {
-//     let data_hash = H256::from(blake2b_256(ALWAYS_SUCCESS_BIN_DL));
-//     Script::new_builder()
-//         .code_hash(data_hash.pack())
-//         .hash_type(ScriptHashType::Data1.into())
-//         .build()
-// }
+#[cfg(not(unix))]
+fn build_always_success_dl_script() -> Script {
+    let data_hash = H256::from(blake2b_256(ALWAYS_SUCCESS_DL_BIN));
+    Script::new_builder()
+        .code_hash(data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .build()
+}
+
+#[cfg(unix)]
+fn build_rsa_script_dl() -> Script {
+    let data_hash = H256::from(blake2b_256(RSA_DL_BIN));
+    Script::new_builder()
+        .code_hash(data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .build()
+}
 
 fn build_dao_script() -> Script {
     Script::new_builder()
