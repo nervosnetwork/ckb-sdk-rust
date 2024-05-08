@@ -1,11 +1,10 @@
 use ckb_types::{
-    core::DepType,
     h256,
     packed::{CellDep, OutPoint, Script},
     prelude::{Builder, Entity, Pack},
 };
 
-use super::{cell_dep, HandlerContext, ScriptHandler};
+use super::{HandlerContext, ScriptHandler};
 use crate::{
     core::TransactionBuilder,
     tx_builder::TxBuilderError,
@@ -20,8 +19,6 @@ use lazy_static::lazy_static;
 
 pub struct OmnilockScriptHandler {
     cell_deps: Vec<CellDep>,
-    sighash_dep: CellDep,
-    multisig_dep: CellDep,
     lock_script_id: ScriptId,
 }
 
@@ -41,6 +38,11 @@ impl OmnilockScriptContext {
             rpc_url,
         }
     }
+
+    pub fn unlock_mode(mut self, unlock_mode: OmniUnlockMode) -> Self {
+        self.unlock_mode = unlock_mode;
+        self
+    }
 }
 
 impl HandlerContext for OmnilockScriptContext {}
@@ -53,8 +55,6 @@ impl OmnilockScriptHandler {
     pub fn new_with_network(network: &NetworkInfo) -> Result<Self, TxBuilderError> {
         let mut ret = Self {
             cell_deps: vec![],
-            sighash_dep: Default::default(),
-            multisig_dep: Default::default(),
             lock_script_id: ScriptId::default(),
         };
         ret.init(network)?;
@@ -63,6 +63,10 @@ impl OmnilockScriptHandler {
 
     pub fn set_cell_deps(&mut self, cell_deps: Vec<CellDep>) {
         self.cell_deps = cell_deps;
+    }
+
+    pub fn insert_cell_dep(&mut self, cell_dep: CellDep) {
+        self.cell_deps.push(cell_dep)
     }
 
     pub fn set_lock_script_id(&mut self, lock_script_id: ScriptId) {
@@ -128,40 +132,8 @@ impl ScriptHandler for OmnilockScriptHandler {
 
     fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError> {
         if network.network_type == NetworkType::Mainnet {
-            self.sighash_dep = cell_dep!(
-                "0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c",
-                0u32,
-                DepType::DepGroup
-            );
-            self.multisig_dep = cell_dep!(
-                "0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c",
-                1u32,
-                DepType::DepGroup
-            );
-            self.cell_deps.push(self.sighash_dep.clone());
-            self.cell_deps.push(cell_dep!(
-                "0xc76edf469816aa22f416503c38d0b533d2a018e253e379f134c3985b3472c842",
-                0u32,
-                DepType::Code
-            ));
             self.lock_script_id = MAINNET_OMNILOCK_SCRIPT_ID.clone();
         } else if network.network_type == NetworkType::Testnet {
-            self.sighash_dep = cell_dep!(
-                "0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37",
-                0u32,
-                DepType::DepGroup
-            );
-            self.multisig_dep = cell_dep!(
-                "0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37",
-                1u32,
-                DepType::DepGroup
-            );
-            self.cell_deps.push(self.sighash_dep.clone());
-            self.cell_deps.push(cell_dep!(
-                "0x3d4296df1bd2cc2bd3f483f61ab7ebeac462a2f336f2b944168fe6ba5d81c014",
-                0u32,
-                DepType::Code
-            ));
             self.lock_script_id = get_testnet_omnilock_script_id().clone();
         } else {
             return Err(TxBuilderError::UnsupportedNetworkType(network.network_type));

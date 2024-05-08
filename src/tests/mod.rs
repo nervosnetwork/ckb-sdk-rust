@@ -5,21 +5,39 @@ mod tx_builder;
 
 use std::{collections::HashMap, u64};
 
+use ckb_dao_utils::pack_dao_data;
 use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types as json_types;
 use ckb_types::{
     bytes::Bytes,
-    core::{BlockView, ScriptHashType},
+    core::{BlockView, Capacity, EpochNumberWithFraction, HeaderBuilder, ScriptHashType},
     h160, h256,
-    packed::{OutPoint, Script},
+    packed::{CellInput, CellOutput, OutPoint, Script, ScriptOpt, WitnessArgs},
     prelude::*,
     H160, H256,
 };
 
-use crate::constants::{DAO_TYPE_HASH, MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_TYPE_HASH};
+use crate::constants::{
+    CHEQUE_CELL_SINCE, DAO_TYPE_HASH, MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_TYPE_HASH,
+};
 use crate::traits::SecpCkbRawKeySigner;
-use crate::unlock::{MultisigConfig, OmniLockConfig, ScriptUnlocker, SecpMultisigUnlocker};
-use crate::ScriptId;
+use crate::tx_builder::{
+    acp::{AcpTransferBuilder, AcpTransferReceiver},
+    cheque::{ChequeClaimBuilder, ChequeWithdrawBuilder},
+    dao::{
+        DaoDepositBuilder, DaoDepositReceiver, DaoPrepareBuilder, DaoWithdrawBuilder,
+        DaoWithdrawItem, DaoWithdrawReceiver,
+    },
+    transfer::CapacityTransferBuilder,
+    udt::{UdtIssueBuilder, UdtTargetReceiver, UdtTransferBuilder, UdtType},
+    unlock_tx, CapacityBalancer, TransferAction, TxBuilder,
+};
+use crate::unlock::{
+    AcpUnlocker, ChequeAction, ChequeUnlocker, MultisigConfig, OmniLockConfig, ScriptUnlocker,
+    SecpMultisigUnlocker, SecpSighashUnlocker,
+};
+use crate::util::{calculate_dao_maximum_withdraw4, minimal_unlock_point};
+use crate::{ScriptId, Since, SinceType};
 
 use crate::test_util::{random_out_point, Context};
 
@@ -161,7 +179,7 @@ fn init_context(
 fn test_transfer_from_sighash() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -218,7 +236,7 @@ fn test_transfer_from_sighash() {
 fn test_transfer_capacity_overflow() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(Vec::new(), vec![(sender.clone(), Some(100 * ONE_CKB))]);
+    let (ctx, _) = init_context(Vec::new(), vec![(sender.clone(), Some(100 * ONE_CKB))]);
 
     let large_amount: u64 = u64::MAX;
     let output = CellOutput::new_builder()
@@ -251,7 +269,7 @@ fn test_transfer_from_multisig() {
     let sender = build_multisig_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -315,7 +333,7 @@ fn test_transfer_from_acp() {
         .args(Bytes::from(ACCOUNT1_ARG.0.to_vec()).pack())
         .build();
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(ACP_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -376,7 +394,7 @@ fn test_transfer_to_acp() {
         .hash_type(ScriptHashType::Data1.into())
         .args(Bytes::from(ACCOUNT2_ARG.0.to_vec()).pack())
         .build();
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(ACP_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -462,7 +480,7 @@ fn test_cheque_claim() {
         .hash_type(ScriptHashType::Data1.into())
         .args(Bytes::from(vec![9u8; 32]).pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(CHEQUE_BIN, true), (SUDT_BIN, false)],
         vec![
             (receiver.clone(), Some(100 * ONE_CKB)),
@@ -582,7 +600,7 @@ fn test_cheque_withdraw() {
         .hash_type(ScriptHashType::Data1.into())
         .args(Bytes::from(vec![9u8; 32]).pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(CHEQUE_BIN, true), (SUDT_BIN, false)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -667,7 +685,7 @@ fn test_cheque_withdraw() {
 #[test]
 fn test_dao_deposit() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -732,7 +750,7 @@ fn test_dao_deposit() {
 #[test]
 fn test_dao_prepare() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -821,7 +839,7 @@ fn test_dao_prepare() {
 #[test]
 fn test_dao_withdraw() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -961,7 +979,7 @@ fn test_udt_issue() {
     let sudt_data_hash = H256::from(blake2b_256(SUDT_BIN));
     let owner = build_sighash_script(ACCOUNT1_ARG);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(SUDT_BIN, false)],
         vec![
             (owner.clone(), Some(100 * ONE_CKB)),
@@ -1055,7 +1073,7 @@ fn test_udt_transfer() {
         .hash_type(ScriptHashType::Data1.into())
         .args(owner.calc_script_hash().as_bytes().pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(ACP_BIN, true), (SUDT_BIN, false)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -1142,10 +1160,3 @@ fn test_udt_transfer() {
     );
     ctx.verify(tx, FEE_RATE).unwrap();
 }
-
-pub mod ckb_indexer_rpc;
-pub mod ckb_rpc;
-pub mod cycle;
-pub mod omni_lock;
-pub mod omni_lock_util;
-pub mod transaction;

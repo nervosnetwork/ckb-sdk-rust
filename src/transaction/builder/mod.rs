@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::{handler::HandlerContexts, input::TransactionInput};
 use crate::{
     core::TransactionBuilder,
-    traits::CellCollectorError,
+    traits::{CellCollectorError, LiveCell},
     transaction::TransactionBuilderConfiguration,
     tx_builder::{BalanceTxCapacityError, TxBuilderError},
     ScriptGroup, TransactionWithScriptGroups,
@@ -143,6 +143,7 @@ fn inner_build<
     input_iter: I,
     configuration: &TransactionBuilderConfiguration,
     contexts: &HandlerContexts,
+    rc_cells: Vec<LiveCell>,
 ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
     let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
     let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
@@ -159,10 +160,43 @@ fn inner_build<
         }
     }
 
+    let rc_len = rc_cells.len();
+
+    for (input_index, input) in rc_cells.into_iter().enumerate() {
+        let input = TransactionInput::new(input, 0);
+        tx.input(input.cell_input());
+        tx.witness(packed::Bytes::default());
+
+        inputs.insert(
+            input.live_cell.out_point.clone(),
+            (
+                input.live_cell.output.clone(),
+                input.live_cell.output_data.clone(),
+            ),
+        );
+
+        let previous_output = input.previous_output();
+        let lock_script = previous_output.lock();
+        lock_groups
+            .entry(lock_script.calc_script_hash())
+            .or_insert_with(|| ScriptGroup::from_lock_script(&lock_script))
+            .input_indices
+            .push(input_index);
+
+        if let Some(type_script) = previous_output.type_().to_opt() {
+            type_groups
+                .entry(type_script.calc_script_hash())
+                .or_insert_with(|| ScriptGroup::from_type_script(&type_script))
+                .input_indices
+                .push(input_index);
+        }
+    }
+
     // setup change output and data
     change_builder.init(&mut tx);
     // collect inputs
-    for (input_index, input) in input_iter.enumerate() {
+    for (mut input_index, input) in input_iter.enumerate() {
+        input_index += rc_len;
         let input = input?;
         tx.input(input.cell_input());
         tx.witness(packed::Bytes::default());

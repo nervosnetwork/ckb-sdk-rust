@@ -62,6 +62,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         &SignContexts::new_omnilock(
             [secp256k1::SecretKey::from_slice(private_key.as_bytes())?].to_vec(),
             omni_cfg.clone(),
+            ckb_sdk::unlock::OmniUnlockMode::Normal,
         ),
     )?;
     let private_key = h256!("0x4fd809631a6aa6e3bb378dd65eae5d71df895a82c91a615a1e8264741515c79c");
@@ -70,6 +71,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         &SignContexts::new_omnilock(
             [secp256k1::SecretKey::from_slice(private_key.as_bytes())?].to_vec(),
             omni_cfg,
+            ckb_sdk::unlock::OmniUnlockMode::Normal,
         ),
     )?;
 

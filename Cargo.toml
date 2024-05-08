@@ -55,7 +55,7 @@ sha3 = "0.10.1"
 enum-repr-derive = "0.2.0"
 
 # for feature test
-rand = { version = "0.7.3", optional = true }
+rand = { version = "0.7.3" }
 ckb-mock-tx-types = { version = "0.119.0" }
 ckb-chain-spec = "0.119.0"
 

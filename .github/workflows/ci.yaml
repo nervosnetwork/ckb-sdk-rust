@@ -2,7 +2,7 @@ name: CI workflow
 
 on:
   pull_request:
-    types: [ opened, synchronize, reopened ]
+    types: [opened, synchronize, reopened]
   push:
     branches:
       - "develop"
@@ -18,37 +18,37 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-2019 ]
+        os: [ubuntu-latest, macos-latest, windows-2019]
     steps:
-    - uses: actions/checkout@v2
-    - if: matrix.os == 'windows-2019'
-      name: Windows Dependencies
-      run: |
-        iwr -useb get.scoop.sh -outfile 'install-scoop.ps1'
-        .\install-scoop.ps1 -RunAsAdmin
-        echo "LIBCLANG_PATH=$($HOME)/scoop/apps/llvm/current/bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        scoop install llvm yasm
-    - name: UnitTest
-      run: make test
+      - uses: actions/checkout@v2
+      - if: matrix.os == 'windows-2019'
+        name: Windows Dependencies
+        run: |
+          iwr -useb get.scoop.sh -outfile 'install-scoop.ps1'
+          .\install-scoop.ps1 -RunAsAdmin
+          echo "LIBCLANG_PATH=$($HOME)/scoop/apps/llvm/current/bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          scoop install llvm yasm
+      - name: UnitTest
+        run: make test
 
   build-examples:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-2019 ]
+        os: [ubuntu-latest, macos-latest, windows-2019]
     steps:
-    - uses: actions/checkout@v2
-    - if: matrix.os == 'windows-2019'
-      name: Windows Dependencies
-      run: |
-        iwr -useb get.scoop.sh -outfile 'install-scoop.ps1'
-        .\install-scoop.ps1 -RunAsAdmin
-        echo "LIBCLANG_PATH=$($HOME)/scoop/apps/llvm/current/bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        scoop install llvm yasm
-    - name: Build Cargo Examples
-      run: cargo build --examples
+      - uses: actions/checkout@v2
+      - if: matrix.os == 'windows-2019'
+        name: Windows Dependencies
+        run: |
+          iwr -useb get.scoop.sh -outfile 'install-scoop.ps1'
+          .\install-scoop.ps1 -RunAsAdmin
+          echo "LIBCLANG_PATH=$($HOME)/scoop/apps/llvm/current/bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          scoop install llvm yasm
+      - name: Build Cargo Examples
+        run: cargo build --examples
 
   linters:
     runs-on: ${{ matrix.os }}
@@ -56,25 +56,26 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-    - uses: actions/checkout@v2
-    - name: Linters
-      run: |
-        cargo fmt --version || rustup component add rustfmt
-        cargo clippy --version || rustup component add clippy
-        make fmt
-        make clippy
+      - uses: actions/checkout@v2
+      - name: Linters
+        run: |
+          cargo fmt --version || rustup component add rustfmt
+          cargo clippy --version || rustup component add clippy
+          make fmt
+          make clippy
 
   security-audit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Security Audit & Licenses
-      run: |
-        rustup toolchain install stable --profile minimal
-        cargo deny --version || cargo install cargo-deny --locked
-        make security-audit
-        make check-crates
-        make check-licenses
+      - uses: actions/checkout@v2
+      - name: Security Audit & Licenses
+        run: |
+          rustup toolchain install stable --profile minimal
+          rm rust-toolchain.toml
+          cargo deny --version || cargo install cargo-deny --locked
+          make security-audit
+          make check-crates
+          make check-licenses
 
   ci-success:
     name: ci

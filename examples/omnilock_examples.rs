@@ -51,6 +51,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         &SignContexts::new_omnilock(
             [secp256k1::SecretKey::from_slice(private_key.as_bytes())?].to_vec(),
             omni_cfg,
+            ckb_sdk::unlock::OmniUnlockMode::Normal,
         ),
     )?;
 

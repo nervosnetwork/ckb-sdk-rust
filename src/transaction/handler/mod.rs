@@ -77,6 +77,7 @@ impl HandlerContexts {
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! cell_dep {
     ($hash: literal, $idx: expr, $dep_type: expr) => {{
         let out_point = ckb_types::packed::OutPoint::new_builder()
@@ -90,4 +91,5 @@ macro_rules! cell_dep {
     }};
 }
 
+#[allow(unused_imports)]
 pub(crate) use cell_dep;

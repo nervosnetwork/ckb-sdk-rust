@@ -648,14 +648,6 @@ impl SecpCkbRawKeySigner {
         let hash160 = eos_auth(&pubkey.into(), vtype);
         self.keys.insert(hash160.into(), key);
     }
-
-    pub fn new_with_owner_lock(keys: Vec<secp256k1::SecretKey>, hash: H160) -> Self {
-        let mut signer = SecpCkbRawKeySigner::default();
-        for key in keys {
-            signer.keys.insert(hash.clone(), key);
-        }
-        signer
-    }
 }
 
 impl Signer for SecpCkbRawKeySigner {
@@ -703,18 +695,22 @@ impl Drop for SecpCkbRawKeySigner {
 /// A signer use ed25519 raw key
 #[derive(Clone)]
 pub struct Ed25519Signer {
-    key: ed25519_dalek::SigningKey,
+    keys: HashMap<H160, ed25519_dalek::SigningKey>,
 }
 
 impl Ed25519Signer {
-    pub fn new(key: ed25519_dalek::SigningKey) -> Self {
-        Self { key }
+    pub fn new(keys: Vec<ed25519_dalek::SigningKey>) -> Self {
+        let mut res = HashMap::with_capacity(keys.len());
+        for key in keys {
+            res.insert(blake160(key.verifying_key().as_bytes()), key);
+        }
+        Self { keys: res }
     }
 }
 
 impl Signer for Ed25519Signer {
     fn match_id(&self, id: &[u8]) -> bool {
-        id.len() == 20 && blake160(&self.key.verifying_key().as_bytes()[..]).as_bytes() == id
+        id.len() == 20 && self.keys.contains_key(&H160::from_slice(id).unwrap())
     }
 
     fn sign(
@@ -734,9 +730,10 @@ impl Signer for Ed25519Signer {
             )));
         }
 
-        let sig = self.key.clone().sign(message);
+        let key = self.keys.get(&H160::from_slice(id).unwrap()).unwrap();
+        let sig = key.clone().sign(message);
 
-        let verifying_key = self.key.verifying_key();
+        let verifying_key = key.verifying_key();
         // 64 + 32
         let mut sig_plus_pubkey = sig.to_vec();
         sig_plus_pubkey.extend(verifying_key.as_bytes());
