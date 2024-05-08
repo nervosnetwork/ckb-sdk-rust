@@ -119,6 +119,33 @@ impl Identity {
         Self::new(IdentityFlag::OwnerLock, script_hash)
     }
 
+    /// Create an ethereum display omnilock with according script hash.
+    /// # Arguments
+    /// * `auth_content` keccak160 hash of public key
+    pub fn new_ethereum_display(auth_content: H160) -> Self {
+        Self::new(IdentityFlag::EthereumDisplaying, auth_content)
+    }
+
+    /// Create an bitcoin omnilock with according script hash.
+    pub fn new_btc(auth_content: H160) -> Self {
+        Self::new(IdentityFlag::Bitcoin, auth_content)
+    }
+
+    /// Create an eos omnilock with according script hash.
+    pub fn new_eos(auth_content: H160) -> Self {
+        Self::new(IdentityFlag::Eos, auth_content)
+    }
+
+    /// Create an tron omnilock with according script hash.
+    pub fn new_tron(auth_content: H160) -> Self {
+        Self::new(IdentityFlag::Tron, auth_content)
+    }
+
+    /// Create an dogcoin omnilock with according script hash.
+    pub fn new_dogcoin(auth_content: H160) -> Self {
+        Self::new(IdentityFlag::Dogecoin, auth_content)
+    }
+
     /// convert the identify to smt_key.
     pub fn to_smt_key(&self) -> [u8; 32] {
         let mut ret = [0u8; 32];
@@ -688,14 +715,19 @@ impl OmniLockConfig {
         }
     }
 
-    /// Enable cobuild's build transaction standards
+    /// Enable cobuild's build transaction standards, default is false
     pub fn enable_cobuild(&mut self, enable: bool) {
         self.enable_cobuild = enable
     }
 
-    /// Set cobuild message value
+    /// Set cobuild message value, default is Some(Message::default)
     pub fn cobuild_message(&mut self, message: Option<Message>) {
         self.cobuild_message = message.map(|i| i.as_bytes());
+    }
+
+    /// Set btc sign vtype, defult is P2PKHUncompressed
+    pub fn btc_sign_vtype(&mut self, vtype: BTCSignVtype) {
+        self.btc_sign_vtype = vtype;
     }
 
     /// Set the admin cofiguration, and set the OmniLockFlags::ADMIN flag.
@@ -913,10 +945,7 @@ impl OmniLockConfig {
 
         if unlock_mode == OmniUnlockMode::Admin {
             if let Some(config) = self.admin_config.as_ref() {
-                let mut temp = [0u8; 21];
-                temp[0] = config.auth.flag as u8;
-                temp[1..21].copy_from_slice(config.auth.auth_content.as_bytes());
-                let auth = Auth::from_slice(&temp).unwrap();
+                let auth = config.auth.to_auth();
                 let ident = IdentityType::new_builder()
                     .identity(auth)
                     .proofs(config.proofs.clone())
@@ -942,28 +971,8 @@ impl OmniLockConfig {
         &self,
         unlock_mode: OmniUnlockMode,
     ) -> Result<WitnessArgs, ConfigError> {
-        match self.id.flag {
-            IdentityFlag::PubkeyHash
-            | IdentityFlag::Ethereum
-            | IdentityFlag::Multisig
-            | IdentityFlag::EthereumDisplaying
-            | IdentityFlag::Bitcoin
-            | IdentityFlag::Dogecoin
-            | IdentityFlag::Eos
-            | IdentityFlag::Tron
-            | IdentityFlag::Solana => {
-                let lock = self.placeholder_witness_lock(unlock_mode)?;
-                Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
-            }
-            IdentityFlag::OwnerLock => {
-                let lock = self.placeholder_witness_lock(unlock_mode)?;
-                Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
-            }
-            IdentityFlag::Dl | IdentityFlag::Exec => {
-                let lock = self.placeholder_witness_lock(unlock_mode)?;
-                Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
-            }
-        }
+        let lock = self.placeholder_witness_lock(unlock_mode)?;
+        Ok(WitnessArgs::new_builder().lock(Some(lock).pack()).build())
     }
 
     pub fn build_proofs(&self) -> SmtProofEntryVec {
@@ -972,10 +981,6 @@ impl OmniLockConfig {
         } else {
             Default::default()
         }
-    }
-
-    pub fn build_auth(&self) -> Auth {
-        self.id.to_auth()
     }
 }
 

@@ -841,10 +841,11 @@ impl ScriptSigner for OmniLockScriptSigner {
             generate_message(&tx_new, script_group, zero_lock)?
         };
         let signature = match id.flag() {
-            IdentityFlag::PubkeyHash | IdentityFlag::OwnerLock => {
+            IdentityFlag::PubkeyHash => {
                 self.signer
                     .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?
             }
+            IdentityFlag::OwnerLock => Bytes::from(vec![0; 65]),
             IdentityFlag::Ethereum => {
                 let message = convert_keccak256_hash(message.as_ref());
 
@@ -915,9 +916,9 @@ impl ScriptSigner for OmniLockScriptSigner {
             IdentityFlag::Solana => {
                 // should we impl phantom signature mode?
                 let msg = {
-                    let mut preifx = b"CKB transaction: 0x".to_vec();
-                    preifx.extend(hex_encode(&message).as_bytes());
-                    preifx
+                    let mut prefix = b"CKB transaction: 0x".to_vec();
+                    prefix.extend(hex_encode(&message).as_bytes());
+                    prefix
                 };
                 self.signer
                     .sign(id.auth_content().as_ref(), msg.as_slice(), true, tx)?

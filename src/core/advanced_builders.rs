@@ -232,7 +232,8 @@ impl TransactionBuilder {
         if witness_data.is_empty() {
             WitnessArgs::default()
         } else {
-            WitnessArgs::from_slice(witness_data.as_ref()).unwrap()
+            WitnessArgs::from_slice(witness_data.as_ref())
+                .expect("WitnessArgs expected but failed to decode ")
         }
     }
 

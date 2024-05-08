@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     constants,
     traits::TransactionDependencyProvider,
-    unlock::{MultisigConfig, OmniLockConfig, UnlockError},
+    unlock::{MultisigConfig, OmniLockConfig, OmniUnlockMode, UnlockError},
     NetworkInfo, NetworkType, ScriptGroup, ScriptId, TransactionWithScriptGroups,
 };
 
@@ -72,19 +72,26 @@ impl SignContexts {
         Ok(Self::new_multisig(key, multisig_config))
     }
 
-    pub fn new_omnilock(keys: Vec<secp256k1::SecretKey>, omnilock_config: OmniLockConfig) -> Self {
-        let omnilock_context = omnilock::OmnilockSignerContext::new(keys, omnilock_config);
+    pub fn new_omnilock(
+        keys: Vec<secp256k1::SecretKey>,
+        omnilock_config: OmniLockConfig,
+        unlock_mode: OmniUnlockMode,
+    ) -> Self {
+        let omnilock_context =
+            omnilock::OmnilockSignerContext::new(keys, omnilock_config).unlock_mode(unlock_mode);
         Self {
             contexts: vec![Box::new(omnilock_context)],
         }
     }
 
     pub fn new_omnilock_solana(
-        key: ed25519_dalek::SigningKey,
+        key: Vec<ed25519_dalek::SigningKey>,
         omnilock_config: OmniLockConfig,
+        unlock_mode: OmniUnlockMode,
     ) -> Self {
         let omnilock_context =
-            omnilock::OmnilockSignerContext::new_with_ed25519_key(key, omnilock_config);
+            omnilock::OmnilockSignerContext::new_with_ed25519_key(key, omnilock_config)
+                .unlock_mode(unlock_mode);
         Self {
             contexts: vec![Box::new(omnilock_context)],
         }
@@ -93,9 +100,11 @@ impl SignContexts {
     pub fn new_omnilock_exec_dl_custom<T: crate::traits::Signer + 'static>(
         signer: T,
         omnilock_config: OmniLockConfig,
+        unlock_mode: OmniUnlockMode,
     ) -> Self {
         let omnilock_context =
-            omnilock::OmnilockSignerContext::new_with_dl_exec_signer(signer, omnilock_config);
+            omnilock::OmnilockSignerContext::new_with_dl_exec_signer(signer, omnilock_config)
+                .unlock_mode(unlock_mode);
         Self {
             contexts: vec![Box::new(omnilock_context)],
         }
