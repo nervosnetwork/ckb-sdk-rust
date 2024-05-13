@@ -75,7 +75,7 @@ impl InputIterator {
 
     fn collect_live_cells(&mut self) -> Result<(), CellCollectorError> {
         loop {
-            if self.lock_scripts.len() == 0 {
+            if self.lock_scripts.is_empty() {
                 return Ok(());
             }
 
