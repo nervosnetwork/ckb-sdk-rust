@@ -1,5 +1,4 @@
 pub mod transaction_input;
-use anyhow::{anyhow, Error};
 use ckb_types::packed::Script;
 pub use transaction_input::TransactionInput;
 
@@ -75,7 +74,7 @@ impl InputIterator {
 
     fn collect_live_cells(&mut self) -> Result<(), CellCollectorError> {
         loop {
-            if self.lock_scripts.len() == 0 {
+            if self.lock_scripts.is_empty() == 0 {
                 return Ok(());
             }
 
