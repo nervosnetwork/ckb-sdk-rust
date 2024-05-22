@@ -64,6 +64,13 @@ impl SudtHandler {
             sudt_script_id,
         })
     }
+
+    pub fn new_with_customize(cell_deps: Vec<CellDep>, sudt_script_id: ScriptId) -> Self {
+        Self {
+            cell_deps,
+            sudt_script_id,
+        }
+    }
 }
 
 impl ScriptHandler for SudtHandler {

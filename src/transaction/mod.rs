@@ -29,6 +29,15 @@ impl TransactionBuilderConfiguration {
         Self::new_with_network(NetworkInfo::testnet())
     }
 
+    pub fn new_devnet() -> Result<Self, TxBuilderError> {
+        Ok(Self {
+            network: NetworkInfo::devnet(),
+            script_handlers: vec![],
+            fee_rate: 1000,
+            estimate_tx_size: 128000,
+        })
+    }
+
     pub fn new_with_network(network: NetworkInfo) -> Result<Self, TxBuilderError> {
         let script_handlers = Self::generate_system_handlers(&network)?;
         Ok(Self {

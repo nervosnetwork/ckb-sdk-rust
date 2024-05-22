@@ -195,6 +195,33 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
     }
 }
 
+impl SudtTransactionBuilder {
+    pub fn check(&self) -> Result<(u64, u128), TxBuilderError> {
+        let Self {
+            configuration,
+            input_iter,
+            sudt_owner_lock_script,
+            ..
+        } = self;
+
+        let sudt_type_script =
+            build_sudt_type_script(configuration.network_info(), &sudt_owner_lock_script);
+        let mut sudt_input_iter = input_iter.clone();
+        sudt_input_iter.set_type_script(Some(sudt_type_script));
+
+        let mut udt_sum = 0;
+        let mut ckb_amount: u64 = 0;
+        for input in sudt_input_iter {
+            let input = input?;
+            let capacity: u64 = input.live_cell.output.capacity().unpack();
+            let udt_amount = parse_u128(input.live_cell.output_data.as_ref())?;
+            udt_sum += udt_amount;
+            ckb_amount += capacity;
+        }
+        Ok((ckb_amount, udt_sum))
+    }
+}
+
 fn build_sudt_type_script(network_info: &NetworkInfo, sudt_owner_lock_script: &Script) -> Script {
     // code_hash from https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0025-simple-udt/0025-simple-udt.md#notes
     let code_hash = match network_info.network_type {
@@ -203,6 +230,16 @@ fn build_sudt_type_script(network_info: &NetworkInfo, sudt_owner_lock_script: &S
         }
         NetworkType::Testnet => {
             h256!("0xc5e5dcf215925f7ef4dfaf5f4b4f105bc321c02776d6e7d52a1db3fcd9d011a4")
+        }
+        NetworkType::Dev => {
+            let code_hash =
+                h256!("0xe1e354d6d643ad42724d40967e334984534e0367405c5ae42a9d7d63d77df419");
+            let res = Script::new_builder()
+                .code_hash(code_hash.pack())
+                .hash_type(ScriptHashType::Data1.into())
+                .args(sudt_owner_lock_script.calc_script_hash().as_bytes().pack())
+                .build();
+            return res;
         }
         _ => panic!("Unsupported network type"),
     };
