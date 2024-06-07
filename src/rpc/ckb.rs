@@ -24,7 +24,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_epoch_by_number(&self, number: EpochNumber) -> Option<EpochView>;
     pub fn get_header(&self, hash: H256) -> Option<HeaderView>;
     pub fn get_header_by_number(&self, number: BlockNumber) -> Option<HeaderView>;
-    pub fn get_live_cell(&self, out_point: OutPoint, with_data: bool, include_tx_pool: Option<bool>) -> CellWithStatus;
+    pub fn get_live_cell(&self, out_point: OutPoint, with_data: bool) -> CellWithStatus;
     pub fn get_tip_block_number(&self) -> BlockNumber;
     pub fn get_tip_header(&self) -> HeaderView;
     pub fn get_transaction(&self, hash: H256) -> Option<TransactionWithStatusResponse>;
@@ -208,6 +208,18 @@ impl CkbRpcClient {
         self.post::<_, Option<JsonBytes>>(
             "get_header_by_number",
             (number, Some(Uint32::from(0u32))),
+        )
+    }
+
+    pub fn get_live_cell_with_include_tx_pool(
+        &self,
+        out_point: OutPoint,
+        with_data: bool,
+        include_tx_pool: bool,
+    ) -> Result<CellWithStatus, crate::rpc::RpcError> {
+        self.post::<_, CellWithStatus>(
+            "get_live_cell",
+            (out_point, with_data, Some(include_tx_pool)),
         )
     }
 
