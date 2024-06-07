@@ -90,6 +90,35 @@ impl SudtTransactionBuilder {
     }
 }
 
+#[test]
+fn test_parse_u128_from_sudt_tx_output_data() {
+    use crate::Address;
+    use std::str::FromStr;
+
+    let network_info = NetworkInfo::testnet();
+    let configuration =
+        TransactionBuilderConfiguration::new_with_network(network_info.clone()).unwrap();
+
+    let sender = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r").unwrap();
+
+    let iterator = InputIterator::new_with_address(&[sender.clone()], &network_info);
+
+    let test_sudt_amount = 9999_u128;
+    let mut builder = SudtTransactionBuilder::new(configuration, iterator, &sender, false).unwrap();
+
+    builder.add_output(&sender, test_sudt_amount);
+
+    let outputs_sudt_amount: u128 = builder
+        .tx
+        .outputs_data
+        .iter()
+        .map(|data| parse_u128(data.raw_data().as_ref()))
+        .collect::<Result<Vec<u128>, TxBuilderError>>()
+        .map(|u128_vec| u128_vec.iter().sum())
+        .expect("parse u128 failed");
+    assert_eq!(outputs_sudt_amount, test_sudt_amount);
+}
+
 fn parse_u128(data: &[u8]) -> Result<u128, TxBuilderError> {
     if data.len() > std::mem::size_of::<u128>() {
         return Err(TxBuilderError::Other(anyhow!(
@@ -138,7 +167,7 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
             let outputs_sudt_amount: u128 = tx
                 .outputs_data
                 .iter()
-                .map(|data| parse_u128(data.as_slice()))
+                .map(|data| parse_u128(data.raw_data().as_ref()))
                 .collect::<Result<Vec<u128>, TxBuilderError>>()
                 .map(|u128_vec| u128_vec.iter().sum())?;
 
