@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use ckb_types::{
     core::{ScriptHashType, TransactionView},
-    packed::Script,
+    packed::{CellOutput, OutPoint, Script},
     prelude::*,
 };
 
@@ -9,13 +11,19 @@ use crate::ScriptGroup;
 pub struct TransactionWithScriptGroups {
     pub(crate) tx_view: TransactionView,
     pub(crate) script_groups: Vec<ScriptGroup>,
+    pub(crate) inputs: HashMap<OutPoint, (CellOutput, bytes::Bytes)>,
 }
 
 impl TransactionWithScriptGroups {
-    pub fn new(tx_view: TransactionView, script_groups: Vec<ScriptGroup>) -> Self {
+    pub fn new(
+        tx_view: TransactionView,
+        script_groups: Vec<ScriptGroup>,
+        inputs: HashMap<OutPoint, (CellOutput, bytes::Bytes)>,
+    ) -> Self {
         Self {
             tx_view,
             script_groups,
+            inputs,
         }
     }
     pub fn get_tx_view(&self) -> &TransactionView {
@@ -39,6 +47,7 @@ impl TransactionWithScriptGroups {
 pub struct TransactionWithScriptGroupsBuilder {
     tx_view: Option<TransactionView>,
     script_groups: Vec<ScriptGroup>,
+    inputs: HashMap<OutPoint, (CellOutput, bytes::Bytes)>,
 }
 
 impl TransactionWithScriptGroupsBuilder {
@@ -82,6 +91,7 @@ impl TransactionWithScriptGroupsBuilder {
         TransactionWithScriptGroups {
             tx_view: self.tx_view.unwrap(),
             script_groups: self.script_groups,
+            inputs: self.inputs,
         }
     }
 }

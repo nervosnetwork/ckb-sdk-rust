@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use anyhow::anyhow;
-use ckb_hash::{blake2b_256, new_blake2b};
+use ckb_hash::{blake2b_256, new_blake2b, Blake2b, Blake2bBuilder};
 use ckb_types::{
-    bytes::{Bytes, BytesMut},
+    bytes::{BufMut, Bytes, BytesMut},
     core::{ScriptHashType, TransactionView},
     error::VerificationError,
     packed::{self, BytesOpt, Script, WitnessArgs},
@@ -11,22 +11,32 @@ use ckb_types::{
     H160,
 };
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
 use thiserror::Error;
 
-use crate::{constants::MULTISIG_TYPE_HASH, types::omni_lock::OmniLockWitnessLock};
 use crate::{
-    traits::{Signer, SignerError},
-    util::convert_keccak256_hash,
+    constants::{COMMON_PREFIX, MULTISIG_TYPE_HASH},
+    types::{cobuild::top_level::WitnessLayoutUnion, omni_lock::OmniLockWitnessLock},
+    util::{btc_convert_message, btc_convert_sign},
 };
 use crate::{
-    types::{AddressPayload, CodeHashIndex, ScriptGroup, Since},
+    traits::{Signer, SignerError, TransactionDependencyProvider},
+    util::{calculate_sha256, convert_keccak256_hash, hex_encode},
+};
+use crate::{
+    types::{
+        cobuild::{
+            basic::{Message, SighashAll, SighashAllOnly},
+            top_level::WitnessLayout,
+        },
+        omni_lock,
+        xudt_rce_mol::SmtProofEntryVec,
+        AddressPayload, CodeHashIndex, ScriptGroup, Since,
+    },
     Address, NetworkType,
 };
 
-use super::{
-    omni_lock::{ConfigError, Identity},
-    IdentityFlag, OmniLockConfig,
-};
+use super::{omni_lock::ConfigError, IdentityFlag, OmniLockConfig};
 
 #[derive(Error, Debug)]
 pub enum ScriptSignError {
@@ -67,6 +77,7 @@ pub trait ScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError>;
 }
 
@@ -131,6 +142,7 @@ impl ScriptSigner for SecpSighashScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let args = script_group.script.args().raw_data();
         self.sign_tx_with_owner_id(args.as_ref(), tx, script_group)
@@ -230,12 +242,16 @@ impl MultisigConfig {
     }
 
     pub fn placeholder_witness(&self) -> WitnessArgs {
+        WitnessArgs::new_builder()
+            .lock(self.placeholder_witness_lock().pack())
+            .build()
+    }
+
+    pub fn placeholder_witness_lock(&self) -> Option<bytes::Bytes> {
         let config_data = self.to_witness_data();
         let mut zero_lock = vec![0u8; config_data.len() + 65 * self.threshold() as usize];
         zero_lock[0..config_data.len()].copy_from_slice(config_data.as_ref());
-        WitnessArgs::new_builder()
-            .lock(Some(Bytes::from(zero_lock)).pack())
-            .build()
+        Some(Bytes::from(zero_lock))
     }
 
     pub fn to_address(&self, network: NetworkType, since_absolute_epoch: Option<u64>) -> Address {
@@ -292,6 +308,7 @@ impl ScriptSigner for SecpMultisigScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let witness_idx = script_group.input_indices[0];
         let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
@@ -384,6 +401,7 @@ impl ScriptSigner for AcpScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let args = script_group.script.args().raw_data();
         let id = &args[0..20];
@@ -433,12 +451,73 @@ impl ScriptSigner for ChequeScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let args = script_group.script.args().raw_data();
         let id = self.owner_id(args.as_ref());
         self.sighash_signer
             .sign_tx_with_owner_id(id, tx, script_group)
     }
+}
+
+pub const PERSONALIZATION_SIGHASH_ALL: &[u8] = b"ckb-tcob-sighash";
+pub const PERSONALIZATION_SIGHASH_ALL_ONLY: &[u8] = b"ckb-tcob-sgohash";
+
+/// return a blake2b instance with personalization for SighashAll
+pub fn new_sighash_all_blake2b() -> Blake2b {
+    Blake2bBuilder::new(32)
+        .personal(PERSONALIZATION_SIGHASH_ALL)
+        .build()
+}
+
+/// return a blake2b instance with personalization for SighashAllOnly
+pub fn new_sighash_all_only_blake2b() -> Blake2b {
+    Blake2bBuilder::new(32)
+        .personal(PERSONALIZATION_SIGHASH_ALL_ONLY)
+        .build()
+}
+
+pub fn cobuild_generate_signing_message_hash(
+    message: &Option<bytes::Bytes>,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+    tx: &TransactionView,
+) -> Bytes {
+    // message
+    let mut hasher = match message {
+        Some(m) => {
+            let mut hasher = new_sighash_all_blake2b();
+            hasher.update(m);
+            hasher
+        }
+        None => new_sighash_all_only_blake2b(),
+    };
+    // tx hash
+    hasher.update(tx.hash().as_slice());
+
+    // inputs cell and data
+    let inputs_len = tx.inputs().len();
+    for i in 0..inputs_len {
+        let input_cell = tx.inputs().get(i).unwrap();
+        let input_cell_out_point = input_cell.previous_output();
+        let (input_cell, input_cell_data) = (
+            tx_dep_provider.get_cell(&input_cell_out_point).unwrap(),
+            tx_dep_provider
+                .get_cell_data(&input_cell_out_point)
+                .unwrap(),
+        );
+        hasher.update(input_cell.as_slice());
+        hasher.update(&(input_cell_data.len() as u32).to_le_bytes());
+        hasher.update(&input_cell_data);
+    }
+    // extra witnesses
+    for witness in tx.witnesses().into_iter().skip(inputs_len) {
+        hasher.update(&(witness.len() as u32).to_le_bytes());
+        hasher.update(&witness.raw_data());
+    }
+
+    let mut result = vec![0u8; 32];
+    hasher.finalize(&mut result);
+    Bytes::from(result)
 }
 
 /// Common logic of generate message for certain script group. Overwrite
@@ -550,22 +629,10 @@ impl OmniLockScriptSigner {
     fn sign_multisig_tx(
         &self,
         tx: &TransactionView,
-        script_group: &ScriptGroup,
-    ) -> Result<TransactionView, ScriptSignError> {
-        let witness_idx = script_group.input_indices[0];
-        let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
-        while witnesses.len() <= witness_idx {
-            witnesses.push(Default::default());
-        }
-        let tx_new = tx
-            .as_advanced_builder()
-            .set_witnesses(witnesses.clone())
-            .build();
-
-        let zero_lock = self.config.zero_lock(self.unlock_mode)?;
-        let zero_lock_len = zero_lock.len();
-        let message = generate_message(&tx_new, script_group, zero_lock)?;
-
+        message: Bytes,
+        witness: Bytes,
+        cobuild: bool,
+    ) -> Result<Bytes, ScriptSignError> {
         let multisig_config = match self.unlock_mode {
             OmniUnlockMode::Admin => self
                 .config
@@ -581,38 +648,47 @@ impl OmniLockScriptSigner {
             .filter(|id| self.signer.match_id(id.as_bytes()))
             .map(|id| self.signer.sign(id.as_bytes(), message.as_ref(), true, tx))
             .collect::<Result<Vec<_>, SignerError>>()?;
-        // Put signature into witness
-        let witness_idx = script_group.input_indices[0];
-        let witness_data = witnesses[witness_idx].raw_data();
-        let mut current_witness: WitnessArgs = if witness_data.is_empty() {
-            WitnessArgs::default()
-        } else {
-            WitnessArgs::from_slice(witness_data.as_ref())?
-        };
-        let lock_field = current_witness.lock().to_opt().map(|data| data.raw_data());
-        let omnilock_witnesslock = if let Some(lock_field) = lock_field {
-            if lock_field.len() != zero_lock_len {
-                return Err(ScriptSignError::Other(anyhow!(
-                    "invalid witness lock field length: {}, expected: {}",
-                    lock_field.len(),
-                    zero_lock_len,
-                )));
-            }
-            OmniLockWitnessLock::from_slice(lock_field.as_ref())?
-        } else {
-            OmniLockWitnessLock::default()
-        };
         let config_data = multisig_config.to_witness_data();
-        let mut omni_sig = omnilock_witnesslock
-            .signature()
-            .to_opt()
-            .map(|data| data.raw_data().as_ref().to_vec())
-            .unwrap_or_else(|| {
-                let mut omni_sig =
-                    vec![0u8; config_data.len() + multisig_config.threshold() as usize * 65];
-                omni_sig[..config_data.len()].copy_from_slice(&config_data);
-                omni_sig
-            });
+
+        let mut omni_sig = if cobuild {
+            let mut omni_sig =
+                vec![0u8; config_data.len() + multisig_config.threshold() as usize * 65];
+            omni_sig[..config_data.len()].copy_from_slice(&config_data);
+            omni_sig
+        } else {
+            // use current_witness to recover data is  to be compatible with builder mode. which sign transaction for multiple times
+            // In transaction mode, there is no need to do this.
+            let current_witness: WitnessArgs = if witness.is_empty() {
+                WitnessArgs::default()
+            } else {
+                WitnessArgs::from_slice(witness.as_ref())?
+            };
+            let lock_field = current_witness.lock().to_opt().map(|data| data.raw_data());
+            let omnilock_witnesslock = if let Some(lock_field) = lock_field {
+                let zero_lock_len = self.config.zero_lock(self.unlock_mode)?.len();
+                if lock_field.len() != zero_lock_len {
+                    return Err(ScriptSignError::Other(anyhow!(
+                        "invalid witness lock field length: {}, expected: {}",
+                        lock_field.len(),
+                        zero_lock_len,
+                    )));
+                }
+                OmniLockWitnessLock::from_slice(lock_field.as_ref())?
+            } else {
+                OmniLockWitnessLock::default()
+            };
+            omnilock_witnesslock
+                .signature()
+                .to_opt()
+                .map(|data| data.raw_data().as_ref().to_vec())
+                .unwrap_or_else(|| {
+                    let mut omni_sig =
+                        vec![0u8; config_data.len() + multisig_config.threshold() as usize * 65];
+                    omni_sig[..config_data.len()].copy_from_slice(&config_data);
+                    omni_sig
+                })
+        };
+
         for signature in signatures {
             let mut idx = config_data.len();
             while idx < omni_sig.len() {
@@ -629,59 +705,18 @@ impl OmniLockScriptSigner {
                 return Err(ScriptSignError::TooManySignatures);
             }
         }
-        let lock = omnilock_witnesslock
-            .as_builder()
-            .signature(Some(Bytes::from(omni_sig)).pack())
-            .build()
-            .as_bytes();
-
-        current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
-        witnesses[witness_idx] = current_witness.as_bytes().pack();
-        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
-    }
-
-    fn sign_ethereum_tx(
-        &self,
-        tx: &TransactionView,
-        script_group: &ScriptGroup,
-        id: &Identity,
-    ) -> Result<TransactionView, ScriptSignError> {
-        let witness_idx = script_group.input_indices[0];
-        let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
-        while witnesses.len() <= witness_idx {
-            witnesses.push(Default::default());
-        }
-        let tx_new = tx
-            .as_advanced_builder()
-            .set_witnesses(witnesses.clone())
-            .build();
-
-        let zero_lock = self.config.zero_lock(self.unlock_mode())?;
-        let message = generate_message(&tx_new, script_group, zero_lock)?;
-        let message = convert_keccak256_hash(message.as_ref());
-
-        let signature = self
-            .signer
-            .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
-
-        // Put signature into witness
-        let witness_data = witnesses[witness_idx].raw_data();
-        let mut current_witness: WitnessArgs = if witness_data.is_empty() {
-            WitnessArgs::default()
-        } else {
-            WitnessArgs::from_slice(witness_data.as_ref())?
-        };
-
-        let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
-        current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
-        witnesses[witness_idx] = current_witness.as_bytes().pack();
-        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
+        Ok(Bytes::from(omni_sig))
     }
 
     /// Build proper witness lock
     pub fn build_witness_lock(
         orig_lock: BytesOpt,
         signature: Bytes,
+        use_rc: bool,
+        use_rc_identity: bool,
+        proofs: &SmtProofEntryVec,
+        identity: &omni_lock::Auth,
+        preimage: Option<Bytes>,
     ) -> Result<Bytes, ScriptSignError> {
         let lock_field = orig_lock.to_opt().map(|data| data.raw_data());
         let omnilock_witnesslock = if let Some(lock_field) = lock_field {
@@ -690,11 +725,24 @@ impl OmniLockScriptSigner {
             OmniLockWitnessLock::default()
         };
 
-        Ok(omnilock_witnesslock
-            .as_builder()
-            .signature(Some(signature).pack())
-            .build()
-            .as_bytes())
+        let builder = omnilock_witnesslock.as_builder();
+
+        let mut builder = builder.signature(Some(signature).pack());
+
+        if builder.preimage.is_none() {
+            builder = builder.preimage(preimage.pack());
+        }
+
+        if use_rc && use_rc_identity && builder.omni_identity.is_none() {
+            let rc_identity = omni_lock::IdentityBuilder::default()
+                .identity(identity.clone())
+                .proofs(proofs.clone())
+                .build();
+            let opt = omni_lock::IdentityOpt::new_unchecked(rc_identity.as_bytes());
+            builder = builder.omni_identity(opt);
+        }
+
+        Ok(builder.build().as_bytes())
     }
 }
 
@@ -730,7 +778,16 @@ impl ScriptSigner for OmniLockScriptSigner {
             return false;
         }
         match self.config.id().flag() {
-            IdentityFlag::PubkeyHash | IdentityFlag::Ethereum => self
+            IdentityFlag::PubkeyHash
+            | IdentityFlag::Ethereum
+            | IdentityFlag::Bitcoin
+            | IdentityFlag::Dogecoin
+            | IdentityFlag::EthereumDisplaying
+            | IdentityFlag::Tron
+            | IdentityFlag::Solana
+            | IdentityFlag::Eos
+            | IdentityFlag::Dl
+            | IdentityFlag::Exec => self
                 .signer
                 .match_id(self.config.id().auth_content().as_ref()),
             IdentityFlag::Multisig => {
@@ -748,7 +805,6 @@ impl ScriptSigner for OmniLockScriptSigner {
                 // should not reach here, return true for compatible reason
                 true
             }
-            _ => todo!("other auth type not supported yet"),
         }
     }
 
@@ -756,6 +812,7 @@ impl ScriptSigner for OmniLockScriptSigner {
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, ScriptSignError> {
         let id = match self.unlock_mode {
             OmniUnlockMode::Admin => self
@@ -766,49 +823,189 @@ impl ScriptSigner for OmniLockScriptSigner {
                 .clone(),
             OmniUnlockMode::Normal => self.config.id().clone(),
         };
-        match id.flag() {
-            IdentityFlag::PubkeyHash => {
-                let witness_idx = script_group.input_indices[0];
-                let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
-                while witnesses.len() <= witness_idx {
-                    witnesses.push(Default::default());
-                }
-                let tx_new = tx
-                    .as_advanced_builder()
-                    .set_witnesses(witnesses.clone())
-                    .build();
 
-                let zero_lock = self.config.zero_lock(self.unlock_mode)?;
-                let message = generate_message(&tx_new, script_group, zero_lock)?;
-
-                let signature =
-                    self.signer
-                        .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
-
-                // Put signature into witness
-                let witness_data = witnesses[witness_idx].raw_data();
-                let mut current_witness: WitnessArgs = if witness_data.is_empty() {
-                    WitnessArgs::default()
-                } else {
-                    WitnessArgs::from_slice(witness_data.as_ref())?
-                };
-
-                let lock = Self::build_witness_lock(current_witness.lock(), signature)?;
-
-                current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
-                witnesses[witness_idx] = current_witness.as_bytes().pack();
-                Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
-            }
-            IdentityFlag::Ethereum => self.sign_ethereum_tx(tx, script_group, &id),
-            IdentityFlag::Multisig => self.sign_multisig_tx(tx, script_group),
-            IdentityFlag::OwnerLock => {
-                // should not reach here, just return a clone for compatible reason.
-                Ok(tx.clone())
-            }
-            _ => {
-                todo!("not supported yet");
-            }
+        let witness_idx = script_group.input_indices[0];
+        let mut witnesses: Vec<packed::Bytes> = tx.witnesses().into_iter().collect();
+        while witnesses.len() <= witness_idx {
+            witnesses.push(Default::default());
         }
+        let tx_new = tx
+            .as_advanced_builder()
+            .set_witnesses(witnesses.clone())
+            .build();
+
+        let message = if self.config.enable_cobuild {
+            cobuild_generate_signing_message_hash(&self.config.cobuild_message, tx_dep_provider, tx)
+        } else {
+            let zero_lock = self.config.zero_lock(self.unlock_mode)?;
+            generate_message(&tx_new, script_group, zero_lock)?
+        };
+        let signature = match id.flag() {
+            IdentityFlag::PubkeyHash => {
+                self.signer
+                    .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?
+            }
+            IdentityFlag::OwnerLock => Bytes::from(vec![0; 65]),
+            IdentityFlag::Ethereum => {
+                let message = convert_keccak256_hash(message.as_ref());
+
+                self.signer
+                    .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?
+            }
+            IdentityFlag::Multisig => self.sign_multisig_tx(
+                tx,
+                message,
+                witnesses[witness_idx].raw_data(),
+                self.config.enable_cobuild,
+            )?,
+            IdentityFlag::Bitcoin => {
+                let msg = btc_convert_message(&message);
+
+                let sign =
+                    self.signer
+                        .sign(id.auth_content().as_ref(), msg.as_slice(), true, tx)?;
+                btc_convert_sign(sign, self.config.btc_sign_vtype)
+            }
+            IdentityFlag::EthereumDisplaying => {
+                let eth_prefix = b"\x19Ethereum Signed Message:\n";
+                let mut hasher = Keccak256::new();
+                hasher.update(eth_prefix);
+                hasher.update(Bytes::from(format!(
+                    "{}",
+                    COMMON_PREFIX.len() + message.len() * 2
+                )));
+                hasher.update(Bytes::from(COMMON_PREFIX));
+
+                hasher.update(hex_encode(&message));
+                let r = hasher.finalize();
+
+                self.signer
+                    .sign(id.auth_content().as_ref(), r.as_slice(), true, tx)?
+            }
+            IdentityFlag::Tron => {
+                let tron_prefix: &[u8; 24] = b"\x19TRON Signed Message:\n32";
+                let mut hasher = Keccak256::new();
+                hasher.update(tron_prefix);
+                hasher.update(message);
+                let r = hasher.finalize();
+                self.signer
+                    .sign(id.auth_content().as_ref(), r.as_slice(), true, tx)?
+            }
+            IdentityFlag::Eos => {
+                let sign = self
+                    .signer
+                    .sign(id.auth_content().as_ref(), &message, true, tx)?;
+                btc_convert_sign(sign, self.config.btc_sign_vtype)
+            }
+            IdentityFlag::Dogecoin => {
+                let message_magic = b"\x19Dogecoin Signed Message:\n\x40";
+                let msg_hex = hex_encode(&message);
+                assert_eq!(msg_hex.len(), 64);
+
+                let mut temp2 = Vec::with_capacity(message_magic.len() + msg_hex.len());
+                temp2.put(message_magic.as_slice());
+                temp2.put(msg_hex.as_bytes());
+
+                let msg = calculate_sha256(&temp2);
+                let r = calculate_sha256(&msg);
+                let sign = self
+                    .signer
+                    .sign(id.auth_content().as_ref(), r.as_slice(), true, tx)?;
+                btc_convert_sign(sign, self.config.btc_sign_vtype)
+            }
+            IdentityFlag::Solana => {
+                // should we impl phantom signature mode?
+                let msg = {
+                    let mut prefix = b"CKB transaction: 0x".to_vec();
+                    prefix.extend(hex_encode(&message).as_bytes());
+                    prefix
+                };
+                self.signer
+                    .sign(id.auth_content().as_ref(), msg.as_slice(), true, tx)?
+            }
+            IdentityFlag::Dl | IdentityFlag::Exec => {
+                self.signer
+                    .sign(id.auth_content().as_ref(), &message, true, tx)?
+            }
+        };
+        if self.config.enable_cobuild {
+            let witness_data = witnesses[witness_idx].raw_data();
+            let current_witness: WitnessLayout = if witness_data.is_empty() {
+                WitnessLayout::default()
+            } else {
+                WitnessLayout::from_slice(witness_data.as_ref())?
+            };
+
+            let lock_field = match current_witness.to_enum() {
+                WitnessLayoutUnion::SighashAll(s) => {
+                    OmniLockWitnessLock::from_slice(&s.as_reader().seal().raw_data()[1..])
+                        .unwrap()
+                        .as_bytes()
+                }
+                WitnessLayoutUnion::SighashAllOnly(s) => {
+                    OmniLockWitnessLock::from_slice(&s.as_reader().seal().raw_data()[1..])
+                        .unwrap()
+                        .as_bytes()
+                }
+                _ => panic!("not support yet"),
+            };
+            let lock = Self::build_witness_lock(
+                Some(lock_field).pack(),
+                signature,
+                self.config.use_rc(),
+                matches!(self.unlock_mode, OmniUnlockMode::Admin),
+                &self.config.build_proofs(),
+                &id.to_auth(),
+                self.config
+                    .exec_dl_config
+                    .clone()
+                    .map(|i| i.preimage().to_vec().into()),
+            )?;
+            match &self.config.cobuild_message {
+                Some(msg) => {
+                    let sighash_all = SighashAll::new_builder()
+                        .message(Message::new_unchecked(msg.clone()))
+                        .seal([Bytes::copy_from_slice(&[0x00u8]), lock].concat().pack())
+                        .build();
+                    let sighash_all = WitnessLayout::new_builder().set(sighash_all).build();
+                    let sighash_all = sighash_all.as_bytes();
+                    witnesses[witness_idx] = sighash_all.pack();
+                }
+                None => {
+                    let sighash_all_only = SighashAllOnly::new_builder()
+                        .seal([Bytes::copy_from_slice(&[0x00u8]), lock].concat().pack())
+                        .build();
+                    let sighash_all_only =
+                        WitnessLayout::new_builder().set(sighash_all_only).build();
+                    let sighash_all_only = sighash_all_only.as_bytes();
+                    witnesses[witness_idx] = sighash_all_only.pack();
+                }
+            }
+        } else {
+            // Put signature into witness
+            let witness_data = witnesses[witness_idx].raw_data();
+            let mut current_witness: WitnessArgs = if witness_data.is_empty() {
+                WitnessArgs::default()
+            } else {
+                WitnessArgs::from_slice(witness_data.as_ref())?
+            };
+
+            let lock = Self::build_witness_lock(
+                current_witness.lock(),
+                signature,
+                self.config.use_rc(),
+                matches!(self.unlock_mode, OmniUnlockMode::Admin),
+                &self.config.build_proofs(),
+                &id.to_auth(),
+                self.config
+                    .exec_dl_config
+                    .clone()
+                    .map(|i| i.preimage().to_vec().into()),
+            )?;
+            current_witness = current_witness.as_builder().lock(Some(lock).pack()).build();
+            witnesses[witness_idx] = current_witness.as_bytes().pack();
+        }
+        Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
     }
 }
 

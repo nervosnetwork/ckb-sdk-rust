@@ -18,7 +18,7 @@ use crate::{
 fn test_transfer_from_sighash() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),

@@ -157,7 +157,14 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
         };
 
         if owner_mode {
-            inner_build(tx, change_builder, input_iter, &configuration, contexts)
+            inner_build(
+                tx,
+                change_builder,
+                input_iter,
+                &configuration,
+                contexts,
+                Default::default(),
+            )
         } else {
             let sudt_type_script =
                 build_sudt_type_script(configuration.network_info(), &sudt_owner_lock_script);
@@ -183,7 +190,14 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
                         .to_le_bytes()
                         .pack();
                     tx.set_output_data(tx.outputs_data.len() - 1, change_output_data);
-                    return inner_build(tx, change_builder, input_iter, &configuration, contexts);
+                    return inner_build(
+                        tx,
+                        change_builder,
+                        input_iter,
+                        &configuration,
+                        contexts,
+                        Default::default(),
+                    );
                 }
             }
 

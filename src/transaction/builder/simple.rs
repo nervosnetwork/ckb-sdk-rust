@@ -1,5 +1,6 @@
 use crate::{
     core::TransactionBuilder,
+    traits::LiveCell,
     transaction::{
         handler::HandlerContexts, input::InputIterator, TransactionBuilderConfiguration,
     },
@@ -24,6 +25,7 @@ pub struct SimpleTransactionBuilder {
     input_iter: InputIterator,
     /// The inner transaction builder
     tx: TransactionBuilder,
+    rc_cells: Vec<LiveCell>,
 }
 
 impl SimpleTransactionBuilder {
@@ -37,7 +39,12 @@ impl SimpleTransactionBuilder {
             configuration,
             input_iter,
             tx: TransactionBuilder::default(),
+            rc_cells: Vec::new(),
         }
+    }
+
+    pub fn set_rc_cells(&mut self, rc_cells: Vec<LiveCell>) {
+        self.rc_cells = rc_cells
     }
 
     /// Update the change lock script.
@@ -71,6 +78,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             configuration,
             input_iter,
             tx,
+            rc_cells,
         } = self;
 
         let change_builder = DefaultChangeBuilder {
@@ -79,6 +87,13 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
             inputs: Vec::new(),
         };
 
-        inner_build(tx, change_builder, input_iter, &configuration, contexts)
+        inner_build(
+            tx,
+            change_builder,
+            input_iter,
+            &configuration,
+            contexts,
+            rc_cells,
+        )
     }
 }

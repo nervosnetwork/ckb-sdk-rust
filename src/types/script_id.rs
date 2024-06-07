@@ -36,6 +36,7 @@ impl ScriptId {
     }
 
     /// Generate a dummy TypeId script with a placeholder args
+    #[allow(clippy::useless_vec)]
     pub fn dummy_type_id_script(&self) -> Script {
         Script::new_builder()
             .code_hash(self.code_hash.pack())
