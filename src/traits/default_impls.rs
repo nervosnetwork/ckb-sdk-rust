@@ -465,7 +465,7 @@ impl DefaultTransactionDependencyProvider {
 
         let cell_with_status = inner
             .rpc_client
-            .get_live_cell(out_point.clone().into(), true)
+            .get_live_cell(out_point.clone().into(), true, None)
             .map_err(|err| TransactionDependencyError::Other(err.into()))?;
         if cell_with_status.status != "live" {
             return Err(TransactionDependencyError::Other(anyhow!(
