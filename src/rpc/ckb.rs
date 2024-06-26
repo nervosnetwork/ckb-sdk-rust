@@ -211,6 +211,18 @@ impl CkbRpcClient {
         )
     }
 
+    pub fn get_live_cell_with_include_tx_pool(
+        &self,
+        out_point: OutPoint,
+        with_data: bool,
+        include_tx_pool: bool,
+    ) -> Result<CellWithStatus, crate::rpc::RpcError> {
+        self.post::<_, CellWithStatus>(
+            "get_live_cell",
+            (out_point, with_data, Some(include_tx_pool)),
+        )
+    }
+
     // get transaction with only_committed=true
     pub fn get_only_committed_transaction(
         &self,
