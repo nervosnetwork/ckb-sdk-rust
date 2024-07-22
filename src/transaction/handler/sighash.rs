@@ -29,6 +29,9 @@ impl Secp256k1Blake160SighashAllScriptHandler {
         ret.init(network)?;
         Ok(ret)
     }
+    pub fn new_with_customize(cell_deps: Vec<CellDep>) -> Self {
+        Self { cell_deps }
+    }
 }
 
 impl ScriptHandler for Secp256k1Blake160SighashAllScriptHandler {

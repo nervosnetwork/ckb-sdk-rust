@@ -88,4 +88,11 @@ impl NetworkInfo {
             url: "https://testnet.ckb.dev".to_string(),
         }
     }
+
+    pub fn devnet() -> Self {
+        Self {
+            network_type: NetworkType::Dev,
+            url: "http://localhost:8114".to_string(),
+        }
+    }
 }

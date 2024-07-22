@@ -29,6 +29,9 @@ pub struct SudtTransactionBuilder {
     input_iter: InputIterator,
     /// The identifier of the sUDT
     sudt_owner_lock_script: Script,
+    /// The sUDT type script, by default we will set default type script for `Mainnet` and `Testnet`
+    /// in the scenario of Dev enviornment, we may need to manually override type script
+    sudt_type_script: Option<Script>,
     /// Whether we are in owner mode
     owner_mode: bool,
     /// The inner transaction builder
@@ -51,6 +54,7 @@ impl SudtTransactionBuilder {
             configuration,
             input_iter,
             sudt_owner_lock_script: sudt_owner_lock_script.into(),
+            sudt_type_script: None,
             owner_mode,
             tx: TransactionBuilder::default(),
         })
@@ -59,6 +63,11 @@ impl SudtTransactionBuilder {
     /// Update the change lock script.
     pub fn set_change_lock(&mut self, lock_script: Script) {
         self.change_lock = lock_script;
+    }
+
+    /// Manually set the sUDT type script
+    pub fn set_sudt_type_script(&mut self, sudt_type_script: Script) {
+        self.sudt_type_script = Some(sudt_type_script);
     }
 
     /// Add an output cell and output data to the transaction.
@@ -72,6 +81,7 @@ impl SudtTransactionBuilder {
         let type_script = build_sudt_type_script(
             self.configuration.network_info(),
             &self.sudt_owner_lock_script,
+            self.sudt_type_script.clone(),
         );
         let output_data = sudt_amount.to_le_bytes().pack();
         let dummy_output = CellOutput::new_builder()
@@ -146,8 +156,10 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
             configuration,
             mut input_iter,
             sudt_owner_lock_script,
+            sudt_type_script,
             owner_mode,
             mut tx,
+            ..
         } = self;
 
         let change_builder = DefaultChangeBuilder {
@@ -159,8 +171,11 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
         if owner_mode {
             inner_build(tx, change_builder, input_iter, &configuration, contexts)
         } else {
-            let sudt_type_script =
-                build_sudt_type_script(configuration.network_info(), &sudt_owner_lock_script);
+            let sudt_type_script = build_sudt_type_script(
+                configuration.network_info(),
+                &sudt_owner_lock_script,
+                sudt_type_script,
+            );
             let mut sudt_input_iter = input_iter.clone();
             sudt_input_iter.set_type_script(Some(sudt_type_script));
 
@@ -195,7 +210,14 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
     }
 }
 
-fn build_sudt_type_script(network_info: &NetworkInfo, sudt_owner_lock_script: &Script) -> Script {
+fn build_sudt_type_script(
+    network_info: &NetworkInfo,
+    sudt_owner_lock_script: &Script,
+    override_sudt_type_script: Option<Script>,
+) -> Script {
+    if let Some(sudt_type_script) = override_sudt_type_script {
+        return sudt_type_script;
+    }
     // code_hash from https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0025-simple-udt/0025-simple-udt.md#notes
     let code_hash = match network_info.network_type {
         NetworkType::Mainnet => {
@@ -203,6 +225,9 @@ fn build_sudt_type_script(network_info: &NetworkInfo, sudt_owner_lock_script: &S
         }
         NetworkType::Testnet => {
             h256!("0xc5e5dcf215925f7ef4dfaf5f4b4f105bc321c02776d6e7d52a1db3fcd9d011a4")
+        }
+        NetworkType::Dev => {
+            panic!("You may need to manually set `sudt_type_script` with `set_sudt_type_script` method");
         }
         _ => panic!("Unsupported network type"),
     };
