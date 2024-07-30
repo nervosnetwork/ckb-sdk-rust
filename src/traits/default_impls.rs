@@ -630,7 +630,8 @@ impl Signer for SecpCkbRawKeySigner {
                 message.len()
             )));
         }
-        let msg = secp256k1::Message::from_slice(message).expect("Convert to message failed");
+        let msg =
+            secp256k1::Message::from_digest_slice(message).expect("Convert to message failed");
         let key = self.keys.get(&H160::from_slice(id).unwrap()).unwrap();
         if recoverable {
             let sig = SECP256K1.sign_ecdsa_recoverable(&msg, key);

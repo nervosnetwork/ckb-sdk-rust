@@ -12,9 +12,11 @@ use sha3::{Digest, Keccak256};
 use crate::rpc::CkbRpcClient;
 use crate::traits::LiveCell;
 
+use secp256k1::ffi::CPtr;
+
 pub fn zeroize_privkey(key: &mut secp256k1::SecretKey) {
-    let key_ptr = key.as_mut_ptr();
-    for i in 0..key.len() as isize {
+    let key_ptr = key.as_mut_c_ptr();
+    for i in 0..key.as_ref().len() as isize {
         unsafe { ptr::write_volatile(key_ptr.offset(i), Default::default()) }
         atomic::compiler_fence(atomic::Ordering::SeqCst);
     }
