@@ -355,7 +355,8 @@ impl Context {
     /// Run all scripts in the transaction in ckb-vm
     pub fn verify_scripts(&self, tx: TransactionView) -> Result<Cycle, Error> {
         let mock_tx = self.to_mock_tx(tx.data());
-        let resource = Resource::from_both(&mock_tx, &mut DummyLoader).map_err(Error::VerifyScript)?;
+        let resource =
+            Resource::from_both(&mock_tx, &mut DummyLoader).map_err(Error::VerifyScript)?;
         let rtx = resolve_transaction(tx, &mut HashSet::new(), &resource, &resource)
             .map_err(|err| Error::VerifyScript(format!("Resolve transaction error: {:?}", err)))?;
         let consensus = ConsensusBuilder::default()

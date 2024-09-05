@@ -3,7 +3,8 @@ use std::fmt;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::constants::{
-    NETWORK_DEV, NETWORK_MAINNET, NETWORK_STAGING, NETWORK_TESTNET, PREFIX_MAINNET, PREFIX_TESTNET,
+    NETWORK_DEV, NETWORK_MAINNET, NETWORK_PREVIEW, NETWORK_STAGING, NETWORK_TESTNET,
+    PREFIX_MAINNET, PREFIX_TESTNET,
 };
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -11,6 +12,7 @@ pub enum NetworkType {
     Mainnet,
     Testnet,
     Staging,
+    Preview,
     Dev,
 }
 
@@ -28,6 +30,7 @@ impl NetworkType {
             NetworkType::Mainnet => PREFIX_MAINNET,
             NetworkType::Testnet => PREFIX_TESTNET,
             NetworkType::Staging => PREFIX_TESTNET,
+            NetworkType::Preview => PREFIX_TESTNET,
             NetworkType::Dev => PREFIX_TESTNET,
         }
     }
@@ -37,6 +40,7 @@ impl NetworkType {
             NETWORK_MAINNET => Some(NetworkType::Mainnet),
             NETWORK_TESTNET => Some(NetworkType::Testnet),
             NETWORK_STAGING => Some(NetworkType::Staging),
+            NETWORK_PREVIEW => Some(NetworkType::Preview),
             NETWORK_DEV => Some(NetworkType::Dev),
             _ => None,
         }
@@ -47,6 +51,7 @@ impl NetworkType {
             NetworkType::Mainnet => NETWORK_MAINNET,
             NetworkType::Testnet => NETWORK_TESTNET,
             NetworkType::Staging => NETWORK_STAGING,
+            NetworkType::Preview => NETWORK_PREVIEW,
             NetworkType::Dev => NETWORK_DEV,
         }
     }
@@ -73,6 +78,7 @@ impl NetworkInfo {
             NetworkType::Mainnet => Some(Self::mainnet()),
             NetworkType::Testnet => Some(Self::testnet()),
             NetworkType::Staging => None,
+            NetworkType::Preview => None,
             NetworkType::Dev => None,
         }
     }
