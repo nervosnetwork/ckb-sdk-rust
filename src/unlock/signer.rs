@@ -104,7 +104,7 @@ impl SecpSighashScriptSigner {
         let zero_lock = Bytes::from(vec![0u8; 65]);
         let message = generate_message(&tx_new, script_group, zero_lock)?;
 
-        let signature = self.signer.sign(owner_id, message.as_ref(), true, tx)?;
+        let signature = self.signer.sign(owner_id, message.as_ref(), true)?;
 
         // Put signature into witness
         let witness_data = witnesses[witness_idx].raw_data();
@@ -313,7 +313,7 @@ impl ScriptSigner for SecpMultisigScriptSigner {
             .sighash_addresses
             .iter()
             .filter(|id| self.signer.match_id(id.as_bytes()))
-            .map(|id| self.signer.sign(id.as_bytes(), message.as_ref(), true, tx))
+            .map(|id| self.signer.sign(id.as_bytes(), message.as_ref(), true))
             .collect::<Result<Vec<_>, SignerError>>()?;
         // Put signature into witness
         let witness_idx = script_group.input_indices[0];
@@ -579,7 +579,7 @@ impl OmniLockScriptSigner {
             .sighash_addresses
             .iter()
             .filter(|id| self.signer.match_id(id.as_bytes()))
-            .map(|id| self.signer.sign(id.as_bytes(), message.as_ref(), true, tx))
+            .map(|id| self.signer.sign(id.as_bytes(), message.as_ref(), true))
             .collect::<Result<Vec<_>, SignerError>>()?;
         // Put signature into witness
         let witness_idx = script_group.input_indices[0];
@@ -662,7 +662,7 @@ impl OmniLockScriptSigner {
 
         let signature = self
             .signer
-            .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
+            .sign(id.auth_content().as_ref(), message.as_ref(), true)?;
 
         // Put signature into witness
         let witness_data = witnesses[witness_idx].raw_data();
@@ -783,7 +783,7 @@ impl ScriptSigner for OmniLockScriptSigner {
 
                 let signature =
                     self.signer
-                        .sign(id.auth_content().as_ref(), message.as_ref(), true, tx)?;
+                        .sign(id.auth_content().as_ref(), message.as_ref(), true)?;
 
                 // Put signature into witness
                 let witness_data = witnesses[witness_idx].raw_data();
