@@ -358,12 +358,7 @@ impl TxBuilder for DaoWithdrawBuilder {
             inputs.push(input);
             witnesses.push(witness.pack());
         }
-        header_deps.extend(
-            prepare_block_hashes
-                .into_iter()
-                .collect::<HashSet<_>>()
-                .into_iter(),
-        );
+        header_deps.extend(prepare_block_hashes.into_iter().collect::<HashSet<_>>());
 
         let (outputs, outputs_data) = match &self.receiver {
             DaoWithdrawReceiver::LockScript { script, fee_rate } => {

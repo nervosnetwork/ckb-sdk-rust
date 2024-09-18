@@ -79,7 +79,7 @@ impl DefaultCellDepResolver {
             .map(|(tx_index, tx)| {
                 tx.outputs()
                     .into_iter()
-                    .zip(tx.outputs_data().into_iter())
+                    .zip(tx.outputs_data())
                     .enumerate()
                     .map(|(index, (output, data))| {
                         if tx_index == SIGHASH_OUTPUT_LOC.0 && index == SIGHASH_OUTPUT_LOC.1 {
