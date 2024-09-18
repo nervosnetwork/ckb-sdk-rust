@@ -72,7 +72,7 @@ fn build_script(
             always_success.as_builder().args(hash.pack()).build()
         } else {
             // this args can be anything
-            let args = vec![0u8; 32];
+            let args: &[u8] = &[0u8; 32];
             Script::new_builder()
                 .args(args.pack())
                 .code_hash(hash.pack())

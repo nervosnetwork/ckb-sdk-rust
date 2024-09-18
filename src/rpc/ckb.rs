@@ -80,6 +80,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn get_raw_tx_pool(&self, verbose: Option<bool>) -> RawTxPool;
     pub fn tx_pool_ready(&self) -> bool;
     pub fn test_tx_pool_accept(&self, tx: Transaction, outputs_validator: Option<OutputsValidator>) -> EntryCompleted;
+    pub fn clear_tx_verify_queue(&self) -> ();
 
     // Stats
     pub fn get_blockchain_info(&self) -> ChainInfo;
