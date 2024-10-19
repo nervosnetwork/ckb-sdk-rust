@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, u64};
 
 use ckb_dao_utils::pack_dao_data;
 use ckb_hash::blake2b_256;
@@ -180,6 +180,31 @@ fn test_transfer_from_sighash() {
         .collect::<Vec<_>>();
     assert_eq!(witnesses_len, vec![placeholder_witness.as_slice().len(), 0]);
     ctx.verify(tx, FEE_RATE).unwrap();
+}
+
+#[test]
+fn test_transfer_capacity_overflow() {
+    let sender = build_sighash_script(ACCOUNT1_ARG);
+    let receiver = build_sighash_script(ACCOUNT2_ARG);
+    let ctx = init_context(Vec::new(), vec![(sender.clone(), Some(100 * ONE_CKB))]);
+
+    let large_amount: u64 = u64::MAX;
+    let output = CellOutput::new_builder()
+        .capacity((large_amount).pack())
+        .lock(receiver)
+        .build();
+    let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
+    let placeholder_witness = WitnessArgs::new_builder()
+        .lock(Some(Bytes::from(vec![0u8; 65])).pack())
+        .build();
+    let balancer =
+        CapacityBalancer::new_simple(sender.clone(), placeholder_witness.clone(), FEE_RATE);
+
+    let unlockers: HashMap<ScriptId, Box<dyn ScriptUnlocker>> = HashMap::default();
+    let mut cell_collector = ctx.to_live_cells_context();
+    let res = builder.build_unlocked(&mut cell_collector, &ctx, &ctx, &ctx, &balancer, &unlockers);
+    assert!(res.is_err());
+    assert!(res.unwrap_err().to_string().contains("capacity not enough"));
 }
 
 #[test]
