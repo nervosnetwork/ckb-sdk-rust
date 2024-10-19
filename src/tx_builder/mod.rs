@@ -866,7 +866,12 @@ fn rebalance_tx_capacity(
                 need_more_capacity = min_fee - fee;
             }
             Err(TransactionFeeError::CapacityOverflow(delta)) => {
-                need_more_capacity = delta + min_fee;
+                need_more_capacity = delta.checked_add(min_fee).ok_or_else(|| {
+                    BalanceTxCapacityError::CapacityNotEnough(format!(
+                        "need more capacity, value={}",
+                        HumanCapacity(delta)
+                    ))
+                })?;
             }
             Err(err) => {
                 return Err(err.into());
