@@ -83,6 +83,14 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
                 )
                 .index(1u32.pack())
                 .build()
+        } else if network.network_type == NetworkType::Preview {
+            OutPoint::new_builder()
+                .tx_hash(
+                    h256!("0x0fab65924f2784f17ad7f86d6aef4b04ca1ca237102a68961594acebc5c77816")
+                        .pack(),
+                )
+                .index(1u32.pack())
+                .build()
         } else {
             return Err(TxBuilderError::UnsupportedNetworkType(network.network_type));
         };
