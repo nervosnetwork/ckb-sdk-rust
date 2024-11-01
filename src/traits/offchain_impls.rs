@@ -199,7 +199,7 @@ impl OffchainTransactionDependencyProvider {
             .into_iter()
             .partition(|(_k, v)| {
                 *v >= current_tip_block_number
-                    || (v - current_tip_block_number) >= KEEP_BLOCK_PERIOD
+                    || (current_tip_block_number - v) >= KEEP_BLOCK_PERIOD
             });
         self.tx_tip_num_map = keep;
         self.txs = self
