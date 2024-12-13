@@ -1,7 +1,10 @@
 use ckb_types::core;
 
 use crate::{
-    traits::{dummy_impls::DummyTransactionDependencyProvider, SecpCkbRawKeySigner},
+    traits::{
+        dummy_impls::DummyTransactionDependencyProvider, SecpCkbRawKeySigner,
+        TransactionDependencyProvider,
+    },
     unlock::{
         MultisigConfig, ScriptUnlocker, SecpMultisigScriptSigner, SecpMultisigUnlocker, UnlockError,
     },
@@ -45,6 +48,7 @@ impl CKBScriptSigner for Secp256k1Blake160MultisigAllSigner {
         transaction: &core::TransactionView,
         script_group: &crate::ScriptGroup,
         context: &dyn super::SignContext,
+        _tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<core::TransactionView, UnlockError> {
         if let Some(args) = context
             .as_any()

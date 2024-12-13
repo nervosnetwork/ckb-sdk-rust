@@ -1,3 +1,8 @@
+mod ckb_indexer_rpc;
+mod ckb_rpc;
+mod transaction;
+mod tx_builder;
+
 use std::{collections::HashMap, u64};
 
 use ckb_dao_utils::pack_dao_data;
@@ -7,7 +12,7 @@ use ckb_types::{
     bytes::Bytes,
     core::{BlockView, Capacity, EpochNumberWithFraction, HeaderBuilder, ScriptHashType},
     h160, h256,
-    packed::{CellInput, CellOutput, Script, ScriptOpt, WitnessArgs},
+    packed::{CellInput, CellOutput, OutPoint, Script, ScriptOpt, WitnessArgs},
     prelude::*,
     H160, H256,
 };
@@ -28,7 +33,7 @@ use crate::tx_builder::{
     unlock_tx, CapacityBalancer, TransferAction, TxBuilder,
 };
 use crate::unlock::{
-    AcpUnlocker, ChequeAction, ChequeUnlocker, MultisigConfig, ScriptUnlocker,
+    AcpUnlocker, ChequeAction, ChequeUnlocker, MultisigConfig, OmniLockConfig, ScriptUnlocker,
     SecpMultisigUnlocker, SecpSighashUnlocker,
 };
 use crate::util::{calculate_dao_maximum_withdraw4, minimal_unlock_point};
@@ -57,11 +62,18 @@ const ACCOUNT3_KEY: H256 =
 const ACCOUNT3_ARG: H160 = h160!("0xdabe88a65760c662ee3f07dee162409f7b20b694");
 
 const FEE_RATE: u64 = 1000;
-const GENESIS_JSON: &str = include_str!("../test-data/genesis_block.json");
-const SUDT_BIN: &[u8] = include_bytes!("../test-data/simple_udt");
-const ACP_BIN: &[u8] = include_bytes!("../test-data/anyone_can_pay");
-const CHEQUE_BIN: &[u8] = include_bytes!("../test-data/ckb-cheque-script");
-const ALWAYS_SUCCESS_BIN: &[u8] = include_bytes!("../test-data/always_success");
+const GENESIS_JSON: &str = include_str!("../../test-data/genesis_block.json");
+const SUDT_BIN: &[u8] = include_bytes!("../../test-data/simple_udt");
+const ACP_BIN: &[u8] = include_bytes!("../../test-data/anyone_can_pay");
+const CHEQUE_BIN: &[u8] = include_bytes!("../../test-data/ckb-cheque-script");
+const ALWAYS_SUCCESS_BIN: &[u8] = include_bytes!("../../test-data/always_success");
+// https://github.com/XuJiandong/ckb-production-scripts/commit/f692e01ead9378093b57b47023f3408e4c35349f
+#[cfg(not(unix))]
+const ALWAYS_SUCCESS_DL_BIN: &[u8] = include_bytes!("../../test-data/always_success_dl");
+const OMNILOCK_BIN: &[u8] = include_bytes!("../../test-data/omni_lock");
+// https://github.com/nervosnetwork/ckb-production-scripts/blob/410b16c499a8888781d9ab03160eeef93182d8e6/c/validate_signature_rsa.c
+#[cfg(unix)]
+const RSA_DL_BIN: &[u8] = include_bytes!("../../test-data/validate_signature_rsa");
 
 fn build_sighash_script(args: H160) -> Script {
     Script::new_builder()
@@ -76,6 +88,32 @@ fn build_multisig_script(cfg: &MultisigConfig) -> Script {
         .code_hash(MULTISIG_TYPE_HASH.pack())
         .hash_type(ScriptHashType::Type.into())
         .args(Bytes::from(cfg.hash160().0.to_vec()).pack())
+        .build()
+}
+
+fn build_always_success_script() -> Script {
+    let data_hash = H256::from(blake2b_256(ALWAYS_SUCCESS_BIN));
+    Script::new_builder()
+        .code_hash(data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .build()
+}
+
+#[cfg(not(unix))]
+fn build_always_success_dl_script() -> Script {
+    let data_hash = H256::from(blake2b_256(ALWAYS_SUCCESS_DL_BIN));
+    Script::new_builder()
+        .code_hash(data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .build()
+}
+
+#[cfg(unix)]
+fn build_rsa_script_dl() -> Script {
+    let data_hash = H256::from(blake2b_256(RSA_DL_BIN));
+    Script::new_builder()
+        .code_hash(data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
         .build()
 }
 
@@ -114,22 +152,34 @@ fn build_multisig_unlockers(
     unlockers
 }
 
-fn init_context(contracts: Vec<(&[u8], bool)>, live_cells: Vec<(Script, Option<u64>)>) -> Context {
+fn build_omnilock_script(cfg: &OmniLockConfig) -> Script {
+    let omnilock_data_hash = H256::from(blake2b_256(OMNILOCK_BIN));
+    Script::new_builder()
+        .code_hash(omnilock_data_hash.pack())
+        .hash_type(ScriptHashType::Data1.into())
+        .args(cfg.build_args().pack())
+        .build()
+}
+
+fn init_context(
+    contracts: Vec<(&[u8], bool)>,
+    live_cells: Vec<(Script, Option<u64>)>,
+) -> (Context, Vec<OutPoint>) {
     // ckb-cli --url https://testnet.ckb.dev rpc get_block_by_number --number 0 --output-format json --raw-data > genensis_block.json
     let genesis_block: json_types::BlockView = serde_json::from_str(GENESIS_JSON).unwrap();
     let genesis_block: BlockView = genesis_block.into();
-    let mut ctx = Context::new(&genesis_block, contracts);
+    let (mut ctx, outpoints) = Context::new(&genesis_block, contracts);
     for (lock, capacity_opt) in live_cells {
         ctx.add_simple_live_cell(random_out_point(), lock, capacity_opt);
     }
-    ctx
+    (ctx, outpoints)
 }
 
 #[test]
 fn test_transfer_from_sighash() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -186,7 +236,7 @@ fn test_transfer_from_sighash() {
 fn test_transfer_capacity_overflow() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(Vec::new(), vec![(sender.clone(), Some(100 * ONE_CKB))]);
+    let (ctx, _) = init_context(Vec::new(), vec![(sender.clone(), Some(100 * ONE_CKB))]);
 
     let large_amount: u64 = u64::MAX;
     let output = CellOutput::new_builder()
@@ -219,7 +269,7 @@ fn test_transfer_from_multisig() {
     let sender = build_multisig_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -283,7 +333,7 @@ fn test_transfer_from_acp() {
         .args(Bytes::from(ACCOUNT1_ARG.0.to_vec()).pack())
         .build();
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(ACP_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -344,7 +394,7 @@ fn test_transfer_to_acp() {
         .hash_type(ScriptHashType::Data1.into())
         .args(Bytes::from(ACCOUNT2_ARG.0.to_vec()).pack())
         .build();
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(ACP_BIN, true)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -430,7 +480,7 @@ fn test_cheque_claim() {
         .hash_type(ScriptHashType::Data1.into())
         .args(Bytes::from(vec![9u8; 32]).pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(CHEQUE_BIN, true), (SUDT_BIN, false)],
         vec![
             (receiver.clone(), Some(100 * ONE_CKB)),
@@ -550,7 +600,7 @@ fn test_cheque_withdraw() {
         .hash_type(ScriptHashType::Data1.into())
         .args(Bytes::from(vec![9u8; 32]).pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(CHEQUE_BIN, true), (SUDT_BIN, false)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -635,7 +685,7 @@ fn test_cheque_withdraw() {
 #[test]
 fn test_dao_deposit() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -700,7 +750,7 @@ fn test_dao_deposit() {
 #[test]
 fn test_dao_prepare() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -789,7 +839,7 @@ fn test_dao_prepare() {
 #[test]
 fn test_dao_withdraw() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         Vec::new(),
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -929,7 +979,7 @@ fn test_udt_issue() {
     let sudt_data_hash = H256::from(blake2b_256(SUDT_BIN));
     let owner = build_sighash_script(ACCOUNT1_ARG);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
-    let ctx = init_context(
+    let (ctx, _) = init_context(
         vec![(SUDT_BIN, false)],
         vec![
             (owner.clone(), Some(100 * ONE_CKB)),
@@ -1023,7 +1073,7 @@ fn test_udt_transfer() {
         .hash_type(ScriptHashType::Data1.into())
         .args(owner.calc_script_hash().as_bytes().pack())
         .build();
-    let mut ctx = init_context(
+    let (mut ctx, _) = init_context(
         vec![(ACP_BIN, true), (SUDT_BIN, false)],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
@@ -1110,10 +1160,3 @@ fn test_udt_transfer() {
     );
     ctx.verify(tx, FEE_RATE).unwrap();
 }
-
-pub mod ckb_indexer_rpc;
-pub mod ckb_rpc;
-pub mod cycle;
-pub mod omni_lock;
-pub mod omni_lock_util;
-pub mod transaction;

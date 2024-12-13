@@ -1,12 +1,18 @@
 [package]
 name = "ckb-sdk"
 version = "3.5.0"
-authors = [ "Linfeng Qian <thewawar@gmail.com>", "Nervos Core Dev <dev@nervos.org>" ]
+authors = [
+    "Linfeng Qian <thewawar@gmail.com>",
+    "Nervos Core Dev <dev@nervos.org>",
+]
+
+
 edition = "2018"
 license = "MIT"
 description = "Rust SDK for CKB"
 homepage = "https://github.com/nervosnetwork/ckb-sdk-rust"
 repository = "https://github.com/nervosnetwork/ckb-sdk-rust"
+exclude = ["/test-data"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -17,7 +23,10 @@ anyhow = "1.0.63"
 bech32 = "0.8.1"
 derive-getters = "0.2.1"
 log = "0.4.6"
-reqwest = { version = "0.11", default-features = false, features = [ "json", "blocking" ] }
+reqwest = { version = "0.11", default-features = false, features = [
+    "json",
+    "blocking",
+] }
 secp256k1 = { version = "0.29.0", features = ["recovery"] }
 tokio-util = { version = "0.7.7", features = ["codec"] }
 tokio = { version = "1" }
@@ -28,6 +37,10 @@ parking_lot = "0.12"
 lru = "0.7.1"
 dashmap = "5.4"
 dyn-clone = "1.0"
+faster-hex = "0.9.0"
+ripemd = "0.1.3"
+sha2 = "0.10.6"
+ed25519-dalek = "2.1.1"
 
 ckb-types = "0.119.0"
 ckb-dao-utils = "0.119.0"
@@ -42,7 +55,7 @@ sha3 = "0.10.1"
 enum-repr-derive = "0.2.0"
 
 # for feature test
-rand = { version = "0.7.3", optional = true }
+rand = { version = "0.7.3" }
 ckb-mock-tx-types = { version = "0.119.0" }
 ckb-chain-spec = "0.119.0"
 
@@ -57,7 +70,10 @@ rustls-tls = ["reqwest/rustls-tls"]
 test = []
 
 [dev-dependencies]
-clap = { version = "=4.4.18", features = [ "derive" ] } # TODO clap v4.5 requires rustc v1.74.0+
+clap = { version = "4.4.18", features = ["derive"] }
 httpmock = "0.6"
 async-global-executor = "2.3.1"
-hex = "0.4"
+
+
+[target.'cfg(unix)'.dev-dependencies]
+openssl = "0.10"

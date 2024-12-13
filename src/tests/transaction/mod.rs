@@ -1,2 +1,3 @@
-pub mod sighash;
-pub mod typeid;
+mod omnilock;
+mod sighash;
+mod typeid;

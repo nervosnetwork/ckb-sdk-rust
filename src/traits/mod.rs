@@ -59,7 +59,7 @@ pub enum SignerError {
 ///    * secp256k1 eth signer
 ///    * RSA signer
 ///    * Hardware wallet signer
-pub trait Signer {
+pub trait Signer: DynClone {
     /// typecial id are blake160(pubkey) and keccak256(pubkey)[12..20]
     fn match_id(&self, id: &[u8]) -> bool;
 

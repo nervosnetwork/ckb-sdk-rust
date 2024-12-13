@@ -1,6 +1,9 @@
 use std::{convert::TryInto, ptr, sync::atomic};
 
+use bytes::{BufMut, Bytes, BytesMut};
+use ckb_crypto::secp::Pubkey;
 use ckb_dao_utils::extract_dao_data;
+use ckb_hash::blake2b_256;
 use ckb_types::{
     core::{Capacity, EpochNumber, EpochNumberWithFraction, HeaderView},
     packed::CellOutput,
@@ -9,8 +12,12 @@ use ckb_types::{
 };
 use sha3::{Digest, Keccak256};
 
-use crate::rpc::CkbRpcClient;
 use crate::traits::LiveCell;
+use crate::{
+    constants::{BTC_PREFIX, SECP256K1_TAG_PUBKEY_UNCOMPRESSED},
+    rpc::CkbRpcClient,
+    unlock::omni_lock::BTCSignVtype,
+};
 
 use secp256k1::ffi::CPtr;
 
@@ -154,6 +161,105 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
     hasher.update(message);
     let r = hasher.finalize();
     H256::from_slice(r.as_slice()).expect("convert_keccak256_hash")
+}
+
+pub fn calculate_sha256(buf: &[u8]) -> [u8; 32] {
+    use sha2::Sha256;
+
+    let mut c = Sha256::new();
+    c.update(buf);
+    c.finalize().into()
+}
+
+pub fn calculate_ripemd160(buf: &[u8]) -> [u8; 20] {
+    use ripemd::Ripemd160;
+
+    let mut hasher = Ripemd160::new();
+    hasher.update(buf);
+    let buf = hasher.finalize().to_vec();
+
+    buf.try_into().unwrap()
+}
+
+pub fn bitcoin_hash160(buf: &[u8]) -> [u8; 20] {
+    calculate_ripemd160(&calculate_sha256(buf))
+}
+
+pub fn btc_auth(pubkey: &Pubkey, vtype: BTCSignVtype) -> [u8; 20] {
+    match vtype {
+        BTCSignVtype::P2PKHUncompressed => {
+            let mut pk_data = vec![0; 65];
+            pk_data[0] = SECP256K1_TAG_PUBKEY_UNCOMPRESSED;
+            pk_data[1..].copy_from_slice(pubkey.as_bytes());
+
+            bitcoin_hash160(&pk_data)
+        }
+        BTCSignVtype::P2PKHCompressed | BTCSignVtype::SegwitBech32 => {
+            bitcoin_hash160(&pubkey.serialize())
+        }
+        BTCSignVtype::SegwitP2SH => {
+            let mut pk_data = vec![0; 22];
+            pk_data[0] = 0;
+            pk_data[1] = 20;
+            pk_data[2..].copy_from_slice(&bitcoin_hash160(&pubkey.serialize()));
+            bitcoin_hash160(&pk_data)
+        }
+    }
+}
+
+pub fn eos_auth(pubkey: &Pubkey, vtype: BTCSignVtype) -> [u8; 20] {
+    let buf = match vtype {
+        BTCSignVtype::P2PKHUncompressed => {
+            let mut temp = Vec::with_capacity(65);
+            temp.put_u8(SECP256K1_TAG_PUBKEY_UNCOMPRESSED);
+            temp.put(pubkey.as_bytes());
+            temp
+        }
+        BTCSignVtype::P2PKHCompressed => pubkey.serialize(),
+        _ => panic!("unsupport vtype"),
+    };
+    blake2b_256(buf)[..20].try_into().unwrap()
+}
+
+pub fn btc_convert_message(msg: &[u8]) -> [u8; 32] {
+    let message_magic = b"Bitcoin Signed Message:\n";
+    let msg_hex = hex_encode(msg);
+    assert_eq!(msg_hex.len(), 64);
+
+    let mut temp2 =
+        Vec::with_capacity(1 + message_magic.len() + 1 + BTC_PREFIX.len() + msg_hex.len());
+    temp2.put_u8(message_magic.len() as u8);
+    temp2.put(message_magic.as_slice());
+
+    temp2.put_u8(0x40 + BTC_PREFIX.len() as u8);
+
+    temp2.put(format!("{}{}", BTC_PREFIX, msg_hex).as_bytes());
+
+    let msg = calculate_sha256(&temp2);
+    calculate_sha256(&msg)
+}
+
+pub fn btc_convert_sign(sign: Bytes, vtype: BTCSignVtype) -> Bytes {
+    let recid = sign[64];
+
+    let mark = recid + vtype as u8;
+
+    let mut ret = BytesMut::with_capacity(65);
+    ret.put_u8(mark);
+    ret.put(&sign[0..64]);
+    ret.freeze()
+}
+
+pub fn hex_encode(message: &[u8]) -> String {
+    let mut res = vec![0; message.len() * 2];
+    faster_hex::hex_encode(message, &mut res).unwrap();
+    String::from_utf8(res).unwrap()
+}
+
+pub fn hex_decode(message: &[u8]) -> Vec<u8> {
+    let mut res = vec![0; message.len() / 2];
+    faster_hex::hex_decode(message, &mut res).unwrap();
+    res
 }
 
 #[cfg(test)]

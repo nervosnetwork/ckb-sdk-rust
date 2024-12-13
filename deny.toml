@@ -74,7 +74,8 @@ ignore = [
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
     #{ crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" 
-    "RUSTSEC-2024-0370" # proc-macro-error's maintainer seems to be unreachable, ignore this
+    "RUSTSEC-2024-0370", # proc-macro-error's maintainer seems to be unreachable, ignore this
+    "RUSTSEC-2024-0384", # instant is no longer maintained, ignore this
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
@@ -97,8 +98,8 @@ allow = [
     "ISC",
     "MIT",
     "Unicode-DFS-2016",
-    "BSL-1.0", # xxhash-rust 0.8.10
-
+    "BSL-1.0",          # xxhash-rust 0.8.10
+    "Unicode-3.0",
     #"MIT",
     #"Apache-2.0",
     #"Apache-2.0 WITH LLVM-exception",
