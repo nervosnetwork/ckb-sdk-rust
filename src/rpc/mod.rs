@@ -8,7 +8,11 @@ pub use ckb_indexer::IndexerRpcClient;
 use ckb_jsonrpc_types::{JsonBytes, ResponseFormat};
 pub use ckb_light_client::LightClientRpcClient;
 
+use std::sync::LazyLock;
 use thiserror::Error;
+
+static RUNTIME: LazyLock<tokio::runtime::Runtime> =
+    LazyLock::new(|| tokio::runtime::Runtime::new().unwrap());
 
 #[derive(Error, Debug)]
 pub enum RpcError {
@@ -34,21 +38,22 @@ macro_rules! jsonrpc {
     ) => (
         $(#[$struct_attr])*
         pub struct $struct_name {
-            pub client: reqwest::blocking::Client,
-            pub url: reqwest::Url,
-            pub id: std::sync::atomic::AtomicU64,
+            client: crate::rpc::RpcClient,
+            id: std::sync::atomic::AtomicU64,
         }
 
         impl Clone for $struct_name {
             fn clone(&self) -> Self {
-                Self::new(&self.url.to_string())
+                Self {
+                    client: self.client.clone(),
+                    id: 0.into()
+                }
             }
         }
 
         impl $struct_name {
             pub fn new(uri: &str) -> Self {
-                let url = reqwest::Url::parse(uri).expect("ckb uri, e.g. \"http://127.0.0.1:8114\"");
-                $struct_name { url, id: 0.into(), client: reqwest::blocking::Client::new(), }
+                $struct_name {  id: 0.into(), client: crate::rpc::RpcClient::new(uri), }
             }
 
             pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->Result<RET, $crate::rpc::RpcError>
@@ -56,25 +61,19 @@ macro_rules! jsonrpc {
                 PARAM:serde::ser::Serialize,
                 RET: serde::de::DeserializeOwned,
             {
-                let params = serde_json::to_value(params)?;
                 let id = self.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let params_fn = || -> Result<_,_> {
+                    let params = serde_json::to_value(params)?;
+                    let mut req_json = serde_json::Map::new();
+                    req_json.insert("id".to_owned(), serde_json::json!(id));
+                    req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
+                    req_json.insert("method".to_owned(), serde_json::json!(method));
+                    req_json.insert("params".to_owned(), params);
+                    Ok(req_json)
+                };
 
-                let mut req_json = serde_json::Map::new();
-                req_json.insert("id".to_owned(), serde_json::json!(id));
-                req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
-                req_json.insert("method".to_owned(), serde_json::json!(method));
-                req_json.insert("params".to_owned(), params);
-
-                let resp = self.client.post(self.url.clone()).json(&req_json).send()?;
-                let output = resp.json::<jsonrpc_core::response::Output>()?;
-                match output {
-                    jsonrpc_core::response::Output::Success(success) => {
-                        serde_json::from_value(success.result).map_err(Into::into)
-                    },
-                    jsonrpc_core::response::Output::Failure(failure) => {
-                        Err(failure.error.into())
-                    }
-                }
+                let task = self.client.post(params_fn);
+                crate::rpc::RUNTIME.block_on(task)
 
             }
 
@@ -85,26 +84,136 @@ macro_rules! jsonrpc {
                     let params = $crate::serialize_parameters!($($arg_name,)*);
                     let id = $selff.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-                    let mut req_json = serde_json::Map::new();
-                    req_json.insert("id".to_owned(), serde_json::json!(id));
-                    req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
-                    req_json.insert("method".to_owned(), serde_json::json!(method));
-                    req_json.insert("params".to_owned(), params);
+                    let params_fn = || -> Result<_,_> {
+                        let mut req_json = serde_json::Map::new();
+                        req_json.insert("id".to_owned(), serde_json::json!(id));
+                        req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
+                        req_json.insert("method".to_owned(), serde_json::json!(method));
+                        req_json.insert("params".to_owned(), params);
+                        Ok(req_json)
+                    };
 
-                    let resp = $selff.client.post($selff.url.clone()).json(&req_json).send()?;
-                    let output = resp.json::<jsonrpc_core::response::Output>()?;
-                    match output {
-                        jsonrpc_core::response::Output::Success(success) => {
-                            serde_json::from_value(success.result).map_err(Into::into)
-                        },
-                        jsonrpc_core::response::Output::Failure(failure) => {
-                            Err(failure.error.into())
-                        }
-                    }
+                    let task = $selff.client.post(params_fn);
+                    crate::rpc::RUNTIME.block_on(task)
                 }
             )*
         }
     )
+}
+
+#[macro_export]
+macro_rules! jsonrpc_async {
+    (
+        $(#[$struct_attr:meta])*
+        pub struct $struct_name:ident {$(
+            $(#[$attr:meta])*
+            pub fn $method:ident(& $selff:ident $(, $arg_name:ident: $arg_ty:ty)*)
+                -> $return_ty:ty;
+        )*}
+    ) => (
+        $(#[$struct_attr])*
+        pub struct $struct_name {
+            client: crate::rpc::RpcClient,
+            id: std::sync::atomic::AtomicU64,
+        }
+
+        impl Clone for $struct_name {
+            fn clone(&self) -> Self {
+                Self {
+                    client: self.client.clone(),
+                    id: 0.into()
+                }
+            }
+        }
+
+        impl $struct_name {
+            pub fn new(uri: &str) -> Self {
+                $struct_name {  id: 0.into(), client: crate::rpc::RpcClient::new(uri), }
+            }
+
+            pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->impl std::future::Future<Output =Result<RET, $crate::rpc::RpcError>>
+            where
+                PARAM:serde::ser::Serialize,
+                RET: serde::de::DeserializeOwned,
+            {
+                let id = self.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let method = serde_json::json!(method);
+
+                let params_fn = move || -> Result<_,_> {
+                    let params = serde_json::to_value(params)?;
+                    let mut req_json = serde_json::Map::new();
+                    req_json.insert("id".to_owned(), serde_json::json!(id));
+                    req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
+                    req_json.insert("method".to_owned(), method);
+                    req_json.insert("params".to_owned(), params);
+                    Ok(req_json)
+                };
+
+                self.client.post(params_fn)
+
+            }
+
+            $(
+                $(#[$attr])*
+                pub fn $method(&$selff $(, $arg_name: $arg_ty)*) -> impl std::future::Future<Output =Result<$return_ty, $crate::rpc::RpcError>> {
+                    let id = $selff.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                    let params_fn = move || -> Result<_,_> {
+                        let method = String::from(stringify!($method));
+                        let params = $crate::serialize_parameters!($($arg_name,)*);
+                        let mut req_json = serde_json::Map::new();
+                        req_json.insert("id".to_owned(), serde_json::json!(id));
+                        req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
+                        req_json.insert("method".to_owned(), serde_json::json!(method));
+                        req_json.insert("params".to_owned(), params);
+                        Ok(req_json)
+                    };
+
+                    $selff.client.post(params_fn)
+                }
+            )*
+        }
+    )
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RpcClient {
+    client: reqwest::Client,
+    url: reqwest::Url,
+}
+
+impl RpcClient {
+    pub fn new(uri: &str) -> Self {
+        let url = reqwest::Url::parse(uri).expect("ckb uri, e.g. \"http://127.0.0.1:8114\"");
+        Self {
+            client: reqwest::Client::new(),
+            url,
+        }
+    }
+
+    pub fn post<PARAM, RET, T>(
+        &self,
+        json_post_params: T,
+    ) -> impl std::future::Future<Output = Result<RET, crate::rpc::RpcError>>
+    where
+        PARAM: serde::ser::Serialize,
+        RET: serde::de::DeserializeOwned,
+        T: FnOnce() -> Result<PARAM, crate::rpc::RpcError>,
+    {
+        let url = self.url.clone();
+        let client = self.client.clone();
+
+        async move {
+            let resp = client.post(url).json(&json_post_params()?).send().await?;
+            let output = resp.json::<jsonrpc_core::response::Output>().await?;
+            match output {
+                jsonrpc_core::response::Output::Success(success) => {
+                    serde_json::from_value(success.result).map_err(Into::into)
+                }
+                jsonrpc_core::response::Output::Failure(failure) => Err(failure.error.into()),
+            }
+        }
+    }
 }
 
 #[macro_export]

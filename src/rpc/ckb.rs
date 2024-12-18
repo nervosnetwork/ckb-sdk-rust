@@ -110,6 +110,102 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn calculate_dao_maximum_withdraw(&self, out_point: OutPoint, kind: DaoWithdrawingCalculationKind) -> Capacity;
 });
 
+crate::jsonrpc_async!(pub struct CkbRpcAyncClient {
+    // Chain
+    pub fn get_block(&self, hash: H256) -> Option<BlockView>;
+    pub fn get_block_by_number(&self, number: BlockNumber) -> Option<BlockView>;
+    pub fn get_block_hash(&self, number: BlockNumber) -> Option<H256>;
+    pub fn get_block_filter(&self, block_hash: H256) -> Option<BlockFilter>;
+    pub fn get_current_epoch(&self) -> EpochView;
+    pub fn get_epoch_by_number(&self, number: EpochNumber) -> Option<EpochView>;
+    pub fn get_header(&self, hash: H256) -> Option<HeaderView>;
+    pub fn get_header_by_number(&self, number: BlockNumber) -> Option<HeaderView>;
+    pub fn get_live_cell(&self, out_point: OutPoint, with_data: bool) -> CellWithStatus;
+    pub fn get_tip_block_number(&self) -> BlockNumber;
+    pub fn get_tip_header(&self) -> HeaderView;
+    pub fn get_transaction(&self, hash: H256) -> Option<TransactionWithStatusResponse>;
+    pub fn get_transaction_proof(
+        &self,
+        tx_hashes: Vec<H256>,
+        block_hash: Option<H256>
+    ) -> TransactionProof;
+    pub fn verify_transaction_proof(&self, tx_proof: TransactionProof) -> Vec<H256>;
+    pub fn get_transaction_and_witness_proof(&self, tx_hashes: Vec<H256>,
+        block_hash: Option<H256>) -> TransactionAndWitnessProof;
+    pub fn verify_transaction_and_witness_proof(&self, tx_proof: TransactionAndWitnessProof) -> Vec<H256>;
+    pub fn get_fork_block(&self, block_hash: H256) -> Option<BlockView>;
+    pub fn get_consensus(&self) -> Consensus;
+    pub fn get_deployments_info(&self) -> DeploymentsInfo;
+    pub fn get_block_median_time(&self, block_hash: H256) -> Option<Timestamp>;
+    pub fn get_block_economic_state(&self, block_hash: H256) -> Option<BlockEconomicState>;
+    pub fn estimate_cycles(&self, tx: Transaction)-> EstimateCycles;
+    pub fn get_fee_rate_statics(&self, target:Option<Uint64>) -> Option<FeeRateStatistics>;
+    pub fn get_fee_rate_statistics(&self, target:Option<Uint64>) -> Option<FeeRateStatistics>;
+
+    // Indexer
+    pub fn get_indexer_tip(&self) -> Option<Tip>;
+    pub fn get_cells(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
+    pub fn get_transactions(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
+    pub fn get_cells_capacity(&self, search_key: SearchKey) -> Option<CellsCapacity>;
+
+    // Net
+    pub fn get_banned_addresses(&self) -> Vec<BannedAddr>;
+    pub fn get_peers(&self) -> Vec<RemoteNode>;
+    pub fn local_node_info(&self) -> LocalNode;
+    pub fn set_ban(
+        &self,
+        address: String,
+        command: String,
+        ban_time: Option<Timestamp>,
+        absolute: Option<bool>,
+        reason: Option<String>
+    ) -> ();
+    pub fn sync_state(&self) -> SyncState;
+    pub fn set_network_active(&self, state: bool) -> ();
+    pub fn add_node(&self, peer_id: String, address: String) -> ();
+    pub fn remove_node(&self, peer_id: String) -> ();
+    pub fn clear_banned_addresses(&self) -> ();
+    pub fn ping_peers(&self) -> ();
+
+    // Pool
+    pub fn send_transaction(&self, tx: Transaction, outputs_validator: Option<OutputsValidator>) -> H256;
+    pub fn remove_transaction(&self, tx_hash: H256) -> bool;
+    pub fn tx_pool_info(&self) -> TxPoolInfo;
+    pub fn get_pool_tx_detail_info(&self, tx_hash: H256) -> PoolTxDetailInfo;
+    pub fn clear_tx_pool(&self) -> ();
+    pub fn get_raw_tx_pool(&self, verbose: Option<bool>) -> RawTxPool;
+    pub fn tx_pool_ready(&self) -> bool;
+    pub fn test_tx_pool_accept(&self, tx: Transaction, outputs_validator: Option<OutputsValidator>) -> EntryCompleted;
+    pub fn clear_tx_verify_queue(&self) -> ();
+
+    // Stats
+    pub fn get_blockchain_info(&self) -> ChainInfo;
+
+    // Miner
+    pub fn get_block_template(&self, bytes_limit: Option<Uint64>, proposals_limit: Option<Uint64>, max_version: Option<Version>) -> BlockTemplate;
+    pub fn submit_block(&self, _work_id: String, _data: Block) -> H256;
+
+    // Alert
+    pub fn send_alert(&self, alert: Alert) -> ();
+
+    // IntegrationTest
+    pub fn process_block_without_verify(&self, data: Block, broadcast: bool) -> Option<H256>;
+    pub fn truncate(&self, target_tip_hash: H256) -> ();
+    pub fn generate_block(&self) -> H256;
+    pub fn generate_epochs(&self, num_epochs: EpochNumberWithFraction) -> EpochNumberWithFraction;
+    pub fn notify_transaction(&self, tx: Transaction) -> H256;
+    pub fn calculate_dao_field(&self, block_template: BlockTemplate) -> JsonBytes;
+    pub fn generate_block_with_template(&self, block_template: BlockTemplate) -> H256;
+
+    // Debug
+    pub fn jemalloc_profiling_dump(&self) -> String;
+    pub fn update_main_logger(&self, config: MainLoggerConfig) -> ();
+    pub fn set_extra_logger(&self, name: String, config_opt: Option<ExtraLoggerConfig>) -> ();
+
+    // Experimental
+    pub fn calculate_dao_maximum_withdraw(&self, out_point: OutPoint, kind: DaoWithdrawingCalculationKind) -> Capacity;
+});
+
 fn transform_cycles(cycles: Option<Vec<ckb_jsonrpc_types::Cycle>>) -> Vec<Cycle> {
     cycles
         .map(|c| c.into_iter().map(Into::into).collect())
