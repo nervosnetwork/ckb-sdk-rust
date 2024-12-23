@@ -378,7 +378,7 @@ impl Context {
             println!("script: {:x}, debug: {}", script_hash, message);
         });
         verifier
-            .verify(u64::max_value())
+            .verify(u64::MAX)
             .map_err(|err| Error::VerifyScript(format!("Verify script error: {:?}", err)))
     }
 
@@ -391,9 +391,10 @@ impl Context {
     }
 }
 
+#[async_trait::async_trait]
 impl TransactionDependencyProvider for Context {
     // For verify certain cell belong to certain transaction
-    fn get_transaction(
+    async fn get_transaction_async(
         &self,
         tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError> {
@@ -413,25 +414,34 @@ impl TransactionDependencyProvider for Context {
             })
     }
     // For get the output information of inputs or cell_deps, those cell should be live cell
-    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
+    async fn get_cell_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<CellOutput, TransactionDependencyError> {
         self.get_live_cell(out_point)
             .map(|(output, _)| output)
             .ok_or_else(|| TransactionDependencyError::NotFound("cell not found".to_string()))
     }
     // For get the output data information of inputs or cell_deps
-    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
+    async fn get_cell_data_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<Bytes, TransactionDependencyError> {
         self.get_live_cell(out_point)
             .map(|(_, data)| data)
             .ok_or_else(|| TransactionDependencyError::NotFound("cell data not found".to_string()))
     }
     // For get the header information of header_deps
-    fn get_header(&self, _block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
+    async fn get_header_async(
+        &self,
+        _block_hash: &Byte32,
+    ) -> Result<HeaderView, TransactionDependencyError> {
         Err(TransactionDependencyError::NotFound(
             "header not found".to_string(),
         ))
     }
 
-    fn get_block_extension(
+    async fn get_block_extension_async(
         &self,
         _block_hash: &Byte32,
     ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
@@ -441,8 +451,12 @@ impl TransactionDependencyProvider for Context {
     }
 }
 
+#[async_trait::async_trait]
 impl HeaderDepResolver for Context {
-    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
+    async fn resolve_by_tx_async(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
         let mut header_opt = None;
         for item in &self.inputs {
             if item.input.previous_output().tx_hash() == *tx_hash {
@@ -465,7 +479,10 @@ impl HeaderDepResolver for Context {
         }
         Ok(None)
     }
-    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
+    async fn resolve_by_number_async(
+        &self,
+        number: u64,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
         for mock_header in &self.header_deps {
             if number == mock_header.number() {
                 return Ok(Some(mock_header.clone()));
@@ -503,8 +520,9 @@ impl CellDepResolver for Context {
     }
 }
 
+#[async_trait::async_trait]
 impl CellCollector for LiveCellsContext {
-    fn collect_live_cells(
+    async fn collect_live_cells_async(
         &mut self,
         query: &CellQueryOptions,
         apply_changes: bool,

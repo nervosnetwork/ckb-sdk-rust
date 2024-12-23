@@ -25,8 +25,9 @@ impl CapacityTransferBuilder {
     }
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for CapacityTransferBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         _cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,

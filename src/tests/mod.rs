@@ -1,4 +1,4 @@
-use std::{collections::HashMap, u64};
+use std::collections::HashMap;
 
 use ckb_dao_utils::pack_dao_data;
 use ckb_hash::blake2b_256;
@@ -382,7 +382,7 @@ fn test_transfer_to_acp() {
     assert_eq!(tx.header_deps().len(), 0);
     assert_eq!(tx.cell_deps().len(), 2);
     assert_eq!(tx.inputs().len(), 3);
-    let input_cells = vec![
+    let input_cells = [
         CellOutput::new_builder()
             .capacity((99 * ONE_CKB).pack())
             .lock(receiver.clone())
@@ -496,7 +496,7 @@ fn test_cheque_claim() {
     assert_eq!(tx.header_deps().len(), 0);
     assert_eq!(tx.cell_deps().len(), 3);
     assert_eq!(tx.inputs().len(), 3);
-    let input_cells = vec![
+    let input_cells = [
         cheque_output,
         receiver_output.clone(),
         CellOutput::new_builder()
@@ -599,7 +599,7 @@ fn test_cheque_withdraw() {
     assert_eq!(tx.header_deps().len(), 0);
     assert_eq!(tx.cell_deps().len(), 3);
     assert_eq!(tx.inputs().len(), 2);
-    let input_cells = vec![
+    let input_cells = [
         cheque_output.clone(),
         CellOutput::new_builder()
             .capacity((100 * ONE_CKB).pack())

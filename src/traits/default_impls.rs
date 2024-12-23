@@ -6,8 +6,8 @@ use std::time::Duration;
 use anyhow::anyhow;
 use ckb_crypto::secp::Pubkey;
 use lru::LruCache;
-use parking_lot::Mutex;
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types::{self as json_types, Either};
@@ -24,14 +24,14 @@ use super::{
     OffchainTransactionDependencyProvider,
 };
 use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
-use crate::rpc::{CkbRpcClient, IndexerRpcClient};
+use crate::rpc::{CkbRpcAsyncClient, IndexerRpcClient};
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
     LiveCell, QueryOrder, Signer, SignerError, TransactionDependencyError,
     TransactionDependencyProvider,
 };
 use crate::types::ScriptId;
-use crate::util::{get_max_mature_number, serialize_signature, zeroize_privkey};
+use crate::util::{get_max_mature_number_async, serialize_signature, zeroize_privkey};
 use crate::SECP256K1;
 use crate::{
     constants::{
@@ -204,35 +204,46 @@ impl CellDepResolver for DefaultCellDepResolver {
 
 /// A header_dep resolver use ckb jsonrpc client as backend
 pub struct DefaultHeaderDepResolver {
-    ckb_client: CkbRpcClient,
+    ckb_client: CkbRpcAsyncClient,
 }
 impl DefaultHeaderDepResolver {
     pub fn new(ckb_client: &str) -> DefaultHeaderDepResolver {
-        let ckb_client = CkbRpcClient::new(ckb_client);
+        let ckb_client = CkbRpcAsyncClient::new(ckb_client);
         DefaultHeaderDepResolver { ckb_client }
     }
 }
+
+#[async_trait::async_trait]
 impl HeaderDepResolver for DefaultHeaderDepResolver {
-    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
+    async fn resolve_by_tx_async(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
         if let Some(block_hash) = self
             .ckb_client
             .get_transaction(tx_hash.unpack())
+            .await
             .map_err(|e| anyhow!(e))?
             .and_then(|tx_with_status| tx_with_status.tx_status.block_hash)
         {
             Ok(self
                 .ckb_client
                 .get_header(block_hash)
+                .await
                 .map_err(Box::new)?
                 .map(Into::into))
         } else {
             Ok(None)
         }
     }
-    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
+    async fn resolve_by_number_async(
+        &self,
+        number: u64,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
         Ok(self
             .ckb_client
             .get_header_by_number(number.into())
+            .await
             .map_err(|e| anyhow!(e))?
             .map(Into::into))
     }
@@ -242,7 +253,7 @@ impl HeaderDepResolver for DefaultHeaderDepResolver {
 #[derive(Clone)]
 pub struct DefaultCellCollector {
     indexer_client: IndexerRpcClient,
-    ckb_client: CkbRpcClient,
+    ckb_client: CkbRpcAsyncClient,
     offchain: OffchainCellCollector,
     acceptable_indexer_leftbehind: u64,
 }
@@ -250,7 +261,7 @@ pub struct DefaultCellCollector {
 impl DefaultCellCollector {
     pub fn new(ckb_client: &str) -> DefaultCellCollector {
         let indexer_client = IndexerRpcClient::new(ckb_client);
-        let ckb_client = CkbRpcClient::new(ckb_client);
+        let ckb_client = CkbRpcAsyncClient::new(ckb_client);
         DefaultCellCollector {
             indexer_client,
             ckb_client,
@@ -268,11 +279,16 @@ impl DefaultCellCollector {
         self.acceptable_indexer_leftbehind = value;
     }
 
+    /// wrapper check_ckb_chain_async future
+    pub async fn check_ckb_chain(&mut self) -> Result<(), CellCollectorError> {
+        crate::rpc::block_on(self.check_ckb_chain_async())
+    }
     /// Check if ckb-indexer synced with ckb node. This will check every 50ms for 100 times (more than 5s in total, since ckb-indexer's poll interval is 2.0s).
-    pub fn check_ckb_chain(&mut self) -> Result<(), CellCollectorError> {
+    pub async fn check_ckb_chain_async(&mut self) -> Result<(), CellCollectorError> {
         let tip_number = self
             .ckb_client
             .get_tip_block_number()
+            .await
             .map_err(|err| CellCollectorError::Internal(err.into()))?;
 
         for _ in 0..100 {
@@ -303,19 +319,22 @@ impl DefaultCellCollector {
     }
 }
 
+#[async_trait::async_trait]
 impl CellCollector for DefaultCellCollector {
-    fn collect_live_cells(
+    async fn collect_live_cells_async(
         &mut self,
         query: &CellQueryOptions,
         apply_changes: bool,
     ) -> Result<(Vec<LiveCell>, u64), CellCollectorError> {
-        let max_mature_number = get_max_mature_number(&self.ckb_client)
+        let max_mature_number = get_max_mature_number_async(&self.ckb_client)
+            .await
             .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?;
 
         self.offchain.max_mature_number = max_mature_number;
         let tip_num = self
             .ckb_client
             .get_tip_block_number()
+            .await
             .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?
             .value();
         let CollectResult {
@@ -326,7 +345,7 @@ impl CellCollector for DefaultCellCollector {
         let mut cells: Vec<_> = cells.into_iter().map(|c| c.0).collect();
 
         if total_capacity < query.min_total_capacity {
-            self.check_ckb_chain()?;
+            self.check_ckb_chain().await?;
             let order = match query.order {
                 QueryOrder::Asc => Order::Asc,
                 QueryOrder::Desc => Order::Desc,
@@ -406,7 +425,7 @@ impl CellCollector for DefaultCellCollector {
 }
 
 struct DefaultTxDepProviderInner {
-    rpc_client: CkbRpcClient,
+    rpc_client: CkbRpcAsyncClient,
     tx_cache: LruCache<Byte32, TransactionView>,
     cell_cache: LruCache<OutPoint, (CellOutput, Bytes)>,
     header_cache: LruCache<Byte32, HeaderView>,
@@ -431,7 +450,7 @@ impl DefaultTransactionDependencyProvider {
     ///   * `url` is the ckb http jsonrpc server url
     ///   * When `cache_capacity` is 0 for not using cache.
     pub fn new(url: &str, cache_capacity: usize) -> DefaultTransactionDependencyProvider {
-        let rpc_client = CkbRpcClient::new(url);
+        let rpc_client = CkbRpcAsyncClient::new(url);
         let inner = DefaultTxDepProviderInner {
             rpc_client,
             tx_cache: LruCache::new(cache_capacity),
@@ -449,7 +468,15 @@ impl DefaultTransactionDependencyProvider {
         tx: Transaction,
         tip_block_number: u64,
     ) -> Result<(), TransactionDependencyError> {
-        let mut inner = self.inner.lock();
+        crate::rpc::block_on(self.apply_tx_async(tx, tip_block_number))
+    }
+
+    pub async fn apply_tx_async(
+        &mut self,
+        tx: Transaction,
+        tip_block_number: u64,
+    ) -> Result<(), TransactionDependencyError> {
+        let mut inner = self.inner.lock().await;
         inner.offchain_cache.apply_tx(tx, tip_block_number)?;
         Ok(())
     }
@@ -458,7 +485,14 @@ impl DefaultTransactionDependencyProvider {
         &self,
         out_point: &OutPoint,
     ) -> Result<(CellOutput, Bytes), TransactionDependencyError> {
-        let mut inner = self.inner.lock();
+        crate::rpc::block_on(self.get_cell_with_data_async(out_point))
+    }
+
+    pub async fn get_cell_with_data_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<(CellOutput, Bytes), TransactionDependencyError> {
+        let mut inner = self.inner.lock().await;
         if let Some(pair) = inner.cell_cache.get(out_point) {
             return Ok(pair.clone());
         }
@@ -466,6 +500,7 @@ impl DefaultTransactionDependencyProvider {
         let cell_with_status = inner
             .rpc_client
             .get_live_cell(out_point.clone().into(), true)
+            .await
             .map_err(|err| TransactionDependencyError::Other(err.into()))?;
         if cell_with_status.status != "live" {
             return Err(TransactionDependencyError::Other(anyhow!(
@@ -483,22 +518,25 @@ impl DefaultTransactionDependencyProvider {
     }
 }
 
+#[async_trait::async_trait]
 impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
-    fn get_transaction(
+    async fn get_transaction_async(
         &self,
         tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError> {
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.lock().await;
         if let Some(tx) = inner.tx_cache.get(tx_hash) {
             return Ok(tx.clone());
         }
-        let ret = inner.offchain_cache.get_transaction(tx_hash);
+        let ret: Result<TransactionView, TransactionDependencyError> =
+            inner.offchain_cache.get_transaction(tx_hash);
         if ret.is_ok() {
             return ret;
         }
         let tx_with_status = inner
             .rpc_client
             .get_transaction(tx_hash.unpack())
+            .await
             .map_err(|err| TransactionDependencyError::Other(err.into()))?
             .ok_or_else(|| TransactionDependencyError::NotFound("transaction".to_string()))?;
         if tx_with_status.tx_status.status != json_types::Status::Committed {
@@ -516,35 +554,48 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
         inner.tx_cache.put(tx_hash.clone(), tx.clone());
         Ok(tx)
     }
-    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
+    async fn get_cell_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<CellOutput, TransactionDependencyError> {
         {
-            let inner = self.inner.lock();
+            let inner = self.inner.lock().await;
             let ret = inner.offchain_cache.get_cell(out_point);
             if ret.is_ok() {
                 return ret;
             }
         }
-        self.get_cell_with_data(out_point).map(|(output, _)| output)
+        self.get_cell_with_data_async(out_point)
+            .await
+            .map(|(output, _)| output)
     }
-    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
+    async fn get_cell_data_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<Bytes, TransactionDependencyError> {
         {
-            let inner = self.inner.lock();
+            let inner = self.inner.lock().await;
             let ret = inner.offchain_cache.get_cell_data(out_point);
             if ret.is_ok() {
                 return ret;
             }
         }
-        self.get_cell_with_data(out_point)
+        self.get_cell_with_data_async(out_point)
+            .await
             .map(|(_, output_data)| output_data)
     }
-    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
-        let mut inner = self.inner.lock();
+    async fn get_header_async(
+        &self,
+        block_hash: &Byte32,
+    ) -> Result<HeaderView, TransactionDependencyError> {
+        let mut inner = self.inner.lock().await;
         if let Some(header) = inner.header_cache.get(block_hash) {
             return Ok(header.clone());
         }
         let header = inner
             .rpc_client
             .get_header(block_hash.unpack())
+            .await
             .map_err(|err| TransactionDependencyError::Other(err.into()))?
             .map(HeaderView::from)
             .ok_or_else(|| TransactionDependencyError::NotFound("header".to_string()))?;
@@ -552,15 +603,16 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
         Ok(header)
     }
 
-    fn get_block_extension(
+    async fn get_block_extension_async(
         &self,
         block_hash: &Byte32,
     ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
-        let inner = self.inner.lock();
+        let inner = self.inner.lock().await;
 
         let block = inner
             .rpc_client
             .get_block(block_hash.unpack())
+            .await
             .map_err(|err| TransactionDependencyError::Other(err.into()))?;
         match block {
             Some(block) => Ok(block.extension.map(ckb_types::packed::Bytes::from)),

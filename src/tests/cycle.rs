@@ -27,12 +27,13 @@ const CYCLE_BIN: &[u8] = include_bytes!("../test-data/cycle");
 pub struct CycleUnlocker {
     loops: u64,
 }
+#[async_trait::async_trait]
 impl ScriptUnlocker for CycleUnlocker {
     fn match_args(&self, _args: &[u8]) -> bool {
         true
     }
 
-    fn unlock(
+    async fn unlock_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -47,7 +48,7 @@ impl ScriptUnlocker for CycleUnlocker {
         Ok(tx.as_advanced_builder().set_witnesses(witnesses).build())
     }
 
-    fn fill_placeholder_witness(
+    async fn fill_placeholder_witness_async(
         &self,
         tx: &TransactionView,
         _script_group: &ScriptGroup,

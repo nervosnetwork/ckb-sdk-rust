@@ -43,8 +43,9 @@ impl ChequeClaimBuilder {
     }
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for ChequeClaimBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         _cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -62,10 +63,12 @@ impl TxBuilder for ChequeClaimBuilder {
         let mut inputs = self.inputs.clone();
         inputs.push(self.receiver_input.clone());
 
-        let receiver_input_cell =
-            tx_dep_provider.get_cell(&self.receiver_input.previous_output())?;
-        let receiver_input_data =
-            tx_dep_provider.get_cell_data(&self.receiver_input.previous_output())?;
+        let receiver_input_cell = tx_dep_provider
+            .get_cell_async(&self.receiver_input.previous_output())
+            .await?;
+        let receiver_input_data = tx_dep_provider
+            .get_cell_data_async(&self.receiver_input.previous_output())
+            .await?;
         let receiver_type_script = receiver_input_cell.type_().to_opt().ok_or_else(|| {
             TxBuilderError::InvalidParameter(anyhow!("receiver input missing type script"))
         })?;
@@ -97,8 +100,8 @@ impl TxBuilder for ChequeClaimBuilder {
         let mut last_lock_script = None;
         for input in &self.inputs {
             let out_point = input.previous_output();
-            let input_cell = tx_dep_provider.get_cell(&out_point)?;
-            let input_data = tx_dep_provider.get_cell_data(&out_point)?;
+            let input_cell = tx_dep_provider.get_cell_async(&out_point).await?;
+            let input_data = tx_dep_provider.get_cell_data_async(&out_point).await?;
             let type_script = receiver_input_cell.type_().to_opt().ok_or_else(|| {
                 TxBuilderError::InvalidParameter(anyhow!(
                     "cheque input missing type script: {}",
@@ -207,8 +210,9 @@ impl ChequeWithdrawBuilder {
     }
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for ChequeWithdrawBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -227,8 +231,8 @@ impl TxBuilder for ChequeWithdrawBuilder {
         let mut cheque_total_amount: u128 = 0;
         let mut cheque_total_capacity: u64 = 0;
         for out_point in &self.out_points {
-            let input_cell = tx_dep_provider.get_cell(out_point)?;
-            let input_data = tx_dep_provider.get_cell_data(out_point)?;
+            let input_cell = tx_dep_provider.get_cell_async(out_point).await?;
+            let input_data = tx_dep_provider.get_cell_data_async(out_point).await?;
             let lock_script = input_cell.lock();
             let type_script = input_cell.type_().to_opt().ok_or_else(|| {
                 TxBuilderError::InvalidParameter(anyhow!(
@@ -309,7 +313,9 @@ impl TxBuilder for ChequeWithdrawBuilder {
                 let mut query = CellQueryOptions::new_lock(acp_lock.clone());
                 query.secondary_script = Some(type_script.clone());
                 query.data_len_range = Some(ValueRangeOption::new_min(16));
-                let (acp_cells, _) = cell_collector.collect_live_cells(&query, true)?;
+                let (acp_cells, _) = cell_collector
+                    .collect_live_cells_async(&query, true)
+                    .await?;
                 if acp_cells.is_empty() {
                     return Err(TxBuilderError::Other(anyhow!(
                         "can not find acp cell by lock script: {:?}",

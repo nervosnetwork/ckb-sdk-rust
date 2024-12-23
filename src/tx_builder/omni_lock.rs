@@ -35,8 +35,9 @@ impl OmniLockTransferBuilder {
     }
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for OmniLockTransferBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         _cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -70,7 +71,7 @@ impl TxBuilder for OmniLockTransferBuilder {
                             .previous_output(cell.clone())
                             .build();
                         inputs.insert(input);
-                        let cell_output = tx_dep_provider.get_cell(cell)?;
+                        let cell_output = tx_dep_provider.get_cell_async(cell).await?;
                         // extract lock dep
                         let lock = cell_output.lock();
                         if let Some(cell_dep) = cell_dep_resolver.resolve(&lock) {

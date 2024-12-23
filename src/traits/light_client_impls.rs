@@ -14,7 +14,7 @@ use ckb_types::{
 use super::{offchain_impls::CollectResult, OffchainCellCollector};
 use crate::rpc::{
     ckb_light_client::{FetchStatus, Order, SearchKey},
-    LightClientRpcClient,
+    LightClientRpcAsyncClient,
 };
 use crate::traits::{
     CellCollector, CellCollectorError, CellQueryOptions, HeaderDepResolver, LiveCell, QueryOrder,
@@ -22,14 +22,14 @@ use crate::traits::{
 };
 
 pub struct LightClientHeaderDepResolver {
-    client: LightClientRpcClient,
+    client: LightClientRpcAsyncClient,
     // tx_hash => HeaderView
     headers: DashMap<Byte32, Option<HeaderView>>,
 }
 
 impl LightClientHeaderDepResolver {
     pub fn new(url: &str) -> LightClientHeaderDepResolver {
-        let client = LightClientRpcClient::new(url);
+        let client = LightClientRpcAsyncClient::new(url);
         LightClientHeaderDepResolver {
             client,
             headers: DashMap::new(),
@@ -42,15 +42,19 @@ impl LightClientHeaderDepResolver {
     }
 }
 
+#[async_trait::async_trait]
 impl HeaderDepResolver for LightClientHeaderDepResolver {
-    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
+    async fn resolve_by_tx_async(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
         if let Some(Some(header)) = self.headers.get(tx_hash).as_ref().map(|pair| pair.value()) {
             return Ok(Some(header.clone()));
         }
-        match self.client.fetch_transaction(tx_hash.unpack())? {
+        match self.client.fetch_transaction(tx_hash.unpack()).await? {
             FetchStatus::Fetched { data } => {
                 if let Some(block_hash) = data.tx_status.block_hash {
-                    match self.client.fetch_header(block_hash)? {
+                    match self.client.fetch_header(block_hash).await? {
                         FetchStatus::Fetched { data } => {
                             let header: HeaderView = data.into();
                             self.headers.insert(tx_hash.clone(), Some(header.clone()));
@@ -73,7 +77,10 @@ impl HeaderDepResolver for LightClientHeaderDepResolver {
         }
     }
 
-    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
+    async fn resolve_by_number_async(
+        &self,
+        number: u64,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
         for pair in self.headers.iter() {
             if let Some(header) = pair.value() {
                 if header.number() == number {
@@ -82,13 +89,13 @@ impl HeaderDepResolver for LightClientHeaderDepResolver {
             }
         }
         Err(anyhow!(
-            "unable to resolver header by number directly when use light client as backend, you can call resolve_by_tx(tx_hash) to load the header first."
-        ))
+                "unable to resolver header by number directly when use light client as backend, you can call resolve_by_tx(tx_hash) to load the header first."
+            ))
     }
 }
 
 pub struct LightClientTransactionDependencyProvider {
-    client: LightClientRpcClient,
+    client: LightClientRpcAsyncClient,
     // headers to load
     headers: DashMap<Byte32, Option<HeaderView>>,
     // transactions to load
@@ -98,7 +105,7 @@ pub struct LightClientTransactionDependencyProvider {
 impl LightClientTransactionDependencyProvider {
     pub fn new(url: &str) -> LightClientTransactionDependencyProvider {
         LightClientTransactionDependencyProvider {
-            client: LightClientRpcClient::new(url),
+            client: LightClientRpcAsyncClient::new(url),
             headers: DashMap::new(),
             txs: DashMap::new(),
         }
@@ -112,8 +119,9 @@ impl LightClientTransactionDependencyProvider {
     }
 }
 
+#[async_trait::async_trait]
 impl TransactionDependencyProvider for LightClientTransactionDependencyProvider {
-    fn get_transaction(
+    async fn get_transaction_async(
         &self,
         tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError> {
@@ -123,6 +131,7 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
         match self
             .client
             .fetch_transaction(tx_hash.unpack())
+            .await
             .map_err(|err| TransactionDependencyError::Other(anyhow!(err)))?
         {
             FetchStatus::Fetched { data } => {
@@ -130,6 +139,7 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
                     match self
                         .client
                         .fetch_header(block_hash)
+                        .await
                         .map_err(|err| TransactionDependencyError::Other(anyhow!(err)))?
                     {
                         FetchStatus::Fetched { data: header_view } => {
@@ -174,15 +184,21 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
         }
     }
 
-    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
-        let tx = self.get_transaction(&out_point.tx_hash())?;
+    async fn get_cell_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<CellOutput, TransactionDependencyError> {
+        let tx = self.get_transaction_async(&out_point.tx_hash()).await?;
         let output_index: u32 = out_point.index().unpack();
         tx.outputs().get(output_index as usize).ok_or_else(|| {
             TransactionDependencyError::NotFound(format!("invalid output index: {}", output_index))
         })
     }
-    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
-        let tx = self.get_transaction(&out_point.tx_hash())?;
+    async fn get_cell_data_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<Bytes, TransactionDependencyError> {
+        let tx = self.get_transaction_async(&out_point.tx_hash()).await?;
         let output_index: u32 = out_point.index().unpack();
         tx.outputs_data()
             .get(output_index as usize)
@@ -194,7 +210,10 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
                 ))
             })
     }
-    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
+    async fn get_header_async(
+        &self,
+        block_hash: &Byte32,
+    ) -> Result<HeaderView, TransactionDependencyError> {
         if let Some(Some(header)) = self
             .headers
             .get(block_hash)
@@ -206,6 +225,7 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
         match self
             .client
             .fetch_header(block_hash.unpack())
+            .await
             .map_err(|err| TransactionDependencyError::Other(anyhow!(err)))?
         {
             FetchStatus::Fetched { data } => {
@@ -224,7 +244,7 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
         }
     }
 
-    fn get_block_extension(
+    async fn get_block_extension_async(
         &self,
         _block_hash: &Byte32,
     ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
@@ -236,13 +256,13 @@ impl TransactionDependencyProvider for LightClientTransactionDependencyProvider 
 
 #[derive(Clone)]
 pub struct LightClientCellCollector {
-    light_client: LightClientRpcClient,
+    light_client: LightClientRpcAsyncClient,
     offchain: OffchainCellCollector,
 }
 
 impl LightClientCellCollector {
     pub fn new(url: &str) -> LightClientCellCollector {
-        let light_client = LightClientRpcClient::new(url);
+        let light_client = LightClientRpcAsyncClient::new(url);
         LightClientCellCollector {
             light_client,
             offchain: OffchainCellCollector::default(),
@@ -250,8 +270,9 @@ impl LightClientCellCollector {
     }
 }
 
+#[async_trait::async_trait]
 impl CellCollector for LightClientCellCollector {
-    fn collect_live_cells(
+    async fn collect_live_cells_async(
         &mut self,
         query: &CellQueryOptions,
         apply_changes: bool,
@@ -261,6 +282,7 @@ impl CellCollector for LightClientCellCollector {
         let tip_num = self
             .light_client
             .get_tip_header()
+            .await
             .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?
             .inner
             .number
@@ -290,6 +312,7 @@ impl CellCollector for LightClientCellCollector {
                 let page = self
                     .light_client
                     .get_cells(search_key.clone(), order.clone(), limit.into(), last_cursor)
+                    .await
                     .map_err(|err| CellCollectorError::Internal(err.into()))?;
                 if page.objects.is_empty() {
                     break;

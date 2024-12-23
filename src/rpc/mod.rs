@@ -3,16 +3,45 @@ pub mod ckb_indexer;
 pub mod ckb_light_client;
 
 use anyhow::anyhow;
-pub use ckb::CkbRpcClient;
-pub use ckb_indexer::IndexerRpcClient;
+pub use ckb::{CkbRpcAsyncClient, CkbRpcClient};
+pub use ckb_indexer::{IndexerRpcAsyncClient, IndexerRpcClient};
 use ckb_jsonrpc_types::{JsonBytes, ResponseFormat};
-pub use ckb_light_client::LightClientRpcClient;
+pub use ckb_light_client::{LightClientRpcAsyncClient, LightClientRpcClient};
 
-use std::sync::LazyLock;
+use std::future::Future;
 use thiserror::Error;
 
-static RUNTIME: LazyLock<tokio::runtime::Runtime> =
-    LazyLock::new(|| tokio::runtime::Runtime::new().unwrap());
+pub(crate) fn block_on<F: Send>(future: impl Future<Output = F> + Send) -> F {
+    match tokio::runtime::Handle::try_current() {
+        Ok(h)
+            if matches!(
+                h.runtime_flavor(),
+                tokio::runtime::RuntimeFlavor::MultiThread
+            ) =>
+        {
+            tokio::task::block_in_place(|| h.block_on(future))
+        }
+        // if we on the current runtime, it must use another thread to poll this future,
+        // can't block on current runtime, it will block current reactor to stop forever
+        // in tokio runtime, this time will panic
+        Ok(_) => std::thread::scope(|s| {
+            s.spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(future)
+            })
+            .join()
+            .unwrap()
+        }),
+        Err(_) => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future),
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum RpcError {
@@ -38,8 +67,8 @@ macro_rules! jsonrpc {
     ) => (
         $(#[$struct_attr])*
         pub struct $struct_name {
-            client: crate::rpc::RpcClient,
-            id: std::sync::atomic::AtomicU64,
+            pub(crate) client: $crate::rpc::RpcClient,
+            pub(crate) id: std::sync::atomic::AtomicU64,
         }
 
         impl Clone for $struct_name {
@@ -53,13 +82,13 @@ macro_rules! jsonrpc {
 
         impl $struct_name {
             pub fn new(uri: &str) -> Self {
-                $struct_name {  id: 0.into(), client: crate::rpc::RpcClient::new(uri), }
+                $struct_name {  id: 0.into(), client: $crate::rpc::RpcClient::new(uri), }
             }
 
             pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->Result<RET, $crate::rpc::RpcError>
             where
-                PARAM:serde::ser::Serialize,
-                RET: serde::de::DeserializeOwned,
+                PARAM:serde::ser::Serialize + Send + 'static,
+                RET: serde::de::DeserializeOwned + Send + 'static,
             {
                 let id = self.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let params_fn = || -> Result<_,_> {
@@ -73,7 +102,7 @@ macro_rules! jsonrpc {
                 };
 
                 let task = self.client.post(params_fn);
-                crate::rpc::RUNTIME.block_on(task)
+                $crate::rpc::block_on(task)
 
             }
 
@@ -94,7 +123,7 @@ macro_rules! jsonrpc {
                     };
 
                     let task = $selff.client.post(params_fn);
-                    crate::rpc::RUNTIME.block_on(task)
+                    $crate::rpc::block_on(task)
                 }
             )*
         }
@@ -113,8 +142,8 @@ macro_rules! jsonrpc_async {
     ) => (
         $(#[$struct_attr])*
         pub struct $struct_name {
-            client: crate::rpc::RpcClient,
-            id: std::sync::atomic::AtomicU64,
+            pub(crate) client: $crate::rpc::RpcClient,
+            pub(crate) id: std::sync::atomic::AtomicU64,
         }
 
         impl Clone for $struct_name {
@@ -128,13 +157,13 @@ macro_rules! jsonrpc_async {
 
         impl $struct_name {
             pub fn new(uri: &str) -> Self {
-                $struct_name {  id: 0.into(), client: crate::rpc::RpcClient::new(uri), }
+                $struct_name {  id: 0.into(), client: $crate::rpc::RpcClient::new(uri), }
             }
 
-            pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->impl std::future::Future<Output =Result<RET, $crate::rpc::RpcError>>
+            pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->impl std::future::Future<Output =Result<RET, $crate::rpc::RpcError>> + Send + 'static
             where
-                PARAM:serde::ser::Serialize,
-                RET: serde::de::DeserializeOwned,
+                PARAM:serde::ser::Serialize + Send + 'static,
+                RET: serde::de::DeserializeOwned + Send + 'static,
             {
                 let id = self.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let method = serde_json::json!(method);
@@ -196,8 +225,8 @@ impl RpcClient {
         json_post_params: T,
     ) -> impl std::future::Future<Output = Result<RET, crate::rpc::RpcError>>
     where
-        PARAM: serde::ser::Serialize,
-        RET: serde::de::DeserializeOwned,
+        PARAM: serde::ser::Serialize + Send + 'static,
+        RET: serde::de::DeserializeOwned + Send + 'static,
         T: FnOnce() -> Result<PARAM, crate::rpc::RpcError>,
     {
         let url = self.url.clone();

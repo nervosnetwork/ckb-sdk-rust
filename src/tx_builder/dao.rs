@@ -44,8 +44,9 @@ impl DaoDepositBuilder {
     }
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for DaoDepositBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         _cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -120,8 +121,9 @@ impl From<Vec<CellInput>> for DaoPrepareBuilder {
     }
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for DaoPrepareBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         _cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -153,10 +155,11 @@ impl TxBuilder for DaoPrepareBuilder {
             let out_point = input.previous_output();
             let tx_hash = out_point.tx_hash();
             let deposit_header = header_dep_resolver
-                .resolve_by_tx(&tx_hash)
+                .resolve_by_tx_async(&tx_hash)
+                .await
                 .map_err(TxBuilderError::Other)?
                 .ok_or_else(|| TxBuilderError::ResolveHeaderDepByTxHashFailed(tx_hash.clone()))?;
-            let input_cell = tx_dep_provider.get_cell(&out_point)?;
+            let input_cell = tx_dep_provider.get_cell_async(&out_point).await?;
             if input_cell.type_().to_opt().as_ref() != Some(&dao_type_script) {
                 return Err(TxBuilderError::InvalidParameter(anyhow!(
                     "the input cell has invalid type script"
@@ -198,7 +201,7 @@ pub enum DaoWithdrawReceiver {
     LockScript {
         script: Script,
         /// * `fee_rate`: If fee_rate is given, the fee is from withdraw capacity so
-        /// that no additional input and change cell is needed.
+        ///   that no additional input and change cell is needed.
         fee_rate: Option<FeeRate>,
     },
     Custom {
@@ -239,8 +242,9 @@ impl DaoWithdrawBuilder {
     }
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for DaoWithdrawBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         _cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -276,11 +280,12 @@ impl TxBuilder for DaoWithdrawBuilder {
         {
             let tx_hash = out_point.tx_hash();
             let prepare_header = header_dep_resolver
-                .resolve_by_tx(&tx_hash)
+                .resolve_by_tx_async(&tx_hash)
+                .await
                 .map_err(TxBuilderError::Other)?
                 .ok_or_else(|| TxBuilderError::ResolveHeaderDepByTxHashFailed(tx_hash.clone()))?;
             prepare_block_hashes.push(prepare_header.hash());
-            let input_cell = tx_dep_provider.get_cell(out_point)?;
+            let input_cell = tx_dep_provider.get_cell_async(out_point).await?;
             if input_cell.type_().to_opt().as_ref() != Some(&dao_type_script) {
                 return Err(TxBuilderError::InvalidParameter(anyhow!(
                     "the input cell has invalid type script"
@@ -289,7 +294,7 @@ impl TxBuilder for DaoWithdrawBuilder {
             let input_lock_cell_dep = cell_dep_resolver
                 .resolve(&input_cell.lock())
                 .ok_or_else(|| TxBuilderError::ResolveCellDepFailed(input_cell.lock()))?;
-            let data = tx_dep_provider.get_cell_data(out_point)?;
+            let data = tx_dep_provider.get_cell_data_async(out_point).await?;
             if data.len() != 8 {
                 return Err(TxBuilderError::InvalidParameter(anyhow!(
                     "the input cell has invalid data length, expected: 8, got: {}",
@@ -301,21 +306,29 @@ impl TxBuilder for DaoWithdrawBuilder {
                 number_bytes.copy_from_slice(data.as_ref());
                 u64::from_le_bytes(number_bytes)
             };
-            let deposit_header = header_dep_resolver
-                .resolve_by_number(deposit_number)
-                .or_else(|_err| {
+            let deposit_header = match header_dep_resolver
+                .resolve_by_number_async(deposit_number)
+                .await
+            {
+                Err(_) => {
                     // for light client
-                    let prepare_tx = tx_dep_provider.get_transaction(&tx_hash)?;
+                    let prepare_tx = tx_dep_provider.get_transaction_async(&tx_hash).await?;
                     for input in prepare_tx.inputs() {
                         let _ = header_dep_resolver
-                            .resolve_by_tx(&input.previous_output().tx_hash())?;
+                            .resolve_by_tx_async(&input.previous_output().tx_hash())
+                            .await
+                            .map_err(TxBuilderError::Other)?;
                     }
-                    header_dep_resolver.resolve_by_number(deposit_number)
-                })
-                .map_err(TxBuilderError::Other)?
-                .ok_or(TxBuilderError::ResolveHeaderDepByNumberFailed(
-                    deposit_number,
-                ))?;
+                    header_dep_resolver
+                        .resolve_by_number_async(deposit_number)
+                        .await
+                        .map_err(TxBuilderError::Other)?
+                }
+                Ok(i) => i,
+            }
+            .ok_or(TxBuilderError::ResolveHeaderDepByNumberFailed(
+                deposit_number,
+            ))?;
             let input = {
                 let unlock_point = minimal_unlock_point(&deposit_header, &prepare_header);
                 let since = Since::new(

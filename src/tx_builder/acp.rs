@@ -37,8 +37,9 @@ impl AcpTransferBuilder {
     }
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for AcpTransferBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -52,7 +53,9 @@ impl TxBuilder for AcpTransferBuilder {
         let mut outputs_data = Vec::new();
         for receiver in &self.receivers {
             let query = CellQueryOptions::new_lock(receiver.lock_script.clone());
-            let (cells, input_capacity) = cell_collector.collect_live_cells(&query, true)?;
+            let (cells, input_capacity) = cell_collector
+                .collect_live_cells_async(&query, true)
+                .await?;
             if cells.is_empty() {
                 return Err(TxBuilderError::Other(anyhow!(
                     "can not found cell by lock script: {:?}",

@@ -1,5 +1,3 @@
-use lazy_static::lazy_static;
-
 use sparse_merkle_tree::{default_store::DefaultStore, SparseMerkleTree, H256 as SmtH256};
 
 use crate::types::xudt_rce_mol::{
@@ -12,16 +10,20 @@ use ckb_types::{molecule, prelude::*};
 use sparse_merkle_tree::traits::Hasher;
 use thiserror::Error;
 
-lazy_static! {
-    pub static ref SMT_EXISTING: SmtH256 = SmtH256::from([
+use std::sync::LazyLock;
+
+pub static SMT_EXISTING: LazyLock<SmtH256> = LazyLock::new(|| {
+    SmtH256::from([
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
-    ]);
-    pub static ref SMT_NOT_EXISTING: SmtH256 = SmtH256::from([
+    ])
+});
+pub static SMT_NOT_EXISTING: LazyLock<SmtH256> = LazyLock::new(|| {
+    SmtH256::from([
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
-    ]);
-}
+    ])
+});
 
 #[allow(clippy::upper_case_acronyms)]
 type SMT = SparseMerkleTree<CKBBlake2bHasher, SmtH256, DefaultStore<SmtH256>>;

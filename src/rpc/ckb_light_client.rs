@@ -199,3 +199,12 @@ crate::jsonrpc_async!(pub struct LightClientRpcAsyncClient {
     pub fn get_peers(&self) -> Vec<RemoteNode>;
     pub fn local_node_info(&self) -> LocalNode;
 });
+
+impl From<&LightClientRpcClient> for LightClientRpcAsyncClient {
+    fn from(value: &LightClientRpcClient) -> Self {
+        Self {
+            client: value.client.clone(),
+            id: 0.into(),
+        }
+    }
+}

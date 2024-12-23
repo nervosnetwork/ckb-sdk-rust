@@ -110,7 +110,7 @@ crate::jsonrpc!(pub struct CkbRpcClient {
     pub fn calculate_dao_maximum_withdraw(&self, out_point: OutPoint, kind: DaoWithdrawingCalculationKind) -> Capacity;
 });
 
-crate::jsonrpc_async!(pub struct CkbRpcAyncClient {
+crate::jsonrpc_async!(pub struct CkbRpcAsyncClient {
     // Chain
     pub fn get_block(&self, hash: H256) -> Option<BlockView>;
     pub fn get_block_by_number(&self, number: BlockNumber) -> Option<BlockView>;
@@ -210,6 +210,15 @@ fn transform_cycles(cycles: Option<Vec<ckb_jsonrpc_types::Cycle>>) -> Vec<Cycle>
     cycles
         .map(|c| c.into_iter().map(Into::into).collect())
         .unwrap_or_default()
+}
+
+impl From<&CkbRpcClient> for CkbRpcAsyncClient {
+    fn from(value: &CkbRpcClient) -> Self {
+        Self {
+            client: value.client.clone(),
+            id: 0.into(),
+        }
+    }
 }
 
 impl CkbRpcClient {
@@ -384,5 +393,199 @@ impl CkbRpcClient {
         block_hash: H256,
     ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
         self.post::<_, Option<JsonBytes>>("get_fork_block", (block_hash, Some(Uint32::from(0u32))))
+    }
+}
+
+impl CkbRpcAsyncClient {
+    pub async fn get_packed_block(&self, hash: H256) -> Result<Option<JsonBytes>, crate::RpcError> {
+        self.post("get_block", (hash, Some(Uint32::from(0u32))))
+            .await
+    }
+
+    // turn block response into BlockView and cycle vec
+    fn transform_block_view_with_cycle(
+        opt_resp: Option<BlockResponse>,
+    ) -> Result<Option<(BlockView, Vec<Cycle>)>, crate::rpc::RpcError> {
+        opt_resp
+            .map(|resp| match resp {
+                BlockResponse::Regular(block_view) => Ok((block_view.get_value()?, vec![])),
+                BlockResponse::WithCycles(block_cycles) => {
+                    let cycles = transform_cycles(block_cycles.cycles);
+                    Ok((block_cycles.block.get_value()?, cycles))
+                }
+            })
+            .transpose()
+    }
+    /// Same as get_block except with parameter with_cycles and return BlockResponse
+    pub async fn get_block_with_cycles(
+        &self,
+        hash: H256,
+    ) -> Result<Option<(BlockView, Vec<Cycle>)>, crate::rpc::RpcError> {
+        let res = self
+            .post::<_, Option<BlockResponse>>("get_block", (hash, None::<u32>, true))
+            .await?;
+        Self::transform_block_view_with_cycle(res)
+    }
+
+    // turn BlockResponse to JsonBytes and Cycle tuple
+    fn blockresponse2bytes(
+        opt_resp: Option<BlockResponse>,
+    ) -> Result<Option<(JsonBytes, Vec<Cycle>)>, crate::rpc::RpcError> {
+        opt_resp
+            .map(|resp| match resp {
+                BlockResponse::Regular(block_view) => Ok((block_view.get_json_bytes()?, vec![])),
+                BlockResponse::WithCycles(block_cycles) => {
+                    let cycles = transform_cycles(block_cycles.cycles);
+                    Ok((block_cycles.block.get_json_bytes()?, cycles))
+                }
+            })
+            .transpose()
+    }
+
+    pub async fn get_packed_block_with_cycles(
+        &self,
+        hash: H256,
+    ) -> Result<Option<(JsonBytes, Vec<Cycle>)>, crate::rpc::RpcError> {
+        let res = self
+            .post::<_, Option<BlockResponse>>("get_block", (hash, Some(Uint32::from(0u32)), true))
+            .await?;
+        Self::blockresponse2bytes(res)
+    }
+
+    /// Same as get_block_by_number except with parameter with_cycles and return BlockResponse
+    pub async fn get_packed_block_by_number(
+        &self,
+        number: BlockNumber,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post("get_block_by_number", (number, Some(Uint32::from(0u32))))
+            .await
+    }
+
+    pub async fn get_block_by_number_with_cycles(
+        &self,
+        number: BlockNumber,
+    ) -> Result<Option<(BlockView, Vec<Cycle>)>, crate::rpc::RpcError> {
+        let res = self
+            .post::<_, Option<BlockResponse>>("get_block_by_number", (number, None::<u32>, true))
+            .await?;
+        Self::transform_block_view_with_cycle(res)
+    }
+
+    pub async fn get_packed_block_by_number_with_cycles(
+        &self,
+        number: BlockNumber,
+    ) -> Result<Option<(JsonBytes, Vec<Cycle>)>, crate::rpc::RpcError> {
+        let res = self
+            .post::<_, Option<BlockResponse>>(
+                "get_block_by_number",
+                (number, Some(Uint32::from(0u32)), true),
+            )
+            .await?;
+        Self::blockresponse2bytes(res)
+    }
+
+    pub async fn get_packed_header(
+        &self,
+        hash: H256,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post::<_, Option<JsonBytes>>("get_header", (hash, Some(Uint32::from(0u32))))
+            .await
+    }
+
+    pub async fn get_packed_header_by_number(
+        &self,
+        number: BlockNumber,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post::<_, Option<JsonBytes>>(
+            "get_header_by_number",
+            (number, Some(Uint32::from(0u32))),
+        )
+        .await
+    }
+
+    pub async fn get_live_cell_with_include_tx_pool(
+        &self,
+        out_point: OutPoint,
+        with_data: bool,
+        include_tx_pool: bool,
+    ) -> Result<CellWithStatus, crate::rpc::RpcError> {
+        self.post::<_, CellWithStatus>(
+            "get_live_cell",
+            (out_point, with_data, Some(include_tx_pool)),
+        )
+        .await
+    }
+
+    // get transaction with only_committed=true
+    pub async fn get_only_committed_transaction(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(2u32)), true),
+        )
+        .await
+    }
+
+    // get transaction with verbosity=0
+    pub async fn get_packed_transaction(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(0u32))),
+        )
+        .await
+    }
+
+    // get transaction with verbosity=0 and only_committed=true
+    pub async fn get_only_committed_packed_transaction(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(0u32)), true),
+        )
+        .await
+    }
+
+    // get transaction with verbosity=1, so the result transaction field is None
+    pub async fn get_transaction_status(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(1u32))),
+        )
+        .await
+    }
+
+    // get transaction with verbosity=1 and only_committed=true, so the result transaction field is None
+    pub async fn get_only_committed_transaction_status(
+        &self,
+        hash: H256,
+    ) -> Result<TransactionWithStatusResponse, crate::rpc::RpcError> {
+        self.post::<_, TransactionWithStatusResponse>(
+            "get_transaction",
+            (hash, Some(Uint32::from(1u32)), true),
+        )
+        .await
+    }
+
+    pub async fn get_packed_tip_header(&self) -> Result<JsonBytes, crate::rpc::RpcError> {
+        self.post::<_, JsonBytes>("get_tip_header", (Some(Uint32::from(0u32)),))
+            .await
+    }
+
+    pub async fn get_packed_fork_block(
+        &self,
+        block_hash: H256,
+    ) -> Result<Option<JsonBytes>, crate::rpc::RpcError> {
+        self.post::<_, Option<JsonBytes>>("get_fork_block", (block_hash, Some(Uint32::from(0u32))))
+            .await
     }
 }
