@@ -17,13 +17,14 @@ use std::collections::HashMap;
 /// [CapacityDiff]: https://github.com/doitian/ckb-sdk-examples-capacity-diff
 struct CapacityDiffUnlocker {}
 
+#[async_trait::async_trait]
 impl ScriptUnlocker for CapacityDiffUnlocker {
     // This works for any args
     fn match_args(&self, _args: &[u8]) -> bool {
         true
     }
 
-    fn unlock(
+    async fn unlock_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -45,12 +46,14 @@ impl ScriptUnlocker for CapacityDiffUnlocker {
 
         let mut total = 0i64;
         for i in &script_group.input_indices {
-            let cell = tx_dep_provider.get_cell(
-                &tx.inputs()
-                    .get(*i)
-                    .ok_or_else(|| other_unlock_error("input index out of bound"))?
-                    .previous_output(),
-            )?;
+            let cell = tx_dep_provider
+                .get_cell_async(
+                    &tx.inputs()
+                        .get(*i)
+                        .ok_or_else(|| other_unlock_error("input index out of bound"))?
+                        .previous_output(),
+                )
+                .await?;
             let capacity: u64 = cell.capacity().unpack();
             total -= capacity as i64;
         }
@@ -71,7 +74,7 @@ impl ScriptUnlocker for CapacityDiffUnlocker {
 
     // This is called before balancer. It's responsible to fill witness for inputs added manually
     // by users.
-    fn fill_placeholder_witness(
+    async fn fill_placeholder_witness_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,

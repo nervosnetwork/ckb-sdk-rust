@@ -48,11 +48,12 @@ pub enum UnlockError {
 ///   * Put extra unlock information into transaction (e.g. SMT proof in omni-lock case)
 ///
 /// See example in `examples/script_unlocker_example.rs`
-pub trait ScriptUnlocker {
+#[async_trait::async_trait]
+pub trait ScriptUnlocker: Sync + Send {
     fn match_args(&self, args: &[u8]) -> bool;
 
     /// Check if the script group is already unlocked
-    fn is_unlocked(
+    async fn is_unlocked_async(
         &self,
         _tx: &TransactionView,
         _script_group: &ScriptGroup,
@@ -61,14 +62,32 @@ pub trait ScriptUnlocker {
         Ok(false)
     }
 
+    fn is_unlocked(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<bool, UnlockError> {
+        crate::rpc::block_on(self.is_unlocked_async(tx, script_group, tx_dep_provider))
+    }
+
     /// Add signature or other information to witnesses, when the script is
     /// already unlocked should reset the witness instead.
-    fn unlock(
+    async fn unlock_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError>;
+
+    fn unlock(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        crate::rpc::block_on(self.unlock_async(tx, script_group, tx_dep_provider))
+    }
 
     fn clear_placeholder_witness(
         &self,
@@ -79,12 +98,21 @@ pub trait ScriptUnlocker {
     }
 
     /// Fill a placehodler witness before balance the transaction capacity
-    fn fill_placeholder_witness(
+    async fn fill_placeholder_witness_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError>;
+
+    fn fill_placeholder_witness(
+        &self,
+        tx: &TransactionView,
+        script_group: &ScriptGroup,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, UnlockError> {
+        crate::rpc::block_on(self.fill_placeholder_witness_async(tx, script_group, tx_dep_provider))
+    }
 }
 
 pub fn fill_witness_lock(
@@ -151,12 +179,13 @@ impl From<Box<dyn Signer>> for SecpSighashUnlocker {
         SecpSighashUnlocker::new(SecpSighashScriptSigner::new(signer))
     }
 }
+#[async_trait::async_trait]
 impl ScriptUnlocker for SecpSighashUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
     }
 
-    fn unlock(
+    async fn unlock_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -165,7 +194,7 @@ impl ScriptUnlocker for SecpSighashUnlocker {
         Ok(self.signer.sign_tx(tx, script_group)?)
     }
 
-    fn fill_placeholder_witness(
+    async fn fill_placeholder_witness_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -188,12 +217,13 @@ impl From<(Box<dyn Signer>, MultisigConfig)> for SecpMultisigUnlocker {
         SecpMultisigUnlocker::new(SecpMultisigScriptSigner::new(signer, config))
     }
 }
+#[async_trait::async_trait]
 impl ScriptUnlocker for SecpMultisigUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         (args.len() == 20 || args.len() == 28) && self.signer.match_args(args)
     }
 
-    fn unlock(
+    async fn unlock_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -202,7 +232,7 @@ impl ScriptUnlocker for SecpMultisigUnlocker {
         Ok(self.signer.sign_tx(tx, script_group)?)
     }
 
-    fn fill_placeholder_witness(
+    async fn fill_placeholder_witness_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -231,7 +261,7 @@ impl From<Box<dyn Signer>> for AcpUnlocker {
     }
 }
 
-fn acp_is_unlocked(
+async fn acp_is_unlocked(
     tx: &TransactionView,
     script_group: &ScriptGroup,
     tx_dep_provider: &dyn TransactionDependencyProvider,
@@ -288,42 +318,44 @@ fn acp_is_unlocked(
         udt_amount: u128,
         output_cnt: usize,
     }
-    let mut input_wallets = script_group
-        .input_indices
-        .iter()
-        .map(|idx| {
-            let input = tx
-                .inputs()
-                .get(*idx)
-                .ok_or_else(|| anyhow!("input index in script group is out of bound: {}", idx))?;
-            let output = tx_dep_provider.get_cell(&input.previous_output())?;
-            let output_data = tx_dep_provider.get_cell_data(&input.previous_output())?;
+    let mut input_wallets = Vec::new();
 
-            let type_hash_opt = output
-                .type_()
-                .to_opt()
-                .map(|script| script.calc_script_hash());
-            if type_hash_opt.is_some() && output_data.len() < 16 {
-                return Err(UnlockError::Other(anyhow!(
-                    "invalid udt output data in input cell: {:?}",
-                    input
-                )));
-            }
-            let udt_amount = if type_hash_opt.is_some() {
-                let mut amount_bytes = [0u8; 16];
-                amount_bytes.copy_from_slice(&output_data[0..16]);
-                u128::from_le_bytes(amount_bytes)
-            } else {
-                0
-            };
-            Ok(InputWallet {
-                type_hash_opt,
-                ckb_amount: output.capacity().unpack(),
-                udt_amount,
-                output_cnt: 0,
-            })
+    for idx in script_group.input_indices.iter() {
+        let input = tx
+            .inputs()
+            .get(*idx)
+            .ok_or_else(|| anyhow!("input index in script group is out of bound: {}", idx))?;
+        let output = tx_dep_provider
+            .get_cell_async(&input.previous_output())
+            .await?;
+        let output_data = tx_dep_provider
+            .get_cell_data_async(&input.previous_output())
+            .await?;
+
+        let type_hash_opt = output
+            .type_()
+            .to_opt()
+            .map(|script| script.calc_script_hash());
+        if type_hash_opt.is_some() && output_data.len() < 16 {
+            return Err(UnlockError::Other(anyhow!(
+                "invalid udt output data in input cell: {:?}",
+                input
+            )));
+        }
+        let udt_amount = if type_hash_opt.is_some() {
+            let mut amount_bytes = [0u8; 16];
+            amount_bytes.copy_from_slice(&output_data[0..16]);
+            u128::from_le_bytes(amount_bytes)
+        } else {
+            0
+        };
+        input_wallets.push(InputWallet {
+            type_hash_opt,
+            ckb_amount: output.capacity().unpack(),
+            udt_amount,
+            output_cnt: 0,
         })
-        .collect::<Result<Vec<InputWallet>, UnlockError>>()?;
+    }
 
     for (output_idx, output) in tx.outputs().into_iter().enumerate() {
         if output.lock() != script_group.script {
@@ -402,12 +434,13 @@ fn acp_is_unlocked(
     Ok(true)
 }
 
+#[async_trait::async_trait]
 impl ScriptUnlocker for AcpUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
     }
 
-    fn is_unlocked(
+    async fn is_unlocked_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -422,16 +455,19 @@ impl ScriptUnlocker for AcpUnlocker {
                 &[]
             }
         };
-        acp_is_unlocked(tx, script_group, tx_dep_provider, acp_args)
+        acp_is_unlocked(tx, script_group, tx_dep_provider, acp_args).await
     }
 
-    fn unlock(
+    async fn unlock_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        if self.is_unlocked(tx, script_group, tx_dep_provider)? {
+        if self
+            .is_unlocked_async(tx, script_group, tx_dep_provider)
+            .await?
+        {
             self.clear_placeholder_witness(tx, script_group)
         } else {
             Ok(self.signer.sign_tx(tx, script_group)?)
@@ -447,13 +483,16 @@ impl ScriptUnlocker for AcpUnlocker {
             .map_err(UnlockError::InvalidWitnessArgs)
     }
 
-    fn fill_placeholder_witness(
+    async fn fill_placeholder_witness_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        if self.is_unlocked(tx, script_group, tx_dep_provider)? {
+        if self
+            .is_unlocked_async(tx, script_group, tx_dep_provider)
+            .await?
+        {
             Ok(tx.clone())
         } else {
             fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
@@ -475,12 +514,13 @@ impl From<(Box<dyn Signer>, ChequeAction)> for ChequeUnlocker {
     }
 }
 
+#[async_trait::async_trait]
 impl ScriptUnlocker for ChequeUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
     }
 
-    fn is_unlocked(
+    async fn is_unlocked_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -506,7 +546,9 @@ impl ScriptUnlocker for ChequeUnlocker {
         let mut receiver_lock_witness = None;
         let mut sender_lock_witness = None;
         for (input_idx, input) in inputs.into_iter().enumerate() {
-            let output = tx_dep_provider.get_cell(&input.previous_output())?;
+            let output = tx_dep_provider
+                .get_cell_async(&input.previous_output())
+                .await?;
             let lock_hash = output.lock().calc_script_hash();
             let lock_hash_prefix = &lock_hash.as_slice()[0..20];
             let witness = tx
@@ -571,13 +613,16 @@ impl ScriptUnlocker for ChequeUnlocker {
         Ok(false)
     }
 
-    fn unlock(
+    async fn unlock_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        if self.is_unlocked(tx, script_group, tx_dep_provider)? {
+        if self
+            .is_unlocked_async(tx, script_group, tx_dep_provider)
+            .await?
+        {
             self.clear_placeholder_witness(tx, script_group)
         } else {
             Ok(self.signer.sign_tx(tx, script_group)?)
@@ -593,13 +638,16 @@ impl ScriptUnlocker for ChequeUnlocker {
             .map_err(UnlockError::InvalidWitnessArgs)
     }
 
-    fn fill_placeholder_witness(
+    async fn fill_placeholder_witness_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError> {
-        if self.is_unlocked(tx, script_group, tx_dep_provider)? {
+        if self
+            .is_unlocked_async(tx, script_group, tx_dep_provider)
+            .await?
+        {
             Ok(tx.clone())
         } else {
             fill_witness_lock(tx, script_group, Bytes::from(vec![0u8; 65]))
@@ -624,13 +672,14 @@ impl From<(Box<dyn Signer>, OmniLockConfig, OmniUnlockMode)> for OmniLockUnlocke
         OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config, unlock_mode), cfg)
     }
 }
+#[async_trait::async_trait]
 impl ScriptUnlocker for OmniLockUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
     }
 
     /// Check if the script group is already unlocked
-    fn is_unlocked(
+    async fn is_unlocked_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -650,7 +699,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
                     &[]
                 }
             };
-            let acp_unlocked = acp_is_unlocked(tx, script_group, tx_dep_provider, acp_args)?;
+            let acp_unlocked = acp_is_unlocked(tx, script_group, tx_dep_provider, acp_args).await?;
             if acp_unlocked {
                 return Ok(true);
             }
@@ -683,20 +732,25 @@ impl ScriptUnlocker for OmniLockUnlocker {
                 inputs.len()
             )));
         }
-        let matched = tx
+        let mut matched = false;
+        for (_idx, input) in tx
             .inputs()
             .into_iter()
             .enumerate()
             .filter(|(idx, _input)| !script_group.input_indices.contains(idx))
-            .any(|(_idx, input)| {
-                if let Ok(output) = tx_dep_provider.get_cell(&input.previous_output()) {
-                    let lock_hash = output.calc_lock_hash();
-                    let h = &lock_hash.as_slice()[0..20];
-                    h == auth_content.as_bytes()
-                } else {
-                    false
+        {
+            if let Ok(output) = tx_dep_provider
+                .get_cell_async(&input.previous_output())
+                .await
+            {
+                let lock_hash = output.calc_lock_hash();
+                let h = &lock_hash.as_slice()[0..20];
+                if h == auth_content.as_bytes() {
+                    matched = true;
+                    break;
                 }
-            });
+            }
+        }
         if !matched {
             return Err(UnlockError::Other(anyhow!(
                 "can not find according owner lock input"
@@ -705,7 +759,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
         Ok(matched)
     }
 
-    fn unlock(
+    async fn unlock_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,
@@ -714,7 +768,7 @@ impl ScriptUnlocker for OmniLockUnlocker {
         Ok(self.signer.sign_tx(tx, script_group)?)
     }
 
-    fn fill_placeholder_witness(
+    async fn fill_placeholder_witness_async(
         &self,
         tx: &TransactionView,
         script_group: &ScriptGroup,

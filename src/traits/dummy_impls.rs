@@ -14,8 +14,9 @@ use anyhow::anyhow;
 #[derive(Clone, Default)]
 pub struct DummyCellCollector;
 
+#[async_trait::async_trait]
 impl CellCollector for DummyCellCollector {
-    fn collect_live_cells(
+    async fn collect_live_cells_async(
         &mut self,
         _query: &CellQueryOptions,
         _apply_changes: bool,
@@ -47,11 +48,18 @@ impl CellCollector for DummyCellCollector {
 #[derive(Default)]
 pub struct DummyHeaderDepResolver;
 
+#[async_trait::async_trait]
 impl HeaderDepResolver for DummyHeaderDepResolver {
-    fn resolve_by_tx(&self, _tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
+    async fn resolve_by_tx_async(
+        &self,
+        _tx_hash: &Byte32,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
         Err(anyhow!("dummy resolve_by_tx"))
     }
-    fn resolve_by_number(&self, _number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
+    async fn resolve_by_number_async(
+        &self,
+        _number: u64,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
         Err(anyhow!("dummy resolve_by_number"))
     }
 }
@@ -60,9 +68,10 @@ impl HeaderDepResolver for DummyHeaderDepResolver {
 #[derive(Default)]
 pub struct DummyTransactionDependencyProvider;
 
+#[async_trait::async_trait]
 impl TransactionDependencyProvider for DummyTransactionDependencyProvider {
     // For verify certain cell belong to certain transaction
-    fn get_transaction(
+    async fn get_transaction_async(
         &self,
         _tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError> {
@@ -71,22 +80,31 @@ impl TransactionDependencyProvider for DummyTransactionDependencyProvider {
         )))
     }
     // For get the output information of inputs or cell_deps, those cell should be live cell
-    fn get_cell(&self, _out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
+    async fn get_cell_async(
+        &self,
+        _out_point: &OutPoint,
+    ) -> Result<CellOutput, TransactionDependencyError> {
         Err(TransactionDependencyError::Other(anyhow!("dummy get_cell")))
     }
     // For get the output data information of inputs or cell_deps
-    fn get_cell_data(&self, _out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
+    async fn get_cell_data_async(
+        &self,
+        _out_point: &OutPoint,
+    ) -> Result<Bytes, TransactionDependencyError> {
         Err(TransactionDependencyError::Other(anyhow!(
             "dummy get_cell_data"
         )))
     }
     // For get the header information of header_deps
-    fn get_header(&self, _block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
+    async fn get_header_async(
+        &self,
+        _block_hash: &Byte32,
+    ) -> Result<HeaderView, TransactionDependencyError> {
         Err(TransactionDependencyError::Other(anyhow!(
             "dummy get_header"
         )))
     }
-    fn get_block_extension(
+    async fn get_block_extension_async(
         &self,
         _block_hash: &Byte32,
     ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {

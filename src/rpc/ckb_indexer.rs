@@ -195,3 +195,19 @@ crate::jsonrpc!(pub struct IndexerRpcClient {
     pub fn get_transactions(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
     pub fn get_cells_capacity(&self, search_key: SearchKey) -> Option<CellsCapacity>;
 });
+
+crate::jsonrpc_async!(pub struct IndexerRpcAsyncClient {
+    pub fn get_indexer_tip(&self) -> Option<Tip>;
+    pub fn get_cells(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
+    pub fn get_transactions(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
+    pub fn get_cells_capacity(&self, search_key: SearchKey) -> Option<CellsCapacity>;
+});
+
+impl From<&IndexerRpcClient> for IndexerRpcAsyncClient {
+    fn from(value: &IndexerRpcClient) -> Self {
+        Self {
+            client: value.client.clone(),
+            id: 0.into(),
+        }
+    }
+}

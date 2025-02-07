@@ -16,7 +16,7 @@ pub mod test_util;
 #[cfg(test)]
 mod tests;
 
-pub use rpc::{CkbRpcClient, IndexerRpcClient, RpcError};
+pub use rpc::{CkbRpcAsyncClient, CkbRpcClient, IndexerRpcAsyncClient, IndexerRpcClient, RpcError};
 pub use types::{
     Address, AddressPayload, AddressType, CodeHashIndex, HumanCapacity, NetworkInfo, NetworkType,
     OldAddress, OldAddressFormat, ScriptGroup, ScriptGroupType, ScriptId, Since, SinceType,

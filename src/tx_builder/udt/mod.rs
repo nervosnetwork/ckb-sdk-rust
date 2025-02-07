@@ -85,6 +85,15 @@ impl UdtTargetReceiver {
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
     ) -> Result<ReceiverBuildOutput, TxBuilderError> {
+        crate::rpc::block_on(self.build_async(type_script, cell_collector, cell_dep_resolver))
+    }
+
+    pub async fn build_async(
+        &self,
+        type_script: &Script,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+    ) -> Result<ReceiverBuildOutput, TxBuilderError> {
         match self.action {
             TransferAction::Create => {
                 let data_len = self
@@ -137,8 +146,9 @@ impl UdtTargetReceiver {
                     query.data_len_range = Some(ValueRangeOption::new_min(16));
                     query
                 };
-                let (receiver_cells, _) =
-                    cell_collector.collect_live_cells(&receiver_query, true)?;
+                let (receiver_cells, _) = cell_collector
+                    .collect_live_cells_async(&receiver_query, true)
+                    .await?;
                 if receiver_cells.is_empty() {
                     return Err(TxBuilderError::Other(anyhow!(
                         "update receiver cell failed, cell not found, lock={:?}",
@@ -191,8 +201,9 @@ pub struct UdtIssueBuilder {
     pub receivers: Vec<UdtTargetReceiver>,
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for UdtIssueBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -207,7 +218,9 @@ impl TxBuilder for UdtIssueBuilder {
             query
         };
 
-        let (owner_cells, _) = cell_collector.collect_live_cells(&owner_query, true)?;
+        let (owner_cells, _) = cell_collector
+            .collect_live_cells_async(&owner_query, true)
+            .await?;
         if owner_cells.is_empty() {
             return Err(TxBuilderError::Other(anyhow!("owner cell not found")));
         }
@@ -238,7 +251,9 @@ impl TxBuilder for UdtIssueBuilder {
                 input,
                 output,
                 output_data,
-            } = receiver.build(&type_script, cell_collector, cell_dep_resolver)?;
+            } = receiver
+                .build_async(&type_script, cell_collector, cell_dep_resolver)
+                .await?;
             if let Some((input, input_lock_cell_dep)) = input {
                 inputs.push(input);
                 cell_deps.insert(input_lock_cell_dep);
@@ -267,8 +282,9 @@ pub struct UdtTransferBuilder {
     pub receivers: Vec<UdtTargetReceiver>,
 }
 
+#[async_trait::async_trait]
 impl TxBuilder for UdtTransferBuilder {
-    fn build_base(
+    async fn build_base_async(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -281,7 +297,9 @@ impl TxBuilder for UdtTransferBuilder {
             query.data_len_range = Some(ValueRangeOption::new_min(16));
             query
         };
-        let (sender_cells, _) = cell_collector.collect_live_cells(&sender_query, true)?;
+        let (sender_cells, _) = cell_collector
+            .collect_live_cells_async(&sender_query, true)
+            .await?;
         if sender_cells.is_empty() {
             return Err(TxBuilderError::Other(anyhow!("sender cell not found")));
         }
@@ -326,7 +344,9 @@ impl TxBuilder for UdtTransferBuilder {
                 input,
                 output,
                 output_data,
-            } = receiver.build(&self.type_script, cell_collector, cell_dep_resolver)?;
+            } = receiver
+                .build_async(&self.type_script, cell_collector, cell_dep_resolver)
+                .await?;
             if let Some((input, input_lock_cell_dep)) = input {
                 inputs.push(input);
                 cell_deps.insert(input_lock_cell_dep);

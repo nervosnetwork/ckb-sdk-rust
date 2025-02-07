@@ -81,9 +81,10 @@ pub enum TxBuilderError {
 }
 
 /// Transaction Builder interface
-pub trait TxBuilder {
+#[async_trait::async_trait]
+pub trait TxBuilder: Send + Sync {
     /// Build base transaction
-    fn build_base(
+    async fn build_base_async(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -91,11 +92,27 @@ pub trait TxBuilder {
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError>;
 
+    /// Build base transaction
+    fn build_base(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+    ) -> Result<TransactionView, TxBuilderError> {
+        crate::rpc::block_on(self.build_base_async(
+            cell_collector,
+            cell_dep_resolver,
+            header_dep_resolver,
+            tx_dep_provider,
+        ))
+    }
+
     /// Build balanced transaction that ready to sign:
     ///  * Build base transaction
     ///  * Fill placeholder witness for lock script
     ///  * balance the capacity
-    fn build_balanced(
+    async fn build_balanced_async(
         &self,
         cell_collector: &mut dyn CellCollector,
         cell_dep_resolver: &dyn CellDepResolver,
@@ -104,12 +121,14 @@ pub trait TxBuilder {
         balancer: &CapacityBalancer,
         unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
     ) -> Result<TransactionView, TxBuilderError> {
-        let base_tx = self.build_base(
-            cell_collector,
-            cell_dep_resolver,
-            header_dep_resolver,
-            tx_dep_provider,
-        )?;
+        let base_tx = self
+            .build_base_async(
+                cell_collector,
+                cell_dep_resolver,
+                header_dep_resolver,
+                tx_dep_provider,
+            )
+            .await?;
         let (tx_filled_witnesses, _) =
             fill_placeholder_witnesses(base_tx, tx_dep_provider, unlockers)?;
         Ok(balance_tx_capacity(
@@ -120,6 +139,25 @@ pub trait TxBuilder {
             cell_dep_resolver,
             header_dep_resolver,
         )?)
+    }
+
+    fn build_balanced(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        balancer: &CapacityBalancer,
+        unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+    ) -> Result<TransactionView, TxBuilderError> {
+        crate::rpc::block_on(self.build_balanced_async(
+            cell_collector,
+            cell_dep_resolver,
+            header_dep_resolver,
+            tx_dep_provider,
+            balancer,
+            unlockers,
+        ))
     }
 
     /// Build unlocked transaction that ready to send or for further unlock:
@@ -642,7 +680,7 @@ impl<
         verifier.set_debug_printer(|script_hash, message| {
             println!("script: {:x}, debug: {}", script_hash, message);
         });
-        verifier.verify(u64::max_value()).map_err(|err| {
+        verifier.verify(u64::MAX).map_err(|err| {
             BalanceTxCapacityError::VerifyScript(format!("Verify script error : {:?}", err))
         })
     }

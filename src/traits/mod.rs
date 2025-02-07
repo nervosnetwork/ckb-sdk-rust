@@ -59,7 +59,7 @@ pub enum SignerError {
 ///    * secp256k1 eth signer
 ///    * RSA signer
 ///    * Hardware wallet signer
-pub trait Signer {
+pub trait Signer: Send + Sync {
     /// typecial id are blake160(pubkey) and keccak256(pubkey)[12..20]
     fn match_id(&self, id: &[u8]) -> bool;
 
@@ -90,24 +90,60 @@ pub enum TransactionDependencyError {
 ///   * inputs
 ///   * cell_deps
 ///   * header_deps
+#[async_trait::async_trait]
 pub trait TransactionDependencyProvider: Sync + Send {
-    /// For verify certain cell belong to certain transaction
-    fn get_transaction(
+    async fn get_transaction_async(
         &self,
         tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError>;
     /// For get the output information of inputs or cell_deps, those cell should be live cell
-    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError>;
+    async fn get_cell_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<CellOutput, TransactionDependencyError>;
     /// For get the output data information of inputs or cell_deps
-    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError>;
+    async fn get_cell_data_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<Bytes, TransactionDependencyError>;
     /// For get the header information of header_deps
-    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError>;
+    async fn get_header_async(
+        &self,
+        block_hash: &Byte32,
+    ) -> Result<HeaderView, TransactionDependencyError>;
+
+    /// For get_block_extension
+    async fn get_block_extension_async(
+        &self,
+        block_hash: &Byte32,
+    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError>;
+    /// For verify certain cell belong to certain transaction
+    fn get_transaction(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<TransactionView, TransactionDependencyError> {
+        crate::rpc::block_on(self.get_transaction_async(tx_hash))
+    }
+    /// For get the output information of inputs or cell_deps, those cell should be live cell
+    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
+        crate::rpc::block_on(self.get_cell_async(out_point))
+    }
+    /// For get the output data information of inputs or cell_deps
+    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
+        crate::rpc::block_on(self.get_cell_data_async(out_point))
+    }
+    /// For get the header information of header_deps
+    fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
+        crate::rpc::block_on(self.get_header_async(block_hash))
+    }
 
     /// For get_block_extension
     fn get_block_extension(
         &self,
         block_hash: &Byte32,
-    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError>;
+    ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
+        crate::rpc::block_on(self.get_block_extension_async(block_hash))
+    }
 }
 
 // Implement CellDataProvider trait is currently for `DaoCalculator`
@@ -384,14 +420,25 @@ impl CellQueryOptions {
         }
     }
 }
-pub trait CellCollector: DynClone {
+
+#[async_trait::async_trait]
+pub trait CellCollector: DynClone + Send + Sync {
+    /// Collect live cells by query options, if `apply_changes` is true will
+    /// mark all collected cells as dead cells.
+    async fn collect_live_cells_async(
+        &mut self,
+        query: &CellQueryOptions,
+        apply_changes: bool,
+    ) -> Result<(Vec<LiveCell>, u64), CellCollectorError>;
     /// Collect live cells by query options, if `apply_changes` is true will
     /// mark all collected cells as dead cells.
     fn collect_live_cells(
         &mut self,
         query: &CellQueryOptions,
         apply_changes: bool,
-    ) -> Result<(Vec<LiveCell>, u64), CellCollectorError>;
+    ) -> Result<(Vec<LiveCell>, u64), CellCollectorError> {
+        crate::rpc::block_on(self.collect_live_cells_async(query, apply_changes))
+    }
 
     /// Mark this cell as dead cell
     fn lock_cell(
@@ -410,18 +457,36 @@ pub trait CellCollector: DynClone {
     fn reset(&mut self);
 }
 
-pub trait CellDepResolver {
+pub trait CellDepResolver: Send + Sync {
     /// Resolve cell dep by script.
     ///
     /// When a new script is added, transaction builders use CellDepResolver to find the corresponding cell deps and add them to the transaction.
     fn resolve(&self, script: &Script) -> Option<CellDep>;
 }
-pub trait HeaderDepResolver {
+
+#[async_trait::async_trait]
+pub trait HeaderDepResolver: Send + Sync {
     /// Resolve header dep by trancation hash
-    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error>;
+    async fn resolve_by_tx_async(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<Option<HeaderView>, anyhow::Error>;
 
     /// Resolve header dep by block number
-    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error>;
+    async fn resolve_by_number_async(
+        &self,
+        number: u64,
+    ) -> Result<Option<HeaderView>, anyhow::Error>;
+
+    /// Resolve header dep by trancation hash
+    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
+        crate::rpc::block_on(self.resolve_by_tx_async(tx_hash))
+    }
+
+    /// Resolve header dep by block number
+    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
+        crate::rpc::block_on(self.resolve_by_number_async(number))
+    }
 }
 
 // test cases make sure new added exception won't breadk `anyhow!(e_variable)` usage,

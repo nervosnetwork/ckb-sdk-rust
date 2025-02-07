@@ -9,7 +9,7 @@ use ckb_types::{
 };
 use sha3::{Digest, Keccak256};
 
-use crate::rpc::CkbRpcClient;
+use crate::rpc::{CkbRpcAsyncClient, CkbRpcClient};
 use crate::traits::LiveCell;
 
 use secp256k1::ffi::CPtr;
@@ -30,15 +30,21 @@ pub fn zeroize_slice(data: &mut [u8]) {
 }
 
 pub fn get_max_mature_number(rpc_client: &CkbRpcClient) -> Result<u64, String> {
+    crate::rpc::block_on(get_max_mature_number_async(&rpc_client.into()))
+}
+
+pub async fn get_max_mature_number_async(rpc_client: &CkbRpcAsyncClient) -> Result<u64, String> {
     let cellbase_maturity = EpochNumberWithFraction::from_full_value(
         rpc_client
             .get_consensus()
+            .await
             .map_err(|err| err.to_string())?
             .cellbase_maturity
             .value(),
     );
     let tip_epoch = rpc_client
         .get_tip_header()
+        .await
         .map(|header| EpochNumberWithFraction::from_full_value(header.inner.epoch.value()))
         .map_err(|err| err.to_string())?;
 
@@ -61,6 +67,7 @@ pub fn get_max_mature_number(rpc_client: &CkbRpcClient) -> Result<u64, String> {
         .into();
         let max_mature_epoch = rpc_client
             .get_epoch_by_number(epoch_number)
+            .await
             .map_err(|err| err.to_string())?
             .ok_or_else(|| "Can not get epoch less than current epoch number".to_string())?;
 

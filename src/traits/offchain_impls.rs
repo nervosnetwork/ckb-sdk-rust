@@ -37,13 +37,23 @@ pub struct OffchainHeaderDepResolver {
     pub by_number: HashMap<u64, HeaderView>,
 }
 
+#[async_trait::async_trait]
 impl HeaderDepResolver for OffchainHeaderDepResolver {
-    fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
+    async fn resolve_by_tx_async(
+        &self,
+        tx_hash: &Byte32,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
         let tx_hash: H256 = tx_hash.unpack();
-        Ok(self.by_tx_hash.get(&tx_hash).cloned())
+        let header = self.by_tx_hash.get(&tx_hash).cloned();
+        Ok(header)
     }
-    fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
-        Ok(self.by_number.get(&number).cloned())
+    async fn resolve_by_number_async(
+        &self,
+        number: u64,
+    ) -> Result<Option<HeaderView>, anyhow::Error> {
+        let header = self.by_number.get(&number).cloned();
+
+        Ok(header)
     }
 }
 
@@ -218,9 +228,10 @@ impl OffchainTransactionDependencyProvider {
     }
 }
 
+#[async_trait::async_trait]
 impl TransactionDependencyProvider for OffchainTransactionDependencyProvider {
     // For verify certain cell belong to certain transaction
-    fn get_transaction(
+    async fn get_transaction_async(
         &self,
         tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError> {
@@ -231,7 +242,10 @@ impl TransactionDependencyProvider for OffchainTransactionDependencyProvider {
             .ok_or_else(|| TransactionDependencyError::Other(anyhow!("offchain get_transaction")))
     }
     // For get the output information of inputs or cell_deps, those cell should be live cell
-    fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
+    async fn get_cell_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<CellOutput, TransactionDependencyError> {
         let tx_hash: H256 = out_point.tx_hash().unpack();
         let index: u32 = out_point.index().unpack();
         self.cells
@@ -240,7 +254,10 @@ impl TransactionDependencyProvider for OffchainTransactionDependencyProvider {
             .ok_or_else(|| TransactionDependencyError::Other(anyhow!("offchain get_cell")))
     }
     // For get the output data information of inputs or cell_deps
-    fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
+    async fn get_cell_data_async(
+        &self,
+        out_point: &OutPoint,
+    ) -> Result<Bytes, TransactionDependencyError> {
         let tx_hash: H256 = out_point.tx_hash().unpack();
         let index: u32 = out_point.index().unpack();
         self.cells
@@ -249,13 +266,16 @@ impl TransactionDependencyProvider for OffchainTransactionDependencyProvider {
             .ok_or_else(|| TransactionDependencyError::Other(anyhow!("offchain get_cell_data")))
     }
     // For get the header information of header_deps
-    fn get_header(&self, _block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
+    async fn get_header_async(
+        &self,
+        _block_hash: &Byte32,
+    ) -> Result<HeaderView, TransactionDependencyError> {
         Err(TransactionDependencyError::Other(anyhow!(
             "get_header not supported"
         )))
     }
 
-    fn get_block_extension(
+    async fn get_block_extension_async(
         &self,
         _block_hash: &Byte32,
     ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError> {
