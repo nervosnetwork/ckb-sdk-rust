@@ -24,7 +24,7 @@ use super::{
     OffchainTransactionDependencyProvider,
 };
 use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
-use crate::rpc::{CkbRpcAsyncClient, IndexerRpcClient};
+use crate::rpc::{CkbRpcAsyncClient, IndexerRpcAsyncClient};
 use crate::traits::{
     CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
     LiveCell, QueryOrder, Signer, SignerError, TransactionDependencyError,
@@ -252,7 +252,7 @@ impl HeaderDepResolver for DefaultHeaderDepResolver {
 /// A cell collector use ckb-indexer as backend
 #[derive(Clone)]
 pub struct DefaultCellCollector {
-    indexer_client: IndexerRpcClient,
+    indexer_client: IndexerRpcAsyncClient,
     ckb_client: CkbRpcAsyncClient,
     offchain: OffchainCellCollector,
     acceptable_indexer_leftbehind: u64,
@@ -260,7 +260,7 @@ pub struct DefaultCellCollector {
 
 impl DefaultCellCollector {
     pub fn new(ckb_client: &str) -> DefaultCellCollector {
-        let indexer_client = IndexerRpcClient::new(ckb_client);
+        let indexer_client = IndexerRpcAsyncClient::new(ckb_client);
         let ckb_client = CkbRpcAsyncClient::new(ckb_client);
         DefaultCellCollector {
             indexer_client,
@@ -280,7 +280,7 @@ impl DefaultCellCollector {
     }
 
     /// wrapper check_ckb_chain_async future
-    pub async fn check_ckb_chain(&mut self) -> Result<(), CellCollectorError> {
+    pub fn check_ckb_chain(&mut self) -> Result<(), CellCollectorError> {
         crate::rpc::block_on(self.check_ckb_chain_async())
     }
     /// Check if ckb-indexer synced with ckb node. This will check every 50ms for 100 times (more than 5s in total, since ckb-indexer's poll interval is 2.0s).
@@ -295,6 +295,7 @@ impl DefaultCellCollector {
             match self
                 .indexer_client
                 .get_indexer_tip()
+                .await
                 .map_err(|err| CellCollectorError::Internal(err.into()))?
             {
                 Some(Tip { block_number, .. }) => {
@@ -329,7 +330,6 @@ impl CellCollector for DefaultCellCollector {
         let max_mature_number = get_max_mature_number_async(&self.ckb_client)
             .await
             .map_err(|err| CellCollectorError::Internal(anyhow!(err)))?;
-
         self.offchain.max_mature_number = max_mature_number;
         let tip_num = self
             .ckb_client
@@ -343,9 +343,8 @@ impl CellCollector for DefaultCellCollector {
             mut total_capacity,
         } = self.offchain.collect(query, tip_num);
         let mut cells: Vec<_> = cells.into_iter().map(|c| c.0).collect();
-
         if total_capacity < query.min_total_capacity {
-            self.check_ckb_chain().await?;
+            self.check_ckb_chain_async().await?;
             let order = match query.order {
                 QueryOrder::Asc => Order::Asc,
                 QueryOrder::Desc => Order::Desc,
@@ -363,6 +362,7 @@ impl CellCollector for DefaultCellCollector {
                 let page = self
                     .indexer_client
                     .get_cells(search_key.clone(), order.clone(), limit.into(), last_cursor)
+                    .await
                     .map_err(|err| CellCollectorError::Internal(err.into()))?;
                 if page.objects.is_empty() {
                     break;
