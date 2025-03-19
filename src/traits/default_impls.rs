@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -302,7 +301,7 @@ impl DefaultCellCollector {
                     if tip_number.value()
                         > block_number.value() + self.acceptable_indexer_leftbehind
                     {
-                        thread::sleep(Duration::from_millis(50));
+                        tokio::time::sleep(Duration::from_millis(50)).await;
                     } else {
                         return Ok(());
                     }
