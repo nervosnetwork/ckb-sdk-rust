@@ -6,15 +6,11 @@ use ckb_types::{
 };
 
 use crate::{
-    constants, core::TransactionBuilder, tx_builder::TxBuilderError, unlock::MultisigConfig,
-    NetworkInfo, NetworkType, ScriptGroup,
+    constants::MultisigScript, core::TransactionBuilder, tx_builder::TxBuilderError,
+    unlock::MultisigConfig, NetworkInfo, NetworkType, ScriptGroup,
 };
 
 use super::{HandlerContext, ScriptHandler};
-
-pub struct Secp256k1Blake160MultisigAllScriptHandler {
-    cell_deps: Vec<CellDep>,
-}
 
 pub struct Secp256k1Blake160MultisigAllScriptContext {
     multisig_config: MultisigConfig,
@@ -28,17 +24,39 @@ impl Secp256k1Blake160MultisigAllScriptContext {
     }
 }
 
+pub struct Secp256k1Blake160MultisigAllScriptHandler {
+    multisig_script: MultisigScript,
+    cell_deps: Vec<CellDep>,
+}
+
 impl Secp256k1Blake160MultisigAllScriptHandler {
     pub fn is_match(&self, script: &Script) -> bool {
-        script.code_hash() == constants::MULTISIG_TYPE_HASH.pack()
+        let multisig_script_id = self.multisig_script.script_id();
+        script.code_hash() == multisig_script_id.code_hash.pack()
+            && script.hash_type() == multisig_script_id.hash_type.into()
     }
-    pub fn new_with_network(network: &NetworkInfo) -> Result<Self, TxBuilderError> {
-        let mut ret = Self { cell_deps: vec![] };
+
+    pub fn new(
+        network: &NetworkInfo,
+        multisig_script: MultisigScript,
+    ) -> Result<Self, TxBuilderError> {
+        let mut ret = Self {
+            multisig_script,
+            cell_deps: vec![],
+        };
         ret.init(network)?;
         Ok(ret)
     }
-    pub fn new_with_customize(cell_deps: Vec<CellDep>) -> Self {
-        Self { cell_deps }
+
+    pub fn new_with_network(network: &NetworkInfo) -> Result<Self, TxBuilderError> {
+        Self::new(network, MultisigScript::Legacy)
+    }
+
+    pub fn new_with_customize(multisig_script: MultisigScript, cell_deps: Vec<CellDep>) -> Self {
+        Self {
+            multisig_script,
+            cell_deps,
+        }
     }
 }
 
@@ -66,22 +84,19 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
         }
     }
 
+    #[allow(clippy::if_same_then_else)]
     fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError> {
         let out_point = if network.network_type == NetworkType::Mainnet {
+            let dep_group = self.multisig_script.dep_group(network.network_type);
             OutPoint::new_builder()
-                .tx_hash(
-                    h256!("0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c")
-                        .pack(),
-                )
-                .index(1u32.pack())
+                .tx_hash(dep_group.0.pack())
+                .index(dep_group.1.pack())
                 .build()
         } else if network.network_type == NetworkType::Testnet {
+            let dep_group = self.multisig_script.dep_group(network.network_type);
             OutPoint::new_builder()
-                .tx_hash(
-                    h256!("0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37")
-                        .pack(),
-                )
-                .index(1u32.pack())
+                .tx_hash(dep_group.0.pack())
+                .index(dep_group.1.pack())
                 .build()
         } else if network.network_type == NetworkType::Preview {
             OutPoint::new_builder()
