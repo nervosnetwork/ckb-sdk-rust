@@ -1,25 +1,26 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, convert::TryFrom};
 
 use anyhow::anyhow;
 use ckb_hash::{blake2b_256, new_blake2b};
+use ckb_jsonrpc_types::ScriptHashType;
 use ckb_types::{
     bytes::{Bytes, BytesMut},
-    core::{ScriptHashType, TransactionView},
+    core::TransactionView,
     error::VerificationError,
     packed::{self, BytesOpt, Script, WitnessArgs},
     prelude::*,
-    H160,
+    H160, H256,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{constants::MULTISIG_TYPE_HASH, types::omni_lock::OmniLockWitnessLock};
+use crate::{constants::MultisigScript, types::omni_lock::OmniLockWitnessLock};
 use crate::{
     traits::{Signer, SignerError},
     util::convert_keccak256_hash,
 };
 use crate::{
-    types::{AddressPayload, CodeHashIndex, ScriptGroup, Since},
+    types::{AddressPayload, ScriptGroup, Since},
     Address, NetworkType,
 };
 
@@ -139,12 +140,15 @@ impl ScriptSigner for SecpSighashScriptSigner {
 
 #[derive(Eq, PartialEq, Clone, Hash, Serialize, Deserialize, Debug)]
 pub struct MultisigConfig {
+    lock_code_hash: H256,
+    lock_hash_type: ScriptHashType,
     sighash_addresses: Vec<H160>,
     require_first_n: u8,
     threshold: u8,
 }
 impl MultisigConfig {
     pub fn new_with(
+        multisig_script: MultisigScript,
         sighash_addresses: Vec<H160>,
         require_first_n: u8,
         threshold: u8,
@@ -171,7 +175,10 @@ impl MultisigConfig {
                 require_first_n, threshold
             )));
         }
+        let multisig_script_id = multisig_script.script_id();
         Ok(MultisigConfig {
+            lock_code_hash: multisig_script_id.code_hash,
+            lock_hash_type: multisig_script_id.hash_type.into(),
             sighash_addresses,
             require_first_n,
             threshold,
@@ -186,6 +193,12 @@ impl MultisigConfig {
     pub fn sighash_addresses(&self) -> &Vec<H160> {
         &self.sighash_addresses
     }
+    pub fn lock_code_hash(&self) -> H256 {
+        self.lock_code_hash.clone()
+    }
+    pub fn lock_hash_type(&self) -> ScriptHashType {
+        self.lock_hash_type.clone()
+    }
     pub fn require_first_n(&self) -> u8 {
         self.require_first_n
     }
@@ -199,20 +212,23 @@ impl MultisigConfig {
         H160::from_slice(&params_hash[0..20]).unwrap()
     }
 
-    pub fn to_address_payload(&self, since_absolute_epoch: Option<u64>) -> AddressPayload {
+    pub fn to_address_payload(
+        &self,
+        multisig_script: MultisigScript,
+        since_absolute_epoch: Option<u64>,
+    ) -> AddressPayload {
         let hash160 = self.hash160();
+
+        let mut args = BytesMut::from(hash160.as_bytes());
         if let Some(absolute_epoch_number) = since_absolute_epoch {
             let since_value = Since::new_absolute_epoch(absolute_epoch_number).value();
-            let mut args = BytesMut::from(hash160.as_bytes());
             args.extend_from_slice(&since_value.to_le_bytes()[..]);
-            AddressPayload::new_full(
-                ScriptHashType::Type,
-                MULTISIG_TYPE_HASH.pack(),
-                args.freeze(),
-            )
-        } else {
-            AddressPayload::new_short(CodeHashIndex::Multisig, hash160)
         }
+        AddressPayload::new_full(
+            multisig_script.script_id().hash_type,
+            multisig_script.script_id().code_hash.pack(),
+            args.freeze(),
+        )
     }
 
     pub fn to_witness_data(&self) -> Vec<u8> {
@@ -238,17 +254,30 @@ impl MultisigConfig {
             .build()
     }
 
-    pub fn to_address(&self, network: NetworkType, since_absolute_epoch: Option<u64>) -> Address {
-        let payload = self.to_address_payload(since_absolute_epoch);
+    pub fn to_address(
+        &self,
+        network: NetworkType,
+        multisig_script: MultisigScript,
+        since_absolute_epoch: Option<u64>,
+    ) -> Address {
+        let payload = self.to_address_payload(multisig_script, since_absolute_epoch);
         Address::new(network, payload, true)
     }
 }
 
 impl From<&MultisigConfig> for Script {
     fn from(value: &MultisigConfig) -> Self {
+        let multisig_script = MultisigScript::try_from(value.lock_code_hash.clone())
+            .unwrap_or_else(|err| {
+                panic!(
+                    "lock_code_hash {} is not multisig script code hash: {:?}",
+                    value.lock_code_hash, err
+                )
+            })
+            .script_id();
         Script::new_builder()
-            .code_hash(MULTISIG_TYPE_HASH.pack())
-            .hash_type(ScriptHashType::Type.into())
+            .code_hash(multisig_script.code_hash.pack())
+            .hash_type(multisig_script.hash_type.into())
             .args(Bytes::from(value.hash160().as_bytes().to_vec()).pack())
             .build()
     }

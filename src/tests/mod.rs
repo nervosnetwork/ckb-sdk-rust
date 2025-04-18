@@ -1,19 +1,8 @@
 use std::collections::HashMap;
-
-use ckb_dao_utils::pack_dao_data;
-use ckb_hash::blake2b_256;
-use ckb_jsonrpc_types as json_types;
-use ckb_types::{
-    bytes::Bytes,
-    core::{BlockView, Capacity, EpochNumberWithFraction, HeaderBuilder, ScriptHashType},
-    h160, h256,
-    packed::{CellInput, CellOutput, Script, ScriptOpt, WitnessArgs},
-    prelude::*,
-    H160, H256,
-};
+use std::convert::TryFrom;
 
 use crate::constants::{
-    CHEQUE_CELL_SINCE, DAO_TYPE_HASH, MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_TYPE_HASH,
+    MultisigScript, CHEQUE_CELL_SINCE, DAO_TYPE_HASH, ONE_CKB, SIGHASH_TYPE_HASH,
 };
 use crate::traits::SecpCkbRawKeySigner;
 use crate::tx_builder::{
@@ -33,6 +22,17 @@ use crate::unlock::{
 };
 use crate::util::{calculate_dao_maximum_withdraw4, minimal_unlock_point};
 use crate::{ScriptId, Since, SinceType};
+use ckb_dao_utils::pack_dao_data;
+use ckb_hash::blake2b_256;
+use ckb_jsonrpc_types as json_types;
+use ckb_types::{
+    bytes::Bytes,
+    core::{BlockView, Capacity, EpochNumberWithFraction, HeaderBuilder, ScriptHashType},
+    h160, h256,
+    packed::{CellInput, CellOutput, Script, ScriptOpt, WitnessArgs},
+    prelude::*,
+    H160, H256,
+};
 
 use crate::test_util::{random_out_point, Context};
 
@@ -72,9 +72,18 @@ fn build_sighash_script(args: H160) -> Script {
 }
 
 fn build_multisig_script(cfg: &MultisigConfig) -> Script {
+    let multisig_script = MultisigScript::try_from(cfg.lock_code_hash())
+        .unwrap_or_else(|err| {
+            panic!(
+                "Failed to get multisig script from {}: {:?}",
+                cfg.lock_code_hash(),
+                err
+            )
+        })
+        .script_id();
     Script::new_builder()
-        .code_hash(MULTISIG_TYPE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .code_hash(multisig_script.code_hash.pack())
+        .hash_type(multisig_script.hash_type.into())
         .args(Bytes::from(cfg.hash160().0.to_vec()).pack())
         .build()
 }
@@ -104,8 +113,17 @@ fn build_multisig_unlockers(
     config: MultisigConfig,
 ) -> HashMap<ScriptId, Box<dyn ScriptUnlocker>> {
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![key]);
-    let multisig_unlocker = SecpMultisigUnlocker::from((Box::new(signer) as Box<_>, config));
-    let multisig_script_id = ScriptId::new_type(MULTISIG_TYPE_HASH.clone());
+    let multisig_unlocker =
+        SecpMultisigUnlocker::from((Box::new(signer) as Box<_>, config.clone()));
+    let multisig_script_id = MultisigScript::try_from(config.lock_code_hash())
+        .unwrap_or_else(|err| {
+            panic!(
+                "Failed to get multisig script from {}:{:?}",
+                config.lock_code_hash(),
+                err
+            )
+        })
+        .script_id();
     let mut unlockers = HashMap::default();
     unlockers.insert(
         multisig_script_id,
@@ -214,13 +232,17 @@ fn test_transfer_from_multisig() {
         ACCOUNT1_ARG.clone(),
         ACCOUNT2_ARG.clone(),
     ];
-    let cfg = MultisigConfig::new_with(lock_args, 0, 2).unwrap();
+    let cfg = MultisigConfig::new_with(MultisigScript::V2, lock_args, 0, 2).unwrap();
 
     let sender = build_multisig_script(&cfg);
     let receiver = build_sighash_script(ACCOUNT2_ARG);
 
+    let multisig_v2 = ckb_system_scripts_v0_6_0::BUNDLED_CELL
+        .get("specs/cells/secp256k1_blake160_multisig_all")
+        .unwrap();
+    let contract: (&[u8], bool) = (&multisig_v2, true);
     let ctx = init_context(
-        Vec::new(),
+        vec![contract],
         vec![
             (sender.clone(), Some(100 * ONE_CKB)),
             (sender.clone(), Some(200 * ONE_CKB)),
