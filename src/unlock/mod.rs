@@ -1,4 +1,6 @@
 pub(crate) mod omni_lock;
+
+#[cfg(feature = "rce")]
 pub mod rc_data;
 mod signer;
 mod unlocker;

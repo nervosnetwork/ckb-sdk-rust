@@ -50,7 +50,7 @@ rand = { version = "0.7.3", optional = true }
 ckb-mock-tx-types = { version = "0.200.0" }
 ckb-chain-spec = "0.200.0"
 
-sparse-merkle-tree = "0.6.1"
+sparse-merkle-tree = { version = "0.6", optional = true}
 
 [features]
 default = ["default-tls"]
@@ -58,6 +58,7 @@ default-tls = ["reqwest/default-tls"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
 rustls-tls = ["reqwest/rustls-tls"]
 test = []
+rce = ["sparse-merkle-tree"]
 
 [dev-dependencies]
 clap = { version = "4.4.18", features = ["derive"] }
