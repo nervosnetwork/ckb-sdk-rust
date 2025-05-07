@@ -1,8 +1,18 @@
 use std::convert::TryFrom;
 
-use ckb_types::{core::EpochNumberWithFraction, h256, H256};
-
-use crate::{NetworkType, ScriptId};
+use crate::{CkbRpcClient, NetworkInfo, NetworkType, ScriptId};
+use ckb_system_scripts_v0_5_4::{
+    CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL as CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_LEGACY,
+    CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL,
+};
+use ckb_system_scripts_v0_6_0::CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL as CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_V1;
+use ckb_types::{
+    core::EpochNumberWithFraction,
+    h256,
+    packed::{Byte32, CellDep, CellDepVecReader, CellOutput, OutPoint},
+    prelude::*,
+    H256,
+};
 
 pub const PREFIX_MAINNET: &str = "ckb";
 pub const PREFIX_TESTNET: &str = "ckt";
@@ -23,10 +33,10 @@ pub const REMAIN_FLAGS_BITS: u64 = 0x1f00_0000_0000_0000;
 
 // Special cells in genesis transactions: (transaction-index, output-index)
 pub const SIGHASH_OUTPUT_LOC: (usize, usize) = (0, 1);
-pub const MULTISIG_OUTPUT_LOC: (usize, usize) = (0, 4);
+pub const MULTISIG_LEGACY_OUTPUT_LOC: (usize, usize) = (0, 4);
 pub const DAO_OUTPUT_LOC: (usize, usize) = (0, 2);
 pub const SIGHASH_GROUP_OUTPUT_LOC: (usize, usize) = (1, 0);
-pub const MULTISIG_GROUP_OUTPUT_LOC: (usize, usize) = (1, 1);
+pub const MULTISIG_LEGACY_GROUP_OUTPUT_LOC: (usize, usize) = (1, 1);
 
 pub const ONE_CKB: u64 = 100_000_000;
 pub const MIN_SECP_CELL_CAPACITY: u64 = 61 * ONE_CKB;
@@ -45,6 +55,20 @@ pub const GENESIS_BLOCK_HASH_MAINNET: H256 =
 
 pub const GENESIS_BLOCK_HASH_TESTNET: H256 =
     h256!("0x10639e0895502b5688a6be8cf69460d76541bfa4821629d86d62ba0aae3f9606");
+
+pub const DAO_TYPE_HASH: H256 =
+    h256!("0x82d76d1b75fe2fd9a27dfbaa65a039221a380d76c926f378d3f81cf3e7e13f2e");
+
+/// anyone can pay script mainnet code hash, see:
+/// <https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0026-anyone-can-pay/0026-anyone-can-pay.md#notes>
+pub const ACP_TYPE_HASH_LINA: H256 =
+    h256!("0xd369597ff47f29fbc0d47d2e3775370d1250b85140c670e4718af712983a2354");
+/// anyone can pay script testnet code hash
+pub const ACP_TYPE_HASH_AGGRON: H256 =
+    h256!("0x3419a1c09eb2567f6552ee7a8ecffd64155cffe0f1796e6e61ec088d740c1356");
+
+/// cheque withdraw since value
+pub const CHEQUE_CELL_SINCE: u64 = 0xA000000000000006;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MultisigScript {
@@ -69,39 +93,109 @@ impl MultisigScript {
         }
     }
 
-    pub const fn dep_group(&self, network: NetworkType) -> (H256, u32) {
-        match self {
-            MultisigScript::Legacy => match network {
-                NetworkType::Mainnet => (
+    pub fn dep_group(&self, network: NetworkInfo) -> Option<(H256, u32)> {
+        match network.network_type {
+            NetworkType::Mainnet => Some(match self {
+                MultisigScript::Legacy => (
                     h256!("0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c"),
                     1,
                 ),
-                NetworkType::Testnet => (
-                    h256!("0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37"),
-                    1,
-                ),
-                NetworkType::Staging => todo!(),
-                NetworkType::Preview => todo!(),
-                NetworkType::Dev => todo!(),
-            },
-            MultisigScript::V1 => match network {
-                // https://github.com/nervosnetwork/ckb-system-scripts/pull/99#issuecomment-2814285588
-                NetworkType::Mainnet => (
+                MultisigScript::V1 => (
                     h256!("0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738"),
                     0,
                 ),
-                // https://github.com/nervosnetwork/ckb-system-scripts/pull/99#issuecomment-2757175017
-                NetworkType::Testnet => (
+            }),
+            NetworkType::Testnet => Some(match self {
+                MultisigScript::Legacy => (
+                    h256!("0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37"),
+                    1,
+                ),
+                MultisigScript::V1 => (
                     h256!("0x2eefdeb21f3a3edf697c28a52601b4419806ed60bb427420455cc29a090b26d5"),
                     0,
                 ),
-                NetworkType::Staging => todo!(),
-                NetworkType::Preview => todo!(),
-                NetworkType::Dev => todo!(),
-            },
+            }),
+            NetworkType::Staging | NetworkType::Preview | NetworkType::Dev => {
+                let client = CkbRpcClient::new(network.url.as_str());
+                let json_genesis_block = client.get_block_by_number(0_u64.into()).ok()??;
+                let genesis_block: ckb_types::core::BlockView = json_genesis_block.into();
+                let sighash_dep = find_cell_match_data_hash(
+                    &genesis_block,
+                    CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL.pack(),
+                )
+                .map(|(tx_hash, index)| {
+                    CellDep::new_builder()
+                        .out_point(OutPoint::new(tx_hash, index))
+                        .build()
+                })?;
+
+                let target_data_hash = match self {
+                    MultisigScript::Legacy => {
+                        CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_LEGACY.pack()
+                    }
+                    MultisigScript::V1 => CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_V1.pack(),
+                };
+                let multisig_dep = find_cell_match_data_hash(&genesis_block, target_data_hash)?;
+
+                let multisig_cell_dep = CellDep::new_builder()
+                    .out_point(OutPoint::new(multisig_dep.0, multisig_dep.1))
+                    .build();
+
+                let (dep_hash, dep_index) = find_cell_match_data_hash_find_dep(
+                    &genesis_block,
+                    sighash_dep,
+                    multisig_cell_dep,
+                )?;
+
+                let dep_hash: H256 = dep_hash.unpack();
+                Some((dep_hash, dep_index))
+            }
         }
     }
 }
+
+fn find_cell_match_data_hash(
+    genesis_block: &ckb_types::core::BlockView,
+    target_data_hash: Byte32,
+) -> Option<(Byte32, u32)> {
+    genesis_block.transactions().iter().find_map(|tx| {
+        let multisig_legacy_cell_index =
+            tx.outputs_with_data_iter()
+                .enumerate()
+                .find_map(|(index, (_output, data))| {
+                    let data_hash = CellOutput::calc_data_hash(&data);
+                    data_hash.eq(&target_data_hash).then_some(index)
+                });
+        multisig_legacy_cell_index.map(|cell_index| (tx.hash(), cell_index as u32))
+    })
+}
+
+fn find_cell_match_data_hash_find_dep(
+    genesis_block: &ckb_types::core::BlockView,
+    sighash_dep: CellDep,
+    multisig_dep: CellDep,
+) -> Option<(ckb_types::packed::Byte32, u32)> {
+    genesis_block.transactions().iter().find_map(|tx| {
+        let multisig_cell_index: Option<u32> =
+            tx.outputs_with_data_iter()
+                .enumerate()
+                .find_map(|(index, (_output, data))| {
+                    let cell_dep_vec = CellDepVecReader::from_slice(&data)
+                        .map(|reader| reader.to_entity())
+                        .ok()?;
+                    let contains_sighash_dep = cell_dep_vec
+                        .clone()
+                        .into_iter()
+                        .any(|dep| dep.eq(&sighash_dep));
+                    let contains_multisig_dep =
+                        cell_dep_vec.into_iter().any(|dep| dep.eq(&multisig_dep));
+                    (contains_sighash_dep && contains_multisig_dep).then_some(index as u32)
+                });
+
+        multisig_cell_index.map(|cell_index| (tx.hash(), cell_index))
+    })
+}
+
 impl TryFrom<H256> for MultisigScript {
     type Error = ();
 
@@ -116,27 +210,12 @@ impl TryFrom<H256> for MultisigScript {
     }
 }
 
-pub const DAO_TYPE_HASH: H256 =
-    h256!("0x82d76d1b75fe2fd9a27dfbaa65a039221a380d76c926f378d3f81cf3e7e13f2e");
-
-/// anyone can pay script mainnet code hash, see:
-/// <https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0026-anyone-can-pay/0026-anyone-can-pay.md#notes>
-pub const ACP_TYPE_HASH_LINA: H256 =
-    h256!("0xd369597ff47f29fbc0d47d2e3775370d1250b85140c670e4718af712983a2354");
-/// anyone can pay script testnet code hash
-pub const ACP_TYPE_HASH_AGGRON: H256 =
-    h256!("0x3419a1c09eb2567f6552ee7a8ecffd64155cffe0f1796e6e61ec088d740c1356");
-
-/// cheque withdraw since value
-pub const CHEQUE_CELL_SINCE: u64 = 0xA000000000000006;
-
 #[cfg(test)]
 mod test {
     use super::*;
     use ckb_types::{
         core::Capacity,
         packed::{CellOutput, Script},
-        prelude::*,
         H160,
     };
 
@@ -154,5 +233,12 @@ mod test {
             .as_u64();
 
         assert_eq!(min_secp_cell_capacity, MIN_SECP_CELL_CAPACITY);
+    }
+
+    #[test]
+    fn test_multisig_deps() {
+        let mainnet = NetworkInfo::mainnet();
+        let mainnet_dep_group = MultisigScript::Legacy.dep_group(mainnet);
+        assert!(mainnet_dep_group.is_some());
     }
 }

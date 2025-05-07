@@ -11,6 +11,7 @@ use crate::{
 };
 
 use super::{HandlerContext, ScriptHandler};
+use anyhow::anyhow;
 
 pub struct Secp256k1Blake160MultisigAllScriptContext {
     multisig_config: MultisigConfig,
@@ -86,29 +87,42 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
 
     #[allow(clippy::if_same_then_else)]
     fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError> {
-        let out_point = if network.network_type == NetworkType::Mainnet {
-            let dep_group = self.multisig_script.dep_group(network.network_type);
-            OutPoint::new_builder()
-                .tx_hash(dep_group.0.pack())
-                .index(dep_group.1.pack())
-                .build()
-        } else if network.network_type == NetworkType::Testnet {
-            let dep_group = self.multisig_script.dep_group(network.network_type);
-            OutPoint::new_builder()
-                .tx_hash(dep_group.0.pack())
-                .index(dep_group.1.pack())
-                .build()
-        } else if network.network_type == NetworkType::Preview {
-            OutPoint::new_builder()
-                .tx_hash(
-                    h256!("0x0fab65924f2784f17ad7f86d6aef4b04ca1ca237102a68961594acebc5c77816")
-                        .pack(),
-                )
-                .index(1u32.pack())
-                .build()
-        } else {
-            return Err(TxBuilderError::UnsupportedNetworkType(network.network_type));
-        };
+        let out_point =
+            if network.network_type == NetworkType::Mainnet {
+                let dep_group = self.multisig_script.dep_group(network.to_owned()).ok_or(
+                    TxBuilderError::Other(anyhow!("not found multisig dep on mainnet")),
+                )?;
+                OutPoint::new_builder()
+                    .tx_hash(dep_group.0.pack())
+                    .index(dep_group.1.pack())
+                    .build()
+            } else if network.network_type == NetworkType::Testnet {
+                let dep_group = self.multisig_script.dep_group(network.to_owned()).ok_or(
+                    TxBuilderError::Other(anyhow!("not found multisig dep on testnet")),
+                )?;
+                OutPoint::new_builder()
+                    .tx_hash(dep_group.0.pack())
+                    .index(dep_group.1.pack())
+                    .build()
+            } else if network.network_type == NetworkType::Preview {
+                OutPoint::new_builder()
+                    .tx_hash(
+                        h256!("0x0fab65924f2784f17ad7f86d6aef4b04ca1ca237102a68961594acebc5c77816")
+                            .pack(),
+                    )
+                    .index(1u32.pack())
+                    .build()
+            } else if network.network_type == NetworkType::Dev {
+                let dep_group = self.multisig_script.dep_group(network.to_owned()).ok_or(
+                    TxBuilderError::Other(anyhow!("not found multisig dep on devnet")),
+                )?;
+                OutPoint::new_builder()
+                    .tx_hash(dep_group.0.pack())
+                    .index(dep_group.1.pack())
+                    .build()
+            } else {
+                return Err(TxBuilderError::UnsupportedNetworkType(network.network_type));
+            };
 
         let cell_dep = CellDep::new_builder()
             .out_point(out_point)

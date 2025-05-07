@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use crate::{
     constants::{
-        MultisigScript, MULTISIG_GROUP_OUTPUT_LOC, ONE_CKB, SIGHASH_GROUP_OUTPUT_LOC,
+        MultisigScript, MULTISIG_LEGACY_GROUP_OUTPUT_LOC, ONE_CKB, SIGHASH_GROUP_OUTPUT_LOC,
         SIGHASH_TYPE_HASH,
     },
     traits::{
@@ -96,7 +96,7 @@ impl Context {
                     .unwrap()
                     .clone()
                     .0,
-                MULTISIG_GROUP_OUTPUT_LOC,
+                MULTISIG_LEGACY_GROUP_OUTPUT_LOC,
             ),
         ] {
             let tx = block.transaction(tx_idx).expect("get tx");
