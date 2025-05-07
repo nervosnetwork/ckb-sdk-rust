@@ -3,13 +3,13 @@ use std::convert::TryFrom;
 use crate::{CkbRpcClient, NetworkInfo, NetworkType, ScriptId};
 use ckb_system_scripts_v0_5_4::{
     CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL as CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_LEGACY,
-    CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL,
+    CODE_HASH_SECP256K1_DATA,
 };
 use ckb_system_scripts_v0_6_0::CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL as CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_V1;
 use ckb_types::{
     core::EpochNumberWithFraction,
     h256,
-    packed::{Byte32, CellDep, CellDepVecReader, CellOutput, OutPoint},
+    packed::{Byte32, CellOutput, OutPoint, OutPointVecReader},
     prelude::*,
     H256,
 };
@@ -93,7 +93,41 @@ impl MultisigScript {
         }
     }
 
+    fn dep_group_from_env(&self, _network: NetworkInfo) -> Option<(H256, u32)> {
+        let env_dep_group = match self {
+            MultisigScript::Legacy => std::env::var("MULTISIG_LEGACY_DEP_GROUP"),
+            MultisigScript::V1 => std::env::var("MULTISIG_V1_DEP_GROUP"),
+        }
+        .ok()?;
+
+        let vars = env_dep_group.split(",").collect::<Vec<_>>();
+        match (vars.first(), vars.get(1)) {
+            (Some(hash), Some(index)) => {
+                let index_u32: u32 = index.parse().ok()?;
+
+                if !hash.starts_with("0x") {
+                    return None;
+                }
+                let hash_bytes = hex::decode(&hash[2..]).ok()?;
+
+                let hash = H256::from_slice(&hash_bytes).ok()?;
+                Some((hash, index_u32))
+            }
+            _ => None,
+        }
+    }
+
+    /// Get dep group from env first:
+    /// 1. MULTISIG_LEGACY_DEP_GROUP=0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c,1
+    /// 2. MULTISIG_V1_DEP_GROUP=0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738,2
+    ///
+    /// If env not set, then get it from dep_group_inner
     pub fn dep_group(&self, network: NetworkInfo) -> Option<(H256, u32)> {
+        self.dep_group_from_env(network.clone())
+            .or(self.dep_group_inner(network))
+    }
+
+    pub fn dep_group_inner(&self, network: NetworkInfo) -> Option<(H256, u32)> {
         match network.network_type {
             NetworkType::Mainnet => Some(match self {
                 MultisigScript::Legacy => (
@@ -119,15 +153,9 @@ impl MultisigScript {
                 let client = CkbRpcClient::new(network.url.as_str());
                 let json_genesis_block = client.get_block_by_number(0_u64.into()).ok()??;
                 let genesis_block: ckb_types::core::BlockView = json_genesis_block.into();
-                let sighash_dep = find_cell_match_data_hash(
-                    &genesis_block,
-                    CODE_HASH_SECP256K1_BLAKE160_SIGHASH_ALL.pack(),
-                )
-                .map(|(tx_hash, index)| {
-                    CellDep::new_builder()
-                        .out_point(OutPoint::new(tx_hash, index))
-                        .build()
-                })?;
+
+                let secp256k1_data_outpoint =
+                    find_cell_match_data_hash(&genesis_block, CODE_HASH_SECP256K1_DATA.pack())?;
 
                 let target_data_hash = match self {
                     MultisigScript::Legacy => {
@@ -135,16 +163,12 @@ impl MultisigScript {
                     }
                     MultisigScript::V1 => CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_V1.pack(),
                 };
-                let multisig_dep = find_cell_match_data_hash(&genesis_block, target_data_hash)?;
-
-                let multisig_cell_dep = CellDep::new_builder()
-                    .out_point(OutPoint::new(multisig_dep.0, multisig_dep.1))
-                    .build();
+                let multisig_outpoint =
+                    find_cell_match_data_hash(&genesis_block, target_data_hash)?;
 
                 let (dep_hash, dep_index) = find_cell_match_data_hash_find_dep(
                     &genesis_block,
-                    sighash_dep,
-                    multisig_cell_dep,
+                    vec![secp256k1_data_outpoint, multisig_outpoint],
                 )?;
 
                 let dep_hash: H256 = dep_hash.unpack();
@@ -157,7 +181,7 @@ impl MultisigScript {
 fn find_cell_match_data_hash(
     genesis_block: &ckb_types::core::BlockView,
     target_data_hash: Byte32,
-) -> Option<(Byte32, u32)> {
+) -> Option<OutPoint> {
     genesis_block.transactions().iter().find_map(|tx| {
         let multisig_legacy_cell_index =
             tx.outputs_with_data_iter()
@@ -166,30 +190,36 @@ fn find_cell_match_data_hash(
                     let data_hash = CellOutput::calc_data_hash(&data);
                     data_hash.eq(&target_data_hash).then_some(index)
                 });
-        multisig_legacy_cell_index.map(|cell_index| (tx.hash(), cell_index as u32))
+        multisig_legacy_cell_index.map(|cell_index| OutPoint::new(tx.hash(), cell_index as u32))
     })
 }
 
 fn find_cell_match_data_hash_find_dep(
     genesis_block: &ckb_types::core::BlockView,
-    sighash_dep: CellDep,
-    multisig_dep: CellDep,
+    target_points: Vec<OutPoint>,
 ) -> Option<(ckb_types::packed::Byte32, u32)> {
     genesis_block.transactions().iter().find_map(|tx| {
         let multisig_cell_index: Option<u32> =
             tx.outputs_with_data_iter()
                 .enumerate()
                 .find_map(|(index, (_output, data))| {
-                    let cell_dep_vec = CellDepVecReader::from_slice(&data)
+                    let he = hex_string(&data);
+                    if he.len() > 200 {
+                        return None;
+                    }
+                    let outpoint_vec = OutPointVecReader::from_slice(&data)
                         .map(|reader| reader.to_entity())
                         .ok()?;
-                    let contains_sighash_dep = cell_dep_vec
-                        .clone()
-                        .into_iter()
-                        .any(|dep| dep.eq(&sighash_dep));
-                    let contains_multisig_dep =
-                        cell_dep_vec.into_iter().any(|dep| dep.eq(&multisig_dep));
-                    (contains_sighash_dep && contains_multisig_dep).then_some(index as u32)
+
+                    target_points
+                        .iter()
+                        .all(|target_point| {
+                            outpoint_vec
+                                .clone()
+                                .into_iter()
+                                .any(|outpoint| outpoint.eq(target_point))
+                        })
+                        .then_some(index as u32)
                 });
 
         multisig_cell_index.map(|cell_index| (tx.hash(), cell_index))
@@ -237,8 +267,36 @@ mod test {
 
     #[test]
     fn test_multisig_deps() {
+        assert_ne!(
+            CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_LEGACY,
+            CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_V1
+        );
+
         let mainnet = NetworkInfo::mainnet();
-        let mainnet_dep_group = MultisigScript::Legacy.dep_group(mainnet);
-        assert!(mainnet_dep_group.is_some());
+        assert!(MultisigScript::Legacy.dep_group(mainnet.clone()).is_some());
+        assert!(MultisigScript::V1.dep_group(mainnet).is_some());
+
+        let testnet = NetworkInfo::testnet();
+        assert!(MultisigScript::Legacy.dep_group(testnet.clone()).is_some());
+        assert!(MultisigScript::V1.dep_group(testnet).is_some());
+
+        // TODO: start ckb devchain in this unit test
+        // let devnet = NetworkInfo::devnet();
+        // assert!(MultisigScript::Legacy.dep_group(devnet.clone()).is_some());
+
+        // TODO, let ckb devnet deploy multisig_v1 on genesis block
+        // assert!(MultisigScript::V1.dep_group(devnet).is_some());
+    }
+
+    #[test]
+    fn test_dep_group_from_env() {
+        let legacy = MultisigScript::Legacy;
+        std::env::set_var(
+            "MULTISIG_LEGACY_DEP_GROUP",
+            "0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c,10000",
+        );
+        let dep_group = legacy.dep_group_from_env(NetworkInfo::devnet());
+        assert!(dep_group.is_some());
+        assert_eq!(dep_group.unwrap().1, 10000)
     }
 }

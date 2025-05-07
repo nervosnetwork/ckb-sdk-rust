@@ -22,13 +22,12 @@ use super::{
     offchain_impls::CollectResult, OffchainCellCollector, OffchainCellDepResolver,
     OffchainTransactionDependencyProvider,
 };
-use crate::util::{get_max_mature_number_async, serialize_signature, zeroize_privkey};
-use crate::{
-    constants::MultisigScript,
-    rpc::ckb_indexer::{Order, SearchKey, Tip},
-};
 use crate::{constants::MULTISIG_LEGACY_GROUP_OUTPUT_LOC, types::ScriptId};
 use crate::{constants::MULTISIG_LEGACY_OUTPUT_LOC, SECP256K1};
+use crate::{
+    constants::{MultisigScript, GENESIS_BLOCK_HASH_MAINNET, GENESIS_BLOCK_HASH_TESTNET},
+    rpc::ckb_indexer::{Order, SearchKey, Tip},
+};
 use crate::{
     constants::{
         DAO_OUTPUT_LOC, DAO_TYPE_HASH, SIGHASH_GROUP_OUTPUT_LOC, SIGHASH_OUTPUT_LOC,
@@ -43,6 +42,10 @@ use crate::{
         LiveCell, QueryOrder, Signer, SignerError, TransactionDependencyError,
         TransactionDependencyProvider,
     },
+};
+use crate::{
+    util::{get_max_mature_number_async, serialize_signature, zeroize_privkey},
+    NetworkInfo,
 };
 use ckb_resource::{
     CODE_HASH_DAO, CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
@@ -66,6 +69,9 @@ pub struct DefaultCellDepResolver {
     offchain: OffchainCellDepResolver,
 }
 impl DefaultCellDepResolver {
+    /// You can customize the multisig script's depgroup by these two env variables, for example:
+    /// 1. MULTISIG_LEGACY_DEP_GROUP=0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c,1
+    /// 2. MULTISIG_V1_DEP_GROUP=0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738,2
     pub fn from_genesis(
         genesis_block: &BlockView,
     ) -> Result<DefaultCellDepResolver, ParseGenesisInfoError> {
@@ -163,6 +169,33 @@ impl DefaultCellDepResolver {
             ScriptId::new_type(sighash_type_hash.unpack()),
             (sighash_dep, "Secp256k1 blake160 sighash all".to_string()),
         );
+
+        {
+            let network_info: NetworkInfo =
+                if genesis_block.hash().eq(&GENESIS_BLOCK_HASH_MAINNET.pack()) {
+                    NetworkInfo::mainnet()
+                } else if genesis_block.hash().eq(&GENESIS_BLOCK_HASH_TESTNET.pack()) {
+                    NetworkInfo::testnet()
+                } else {
+                    NetworkInfo::devnet()
+                };
+
+            if let Some((v1_dep_hash, v1_dep_index)) = MultisigScript::V1.dep_group(network_info) {
+                let multisig_v1_dep = CellDep::new_builder()
+                    .out_point(OutPoint::new(v1_dep_hash.pack(), v1_dep_index))
+                    .dep_type(DepType::DepGroup.into())
+                    .build();
+
+                items.insert(
+                    MultisigScript::V1.script_id(),
+                    (
+                        multisig_v1_dep,
+                        "Secp256k1 blake160 multisig(v1) all".to_string(),
+                    ),
+                );
+            }
+        }
+
         items.insert(
             MultisigScript::Legacy.script_id(),
             (
