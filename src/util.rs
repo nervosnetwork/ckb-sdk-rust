@@ -9,7 +9,10 @@ use ckb_types::{
 };
 use sha3::{Digest, Keccak256};
 
-use crate::rpc::{CkbRpcAsyncClient, CkbRpcClient};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::rpc::CkbRpcClient;
+
+use crate::rpc::CkbRpcAsyncClient;
 use crate::traits::LiveCell;
 
 use secp256k1::ffi::CPtr;
@@ -28,7 +31,7 @@ pub fn zeroize_slice(data: &mut [u8]) {
         atomic::compiler_fence(atomic::Ordering::SeqCst);
     }
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 pub fn get_max_mature_number(rpc_client: &CkbRpcClient) -> Result<u64, String> {
     crate::rpc::block_on(get_max_mature_number_async(&rpc_client.into()))
 }

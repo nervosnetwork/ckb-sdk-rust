@@ -35,7 +35,7 @@ impl OmniLockTransferBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for OmniLockTransferBuilder {
     async fn build_base_async(
         &self,

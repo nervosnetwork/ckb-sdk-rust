@@ -43,7 +43,7 @@ impl ChequeClaimBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for ChequeClaimBuilder {
     async fn build_base_async(
         &self,
@@ -210,7 +210,7 @@ impl ChequeWithdrawBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for ChequeWithdrawBuilder {
     async fn build_base_async(
         &self,

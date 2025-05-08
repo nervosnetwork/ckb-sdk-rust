@@ -42,7 +42,7 @@ impl LightClientHeaderDepResolver {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl HeaderDepResolver for LightClientHeaderDepResolver {
     async fn resolve_by_tx_async(
         &self,
@@ -119,7 +119,7 @@ impl LightClientTransactionDependencyProvider {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TransactionDependencyProvider for LightClientTransactionDependencyProvider {
     async fn get_transaction_async(
         &self,
@@ -270,7 +270,7 @@ impl LightClientCellCollector {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl CellCollector for LightClientCellCollector {
     async fn collect_live_cells_async(
         &mut self,

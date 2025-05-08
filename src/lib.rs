@@ -16,7 +16,9 @@ pub mod test_util;
 #[cfg(test)]
 mod tests;
 
-pub use rpc::{CkbRpcAsyncClient, CkbRpcClient, IndexerRpcAsyncClient, IndexerRpcClient, RpcError};
+#[cfg(not(target_arch = "wasm32"))]
+pub use rpc::{CkbRpcAsyncClient, IndexerRpcAsyncClient};
+pub use rpc::{CkbRpcAsyncClient, IndexerRpcAsyncClient, RpcError};
 pub use types::{
     Address, AddressPayload, AddressType, CodeHashIndex, HumanCapacity, NetworkInfo, NetworkType,
     OldAddress, OldAddressFormat, ScriptGroup, ScriptGroupType, ScriptId, Since, SinceType,

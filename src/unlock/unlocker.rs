@@ -48,7 +48,7 @@ pub enum UnlockError {
 ///   * Put extra unlock information into transaction (e.g. SMT proof in omni-lock case)
 ///
 /// See example in `examples/script_unlocker_example.rs`
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 pub trait ScriptUnlocker: Sync + Send {
     fn match_args(&self, args: &[u8]) -> bool;
 
@@ -61,7 +61,7 @@ pub trait ScriptUnlocker: Sync + Send {
     ) -> Result<bool, UnlockError> {
         Ok(false)
     }
-
+    #[cfg(not(target_arch = "wasm32"))]
     fn is_unlocked(
         &self,
         tx: &TransactionView,
@@ -79,7 +79,7 @@ pub trait ScriptUnlocker: Sync + Send {
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError>;
-
+    #[cfg(not(target_arch = "wasm32"))]
     fn unlock(
         &self,
         tx: &TransactionView,
@@ -104,7 +104,7 @@ pub trait ScriptUnlocker: Sync + Send {
         script_group: &ScriptGroup,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, UnlockError>;
-
+    #[cfg(not(target_arch = "wasm32"))]
     fn fill_placeholder_witness(
         &self,
         tx: &TransactionView,
@@ -179,7 +179,7 @@ impl From<Box<dyn Signer>> for SecpSighashUnlocker {
         SecpSighashUnlocker::new(SecpSighashScriptSigner::new(signer))
     }
 }
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl ScriptUnlocker for SecpSighashUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
@@ -217,7 +217,7 @@ impl From<(Box<dyn Signer>, MultisigConfig)> for SecpMultisigUnlocker {
         SecpMultisigUnlocker::new(SecpMultisigScriptSigner::new(signer, config))
     }
 }
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl ScriptUnlocker for SecpMultisigUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         (args.len() == 20 || args.len() == 28) && self.signer.match_args(args)
@@ -434,7 +434,7 @@ async fn acp_is_unlocked(
     Ok(true)
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl ScriptUnlocker for AcpUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
@@ -514,7 +514,7 @@ impl From<(Box<dyn Signer>, ChequeAction)> for ChequeUnlocker {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl ScriptUnlocker for ChequeUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)
@@ -672,7 +672,7 @@ impl From<(Box<dyn Signer>, OmniLockConfig, OmniUnlockMode)> for OmniLockUnlocke
         OmniLockUnlocker::new(OmniLockScriptSigner::new(signer, config, unlock_mode), cfg)
     }
 }
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl ScriptUnlocker for OmniLockUnlocker {
     fn match_args(&self, args: &[u8]) -> bool {
         self.signer.match_args(args)

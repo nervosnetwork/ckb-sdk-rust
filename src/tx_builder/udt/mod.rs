@@ -78,7 +78,7 @@ impl UdtTargetReceiver {
             extra_data: None,
         }
     }
-
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn build(
         &self,
         type_script: &Script,
@@ -201,7 +201,7 @@ pub struct UdtIssueBuilder {
     pub receivers: Vec<UdtTargetReceiver>,
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for UdtIssueBuilder {
     async fn build_base_async(
         &self,
@@ -282,7 +282,7 @@ pub struct UdtTransferBuilder {
     pub receivers: Vec<UdtTargetReceiver>,
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for UdtTransferBuilder {
     async fn build_base_async(
         &self,

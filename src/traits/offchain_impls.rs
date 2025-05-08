@@ -37,7 +37,7 @@ pub struct OffchainHeaderDepResolver {
     pub by_number: HashMap<u64, HeaderView>,
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl HeaderDepResolver for OffchainHeaderDepResolver {
     async fn resolve_by_tx_async(
         &self,
@@ -228,7 +228,7 @@ impl OffchainTransactionDependencyProvider {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TransactionDependencyProvider for OffchainTransactionDependencyProvider {
     // For verify certain cell belong to certain transaction
     async fn get_transaction_async(

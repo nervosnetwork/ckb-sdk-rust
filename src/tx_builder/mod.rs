@@ -81,7 +81,7 @@ pub enum TxBuilderError {
 }
 
 /// Transaction Builder interface
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 pub trait TxBuilder: Send + Sync {
     /// Build base transaction
     async fn build_base_async(
@@ -91,7 +91,7 @@ pub trait TxBuilder: Send + Sync {
         header_dep_resolver: &dyn HeaderDepResolver,
         tx_dep_provider: &dyn TransactionDependencyProvider,
     ) -> Result<TransactionView, TxBuilderError>;
-
+    #[cfg(not(target_arch = "wasm32"))]
     /// Build base transaction
     fn build_base(
         &self,
@@ -130,7 +130,7 @@ pub trait TxBuilder: Send + Sync {
             )
             .await?;
         let (tx_filled_witnesses, _) =
-            fill_placeholder_witnesses(base_tx, tx_dep_provider, unlockers)?;
+            fill_placeholder_witnesses_async(base_tx, tx_dep_provider, unlockers).await?;
         Ok(balance_tx_capacity(
             &tx_filled_witnesses,
             balancer,
@@ -140,7 +140,7 @@ pub trait TxBuilder: Send + Sync {
             header_dep_resolver,
         )?)
     }
-
+    #[cfg(not(target_arch = "wasm32"))]
     fn build_balanced(
         &self,
         cell_collector: &mut dyn CellCollector,
@@ -168,6 +168,8 @@ pub trait TxBuilder: Send + Sync {
     /// Return value:
     ///   * The built transaction
     ///   * The script groups that not unlocked by given `unlockers`
+    ///
+    #[cfg(not(target_arch = "wasm32"))]
     fn build_unlocked(
         &self,
         cell_collector: &mut dyn CellCollector,
@@ -188,6 +190,29 @@ pub trait TxBuilder: Send + Sync {
         Ok(unlock_tx(balanced_tx, tx_dep_provider, unlockers)?)
     }
 
+    #[cfg(target_arch = "wasm32")]
+    async fn build_unlocked_async(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        tx_dep_provider: &dyn TransactionDependencyProvider,
+        balancer: &CapacityBalancer,
+        unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+    ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
+        let balanced_tx = self
+            .build_balanced_async(
+                cell_collector,
+                cell_dep_resolver,
+                header_dep_resolver,
+                tx_dep_provider,
+                balancer,
+                unlockers,
+            )
+            .await?;
+        Ok(unlock_tx_async(balanced_tx, tx_dep_provider, unlockers).await?)
+    }
+
     /// Build unlocked transaction that ready to send or for further unlock, it's similar to `build_unlocked`,
     /// except it will try to check the consumed cycles limitation:
     /// If all input unlocked, and transaction fee can not meet the required transaction fee rate because of a big estimated cycles,
@@ -196,6 +221,7 @@ pub trait TxBuilder: Send + Sync {
     /// Return value:
     ///   * The built transaction
     ///   * The script groups that not unlocked by given `unlockers`
+    #[cfg(not(target_arch = "wasm32"))]
     fn build_balance_unlocked(
         &self,
         cell_collector: &mut dyn CellCollector,
@@ -244,6 +270,67 @@ pub trait TxBuilder: Send + Sync {
                 change_idx = new_change_idx;
                 if !ready {
                     let (new_tx, _) = unlock_tx(tx, tx_dep_provider, unlockers)?;
+                    tx = new_tx
+                }
+            }
+            if !ready && n >= MAX_LOOP_TIMES {
+                return Err(TxBuilderError::ExceedCycleMaxLoopTimes(n));
+            }
+        }
+        Ok((tx, unlocked_group))
+    }
+    #[cfg(target_arch = "wasm32")]
+    async fn build_balance_unlocked_async(
+        &self,
+        cell_collector: &mut dyn CellCollector,
+        cell_dep_resolver: &dyn CellDepResolver,
+        header_dep_resolver: &dyn HeaderDepResolver,
+        tx_dep_provider: &'static dyn TransactionDependencyProvider,
+        balancer: &CapacityBalancer,
+        unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+    ) -> Result<(TransactionView, Vec<ScriptGroup>), TxBuilderError> {
+        let base_tx = self
+            .build_base_async(
+                cell_collector,
+                cell_dep_resolver,
+                header_dep_resolver,
+                tx_dep_provider,
+            )
+            .await?;
+        let (tx_filled_witnesses, _) =
+            fill_placeholder_witnesses_async(base_tx, tx_dep_provider, unlockers).await?;
+        let (balanced_tx, mut change_idx) = rebalance_tx_capacity(
+            &tx_filled_witnesses,
+            balancer,
+            cell_collector,
+            tx_dep_provider,
+            cell_dep_resolver,
+            header_dep_resolver,
+            0,
+            None,
+        )?;
+        let (mut tx, unlocked_group) =
+            unlock_tx_async(balanced_tx, tx_dep_provider, unlockers).await?;
+        if unlocked_group.is_empty() {
+            let mut ready = false;
+            const MAX_LOOP_TIMES: u32 = 16;
+            let mut n = 0;
+            while !ready && n < MAX_LOOP_TIMES {
+                n += 1;
+
+                let (new_tx, new_change_idx, ok) = balancer.check_cycle_fee(
+                    tx,
+                    cell_collector,
+                    tx_dep_provider,
+                    cell_dep_resolver,
+                    header_dep_resolver,
+                    change_idx,
+                )?;
+                tx = new_tx;
+                ready = ok;
+                change_idx = new_change_idx;
+                if !ready {
+                    let (new_tx, _) = unlock_tx_async(tx, tx_dep_provider, unlockers).await?;
                     tx = new_tx
                 }
             }
@@ -1050,6 +1137,7 @@ pub fn gen_script_groups(
 /// Return value:
 ///   * The updated transaction
 ///   * The script groups that not matched by given `unlockers`
+#[cfg(not(target_arch = "wasm32"))]
 pub fn fill_placeholder_witnesses(
     balanced_tx: TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,
@@ -1076,11 +1164,49 @@ pub fn fill_placeholder_witnesses(
     Ok((tx, not_matched))
 }
 
+/// Fill placeholder lock script witnesses
+///
+/// Return value:
+///   * The updated transaction
+///   * The script groups that not matched by given `unlockers`
+#[cfg(target_arch = "wasm32")]
+pub async fn fill_placeholder_witnesses_async(
+    balanced_tx: TransactionView,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+    unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+) -> Result<(TransactionView, Vec<ScriptGroup>), UnlockError> {
+    let ScriptGroups { lock_groups, .. } = gen_script_groups(&balanced_tx, tx_dep_provider)?;
+    let mut tx = balanced_tx;
+    let mut not_matched = Vec::new();
+    for script_group in lock_groups.values() {
+        let script_id = ScriptId::from(&script_group.script);
+        let script_args = script_group.script.args().raw_data();
+        if let Some(unlocker) = unlockers.get(&script_id) {
+            if !unlocker
+                .is_unlocked_async(&tx, script_group, tx_dep_provider)
+                .await?
+            {
+                if unlocker.match_args(script_args.as_ref()) {
+                    tx = unlocker
+                        .fill_placeholder_witness_async(&tx, script_group, tx_dep_provider)
+                        .await?;
+                } else {
+                    not_matched.push(script_group.clone());
+                }
+            }
+        } else {
+            not_matched.push(script_group.clone());
+        }
+    }
+    Ok((tx, not_matched))
+}
+
 /// Build unlocked transaction that ready to send or for further unlock.
 ///
 /// Return value:
 ///   * The built transaction
 ///   * The script groups that not unlocked by given `unlockers`
+#[cfg(not(target_arch = "wasm32"))]
 pub fn unlock_tx(
     balanced_tx: TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,
@@ -1097,6 +1223,43 @@ pub fn unlock_tx(
                 tx = unlocker.clear_placeholder_witness(&tx, script_group)?;
             } else if unlocker.match_args(script_args.as_ref()) {
                 tx = unlocker.unlock(&tx, script_group, tx_dep_provider)?;
+            } else {
+                not_unlocked.push(script_group.clone());
+            }
+        } else {
+            not_unlocked.push(script_group.clone());
+        }
+    }
+    Ok((tx, not_unlocked))
+}
+
+/// Build unlocked transaction that ready to send or for further unlock.
+///
+/// Return value:
+///   * The built transaction
+///   * The script groups that not unlocked by given `unlockers`
+#[cfg(target_arch = "wasm32")]
+pub async fn unlock_tx_async(
+    balanced_tx: TransactionView,
+    tx_dep_provider: &dyn TransactionDependencyProvider,
+    unlockers: &HashMap<ScriptId, Box<dyn ScriptUnlocker>>,
+) -> Result<(TransactionView, Vec<ScriptGroup>), UnlockError> {
+    let ScriptGroups { lock_groups, .. } = gen_script_groups(&balanced_tx, tx_dep_provider)?;
+    let mut tx = balanced_tx;
+    let mut not_unlocked = Vec::new();
+    for script_group in lock_groups.values() {
+        let script_id = ScriptId::from(&script_group.script);
+        let script_args = script_group.script.args().raw_data();
+        if let Some(unlocker) = unlockers.get(&script_id) {
+            if unlocker
+                .is_unlocked_async(&tx, script_group, tx_dep_provider)
+                .await?
+            {
+                tx = unlocker.clear_placeholder_witness(&tx, script_group)?;
+            } else if unlocker.match_args(script_args.as_ref()) {
+                tx = unlocker
+                    .unlock_async(&tx, script_group, tx_dep_provider)
+                    .await?;
             } else {
                 not_unlocked.push(script_group.clone());
             }

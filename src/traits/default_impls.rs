@@ -212,7 +212,7 @@ impl DefaultHeaderDepResolver {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl HeaderDepResolver for DefaultHeaderDepResolver {
     async fn resolve_by_tx_async(
         &self,
@@ -277,7 +277,7 @@ impl DefaultCellCollector {
     pub fn set_acceptable_indexer_leftbehind(&mut self, value: u64) {
         self.acceptable_indexer_leftbehind = value;
     }
-
+    #[cfg(not(target_arch = "wasm32"))]
     /// wrapper check_ckb_chain_async future
     pub fn check_ckb_chain(&mut self) -> Result<(), CellCollectorError> {
         crate::rpc::block_on(self.check_ckb_chain_async())
@@ -319,7 +319,7 @@ impl DefaultCellCollector {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl CellCollector for DefaultCellCollector {
     async fn collect_live_cells_async(
         &mut self,
@@ -461,7 +461,7 @@ impl DefaultTransactionDependencyProvider {
             inner: Arc::new(Mutex::new(inner)),
         }
     }
-
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn apply_tx(
         &mut self,
         tx: Transaction,
@@ -479,7 +479,7 @@ impl DefaultTransactionDependencyProvider {
         inner.offchain_cache.apply_tx(tx, tip_block_number)?;
         Ok(())
     }
-
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_cell_with_data(
         &self,
         out_point: &OutPoint,
@@ -517,7 +517,7 @@ impl DefaultTransactionDependencyProvider {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
     async fn get_transaction_async(
         &self,

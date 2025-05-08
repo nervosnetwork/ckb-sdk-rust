@@ -25,7 +25,7 @@ impl CapacityTransferBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for CapacityTransferBuilder {
     async fn build_base_async(
         &self,

@@ -37,7 +37,7 @@ impl AcpTransferBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for AcpTransferBuilder {
     async fn build_base_async(
         &self,

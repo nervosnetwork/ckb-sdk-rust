@@ -188,7 +188,7 @@ pub struct Pagination<T> {
     pub objects: Vec<T>,
     pub last_cursor: JsonBytes,
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 crate::jsonrpc!(pub struct IndexerRpcClient {
     pub fn get_indexer_tip(&self) -> Option<Tip>;
     pub fn get_cells(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Cell>;
@@ -202,7 +202,7 @@ crate::jsonrpc_async!(pub struct IndexerRpcAsyncClient {
     pub fn get_transactions(&self, search_key: SearchKey, order: Order, limit: Uint32, after: Option<JsonBytes>) -> Pagination<Tx>;
     pub fn get_cells_capacity(&self, search_key: SearchKey) -> Option<CellsCapacity>;
 });
-
+#[cfg(not(target_arch = "wasm32"))]
 impl From<&IndexerRpcClient> for IndexerRpcAsyncClient {
     fn from(value: &IndexerRpcClient) -> Self {
         Self {

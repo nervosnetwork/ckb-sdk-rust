@@ -44,7 +44,7 @@ impl DaoDepositBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for DaoDepositBuilder {
     async fn build_base_async(
         &self,
@@ -121,7 +121,7 @@ impl From<Vec<CellInput>> for DaoPrepareBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for DaoPrepareBuilder {
     async fn build_base_async(
         &self,
@@ -242,7 +242,7 @@ impl DaoWithdrawBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TxBuilder for DaoWithdrawBuilder {
     async fn build_base_async(
         &self,

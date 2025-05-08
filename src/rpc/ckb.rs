@@ -13,7 +13,7 @@ use ckb_types::{core::Cycle, H256};
 use super::{ckb_indexer::CellsCapacity, ResponseFormatGetter};
 
 pub use super::ckb_indexer::{Cell, Order, Pagination, SearchKey, Tip, Tx};
-
+#[cfg(not(target_arch = "wasm32"))]
 crate::jsonrpc!(pub struct CkbRpcClient {
     // Chain
     pub fn get_block(&self, hash: H256) -> Option<BlockView>;
@@ -211,7 +211,7 @@ fn transform_cycles(cycles: Option<Vec<ckb_jsonrpc_types::Cycle>>) -> Vec<Cycle>
         .map(|c| c.into_iter().map(Into::into).collect())
         .unwrap_or_default()
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 impl From<&CkbRpcClient> for CkbRpcAsyncClient {
     fn from(value: &CkbRpcClient) -> Self {
         Self {
@@ -220,7 +220,7 @@ impl From<&CkbRpcClient> for CkbRpcAsyncClient {
         }
     }
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 impl CkbRpcClient {
     pub fn get_packed_block(&self, hash: H256) -> Result<Option<JsonBytes>, crate::RpcError> {
         self.post("get_block", (hash, Some(Uint32::from(0u32))))

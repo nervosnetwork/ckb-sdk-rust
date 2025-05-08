@@ -14,7 +14,7 @@ use anyhow::anyhow;
 #[derive(Clone, Default)]
 pub struct DummyCellCollector;
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl CellCollector for DummyCellCollector {
     async fn collect_live_cells_async(
         &mut self,
@@ -48,7 +48,7 @@ impl CellCollector for DummyCellCollector {
 #[derive(Default)]
 pub struct DummyHeaderDepResolver;
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl HeaderDepResolver for DummyHeaderDepResolver {
     async fn resolve_by_tx_async(
         &self,
@@ -68,7 +68,7 @@ impl HeaderDepResolver for DummyHeaderDepResolver {
 #[derive(Default)]
 pub struct DummyTransactionDependencyProvider;
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TransactionDependencyProvider for DummyTransactionDependencyProvider {
     // For verify certain cell belong to certain transaction
     async fn get_transaction_async(

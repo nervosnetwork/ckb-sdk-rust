@@ -391,7 +391,7 @@ impl Context {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl TransactionDependencyProvider for Context {
     // For verify certain cell belong to certain transaction
     async fn get_transaction_async(
@@ -451,7 +451,7 @@ impl TransactionDependencyProvider for Context {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl HeaderDepResolver for Context {
     async fn resolve_by_tx_async(
         &self,
@@ -520,7 +520,7 @@ impl CellDepResolver for Context {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl CellCollector for LiveCellsContext {
     async fn collect_live_cells_async(
         &mut self,
