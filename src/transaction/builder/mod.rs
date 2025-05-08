@@ -71,7 +71,7 @@ impl<'a> DefaultChangeBuilder<'a> {
     }
 }
 
-impl<'a> ChangeBuilder for DefaultChangeBuilder<'a> {
+impl ChangeBuilder for DefaultChangeBuilder<'_> {
     fn init(&self, tx: &mut TransactionBuilder) {
         let (change_output, change_output_data) = self.get_change();
         tx.output(change_output);
