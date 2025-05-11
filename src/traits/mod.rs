@@ -118,26 +118,31 @@ pub trait TransactionDependencyProvider: Sync + Send {
         block_hash: &Byte32,
     ) -> Result<Option<ckb_types::packed::Bytes>, TransactionDependencyError>;
     /// For verify certain cell belong to certain transaction
+    #[cfg(not(target_arch = "wasm32"))]
     fn get_transaction(
         &self,
         tx_hash: &Byte32,
     ) -> Result<TransactionView, TransactionDependencyError> {
         crate::rpc::block_on(self.get_transaction_async(tx_hash))
     }
+    #[cfg(not(target_arch = "wasm32"))]
     /// For get the output information of inputs or cell_deps, those cell should be live cell
     fn get_cell(&self, out_point: &OutPoint) -> Result<CellOutput, TransactionDependencyError> {
         crate::rpc::block_on(self.get_cell_async(out_point))
     }
+    #[cfg(not(target_arch = "wasm32"))]
     /// For get the output data information of inputs or cell_deps
     fn get_cell_data(&self, out_point: &OutPoint) -> Result<Bytes, TransactionDependencyError> {
         crate::rpc::block_on(self.get_cell_data_async(out_point))
     }
+    #[cfg(not(target_arch = "wasm32"))]
     /// For get the header information of header_deps
     fn get_header(&self, block_hash: &Byte32) -> Result<HeaderView, TransactionDependencyError> {
         crate::rpc::block_on(self.get_header_async(block_hash))
     }
 
     /// For get_block_extension
+    #[cfg(not(target_arch = "wasm32"))]
     fn get_block_extension(
         &self,
         block_hash: &Byte32,
@@ -146,6 +151,7 @@ pub trait TransactionDependencyProvider: Sync + Send {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 // Implement CellDataProvider trait is currently for `DaoCalculator`
 impl CellDataProvider for &dyn TransactionDependencyProvider {
     fn get_cell_data(&self, out_point: &OutPoint) -> Option<Bytes> {
@@ -157,13 +163,14 @@ impl CellDataProvider for &dyn TransactionDependencyProvider {
             .map(|data| blake2b_256(data.as_ref()).pack())
     }
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 // Implement CellDataProvider trait is currently for `DaoCalculator`
 impl HeaderProvider for &dyn TransactionDependencyProvider {
     fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
         TransactionDependencyProvider::get_header(*self, hash).ok()
     }
 }
+#[cfg(not(target_arch = "wasm32"))]
 impl HeaderChecker for &dyn TransactionDependencyProvider {
     fn check_valid(&self, block_hash: &Byte32) -> Result<(), OutPointError> {
         TransactionDependencyProvider::get_header(*self, block_hash)
@@ -171,6 +178,7 @@ impl HeaderChecker for &dyn TransactionDependencyProvider {
             .map_err(|_| OutPointError::InvalidHeader(block_hash.clone()))
     }
 }
+#[cfg(not(target_arch = "wasm32"))]
 impl CellProvider for &dyn TransactionDependencyProvider {
     fn cell(&self, out_point: &OutPoint, _eager_load: bool) -> CellStatus {
         match self.get_transaction(&out_point.tx_hash()) {
@@ -194,7 +202,7 @@ impl CellProvider for &dyn TransactionDependencyProvider {
         }
     }
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 impl ExtensionProvider for &dyn TransactionDependencyProvider {
     fn get_block_extension(&self, hash: &Byte32) -> Option<ckb_types::packed::Bytes> {
         match TransactionDependencyProvider::get_block_extension(*self, hash).ok() {
@@ -432,6 +440,7 @@ pub trait CellCollector: DynClone + Send + Sync {
     ) -> Result<(Vec<LiveCell>, u64), CellCollectorError>;
     /// Collect live cells by query options, if `apply_changes` is true will
     /// mark all collected cells as dead cells.
+    #[cfg(not(target_arch = "wasm32"))]
     fn collect_live_cells(
         &mut self,
         query: &CellQueryOptions,
@@ -477,12 +486,12 @@ pub trait HeaderDepResolver: Send + Sync {
         &self,
         number: u64,
     ) -> Result<Option<HeaderView>, anyhow::Error>;
-
+    #[cfg(not(target_arch = "wasm32"))]
     /// Resolve header dep by trancation hash
     fn resolve_by_tx(&self, tx_hash: &Byte32) -> Result<Option<HeaderView>, anyhow::Error> {
         crate::rpc::block_on(self.resolve_by_tx_async(tx_hash))
     }
-
+    #[cfg(not(target_arch = "wasm32"))]
     /// Resolve header dep by block number
     fn resolve_by_number(&self, number: u64) -> Result<Option<HeaderView>, anyhow::Error> {
         crate::rpc::block_on(self.resolve_by_number_async(number))

@@ -12,7 +12,7 @@ use ckb_types::{
     prelude::{Builder, Entity, Pack},
 };
 
-use super::{inner_build, CkbTransactionBuilder, DefaultChangeBuilder};
+use super::{inner_build_async, CkbTransactionBuilder, DefaultChangeBuilder};
 
 /// A simple transaction builder implementation, it will build a transaction with enough capacity to pay for the outputs and the fee.
 pub struct SimpleTransactionBuilder {
@@ -61,7 +61,9 @@ impl SimpleTransactionBuilder {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl CkbTransactionBuilder for SimpleTransactionBuilder {
+    #[cfg(not(target_arch = "wasm32"))]
     fn build(
         self,
         contexts: &HandlerContexts,
@@ -80,5 +82,24 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
         };
 
         inner_build(tx, change_builder, input_iter, &configuration, contexts)
+    }
+    async fn build_async(
+        self,
+        contexts: &HandlerContexts,
+    ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
+        let Self {
+            change_lock,
+            configuration,
+            input_iter,
+            tx,
+        } = self;
+
+        let change_builder = DefaultChangeBuilder {
+            configuration: &configuration,
+            change_lock,
+            inputs: Vec::new(),
+        };
+
+        inner_build_async(tx, change_builder, input_iter, &configuration, contexts).await
     }
 }

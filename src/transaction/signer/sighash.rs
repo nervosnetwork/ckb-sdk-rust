@@ -21,12 +21,38 @@ impl Secp256k1Blake160SighashAllSignerContext {
 
 impl SignContext for Secp256k1Blake160SighashAllSignerContext {}
 
+#[async_trait::async_trait(?Send)]
 impl CKBScriptSigner for Secp256k1Blake160SighashAllSigner {
     fn match_context(&self, context: &dyn SignContext) -> bool {
         context
             .as_any()
             .is::<Secp256k1Blake160SighashAllSignerContext>()
     }
+    async fn sign_transaction_async(
+        &self,
+        tx_view: &core::TransactionView,
+        script_group: &crate::ScriptGroup,
+        context: &dyn super::SignContext,
+    ) -> Result<core::TransactionView, UnlockError> {
+        if let Some(args) = context
+            .as_any()
+            .downcast_ref::<Secp256k1Blake160SighashAllSignerContext>()
+        {
+            let signer = SecpCkbRawKeySigner::new_with_secret_keys(args.keys.clone());
+            let unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
+            let tx = unlocker
+                .unlock_async(
+                    tx_view,
+                    script_group,
+                    &DummyTransactionDependencyProvider {},
+                )
+                .await?;
+            Ok(tx)
+        } else {
+            Err(UnlockError::SignContextTypeIncorrect)
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     fn sign_transaction(
         &self,
         transaction: &core::TransactionView,

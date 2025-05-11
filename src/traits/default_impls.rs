@@ -301,7 +301,10 @@ impl DefaultCellCollector {
                     if tip_number.value()
                         > block_number.value() + self.acceptable_indexer_leftbehind
                     {
+                        #[cfg(not(target_arch = "wasm32"))]
                         tokio::time::sleep(Duration::from_millis(50)).await;
+                        #[cfg(target_arch = "wasm32")]
+                        tokio_with_wasm::time::sleep(Duration::from_millis(50)).await;
                     } else {
                         return Ok(());
                     }
@@ -528,7 +531,7 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
             return Ok(tx.clone());
         }
         let ret: Result<TransactionView, TransactionDependencyError> =
-            inner.offchain_cache.get_transaction(tx_hash);
+            inner.offchain_cache.get_transaction_async(tx_hash).await;
         if ret.is_ok() {
             return ret;
         }
@@ -559,7 +562,7 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
     ) -> Result<CellOutput, TransactionDependencyError> {
         {
             let inner = self.inner.lock().await;
-            let ret = inner.offchain_cache.get_cell(out_point);
+            let ret = inner.offchain_cache.get_cell_async(out_point).await;
             if ret.is_ok() {
                 return ret;
             }
@@ -574,7 +577,7 @@ impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
     ) -> Result<Bytes, TransactionDependencyError> {
         {
             let inner = self.inner.lock().await;
-            let ret = inner.offchain_cache.get_cell_data(out_point);
+            let ret = inner.offchain_cache.get_cell_data_async(out_point).await;
             if ret.is_ok() {
                 return ret;
             }

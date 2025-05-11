@@ -23,7 +23,7 @@ log = "0.4.6"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 secp256k1 = { version = "0.30.0", features = ["recovery"] }
 tokio-util = { version = "0.7.7", features = ["codec"] }
-tokio = { version = "1" }
+tokio = { version = "1", features = ["time"] }
 bytes = "1"
 futures = "0.3"
 jsonrpc-core = "18"
@@ -51,9 +51,12 @@ ckb-mock-tx-types = { version = "0.200.0" }
 ckb-chain-spec = "0.200.0"
 
 sparse-merkle-tree = { version = "0.6", optional = true }
+async-iterator = "2.3.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.16", features = ["js"] }
+web-time = "1.1.0"
+tokio_with_wasm = { version = "0.8.2", features = ["time"] }
 
 [features]
 # default = ["default-tls"]

@@ -34,12 +34,14 @@ impl Secp256k1Blake160MultisigAllSignerContext {
 
 impl SignContext for Secp256k1Blake160MultisigAllSignerContext {}
 
+#[async_trait::async_trait(?Send)]
 impl CKBScriptSigner for Secp256k1Blake160MultisigAllSigner {
     fn match_context(&self, context: &dyn SignContext) -> bool {
         context
             .as_any()
             .is::<Secp256k1Blake160MultisigAllSignerContext>()
     }
+    #[cfg(not(target_arch = "wasm32"))]
     fn sign_transaction(
         &self,
         transaction: &core::TransactionView,
@@ -56,6 +58,27 @@ impl CKBScriptSigner for Secp256k1Blake160MultisigAllSigner {
                 script_group,
                 &DummyTransactionDependencyProvider {},
             )?;
+            Ok(tx)
+        } else {
+            Err(UnlockError::SignContextTypeIncorrect)
+        }
+    }
+    async fn sign_transaction_async(
+        &self,
+        transaction: &core::TransactionView,
+        script_group: &crate::ScriptGroup,
+        context: &dyn super::SignContext,
+    ) -> Result<core::TransactionView, UnlockError> {
+        if let Some(args) = context
+            .as_any()
+            .downcast_ref::<Secp256k1Blake160MultisigAllSignerContext>()
+        {
+            let unlocker = args.build_multisig_unlocker();
+            let tx = unlocker.unlock_async(
+                transaction,
+                script_group,
+                &DummyTransactionDependencyProvider {},
+            ).await?;
             Ok(tx)
         } else {
             Err(UnlockError::SignContextTypeIncorrect)
