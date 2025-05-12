@@ -212,7 +212,8 @@ impl DefaultHeaderDepResolver {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl HeaderDepResolver for DefaultHeaderDepResolver {
     async fn resolve_by_tx_async(
         &self,
@@ -322,7 +323,8 @@ impl DefaultCellCollector {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl CellCollector for DefaultCellCollector {
     async fn collect_live_cells_async(
         &mut self,
@@ -520,7 +522,8 @@ impl DefaultTransactionDependencyProvider {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
     async fn get_transaction_async(
         &self,

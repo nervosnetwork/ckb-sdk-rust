@@ -64,7 +64,7 @@ default = []
 default-tls = ["reqwest/default-tls"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
 rustls-tls = ["reqwest/rustls-tls"]
-test = []
+test = ["rce", "rand","default-tls"]
 rce = ["sparse-merkle-tree"]
 
 [dev-dependencies]

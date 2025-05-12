@@ -13,7 +13,8 @@ use super::handler::Type2Any;
 pub mod multisig;
 pub mod sighash;
 
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+// #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait CKBScriptSigner {
     fn match_context(&self, context: &dyn SignContext) -> bool;
     #[cfg(not(target_arch = "wasm32"))]
@@ -23,6 +24,7 @@ pub trait CKBScriptSigner {
         script_group: &ScriptGroup,
         context: &dyn SignContext,
     ) -> Result<core::TransactionView, UnlockError>;
+    #[cfg(target_arch = "wasm32")]
     async fn sign_transaction_async(
         &self,
         tx_view: &core::TransactionView,
@@ -131,6 +133,7 @@ impl TransactionSigner {
         transaction.set_tx_view(tx);
         Ok(signed_groups_indices)
     }
+    #[cfg(target_arch = "wasm32")]
     pub async fn sign_transaction_async(
         &self,
         transaction: &mut TransactionWithScriptGroups,
@@ -148,7 +151,9 @@ impl TransactionSigner {
                     if !unlocker.match_context(context.as_ref()) {
                         continue;
                     }
-                    tx = unlocker.sign_transaction_async(&tx, script_group, context.as_ref()).await?;
+                    tx = unlocker
+                        .sign_transaction_async(&tx, script_group, context.as_ref())
+                        .await?;
                     signed_groups_indices.push(idx);
                     break;
                 }

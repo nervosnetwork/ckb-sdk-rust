@@ -15,7 +15,7 @@ pub use ckb::CkbRpcAsyncClient;
 pub use ckb_indexer::IndexerRpcAsyncClient;
 use ckb_jsonrpc_types::{JsonBytes, ResponseFormat};
 pub use ckb_light_client::LightClientRpcAsyncClient;
-
+#[cfg(not(target_arch = "wasm32"))]
 use std::future::Future;
 use thiserror::Error;
 

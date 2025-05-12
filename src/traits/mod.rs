@@ -19,18 +19,21 @@ pub use offchain_impls::{
     OffchainTransactionDependencyProvider,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+use ckb_hash::blake2b_256;
+#[cfg(not(target_arch = "wasm32"))]
+use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
+#[cfg(not(target_arch = "wasm32"))]
+use ckb_types::core::{
+    cell::{CellMetaBuilder, CellProvider, CellStatus, HeaderChecker},
+    error::OutPointError,
+};
 use dyn_clone::DynClone;
 use thiserror::Error;
 
-use ckb_hash::blake2b_256;
-use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
 use ckb_types::{
     bytes::Bytes,
-    core::{
-        cell::{CellMetaBuilder, CellProvider, CellStatus, HeaderChecker},
-        error::OutPointError,
-        HeaderView, TransactionView,
-    },
+    core::{HeaderView, TransactionView},
     packed::{Byte32, CellDep, CellOutput, OutPoint, Script, Transaction},
     prelude::*,
 };
@@ -90,7 +93,8 @@ pub enum TransactionDependencyError {
 ///   * inputs
 ///   * cell_deps
 ///   * header_deps
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait TransactionDependencyProvider: Sync + Send {
     async fn get_transaction_async(
         &self,
@@ -429,7 +433,8 @@ impl CellQueryOptions {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait CellCollector: DynClone + Send + Sync {
     /// Collect live cells by query options, if `apply_changes` is true will
     /// mark all collected cells as dead cells.
@@ -473,7 +478,8 @@ pub trait CellDepResolver: Send + Sync {
     fn resolve(&self, script: &Script) -> Option<CellDep>;
 }
 
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait HeaderDepResolver: Send + Sync {
     /// Resolve header dep by trancation hash
     async fn resolve_by_tx_async(

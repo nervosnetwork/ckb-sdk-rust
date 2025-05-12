@@ -21,13 +21,15 @@ pub use fee_calculator::FeeCalculator;
 pub use simple::SimpleTransactionBuilder;
 
 /// CKB transaction builder trait.
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+// #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait CkbTransactionBuilder {
     #[cfg(not(target_arch = "wasm32"))]
     fn build(
         self,
         contexts: &HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError>;
+    #[cfg(target_arch = "wasm32")]
     async fn build_async(
         self,
         contexts: &HandlerContexts,
@@ -77,7 +79,7 @@ impl<'a> DefaultChangeBuilder<'a> {
     }
 }
 
-impl<'a> ChangeBuilder for DefaultChangeBuilder<'a> {
+impl ChangeBuilder for DefaultChangeBuilder<'_> {
     fn init(&self, tx: &mut TransactionBuilder) {
         let (change_output, change_output_data) = self.get_change();
         tx.output(change_output);
@@ -216,6 +218,7 @@ fn inner_build<
 
     Err(BalanceTxCapacityError::CapacityNotEnough("can not find enough inputs".to_string()).into())
 }
+#[cfg(target_arch = "wasm32")]
 async fn inner_build_async<
     CB: ChangeBuilder,
     I: async_iterator::Iterator<Item = Result<TransactionInput, CellCollectorError>>,

@@ -21,13 +21,15 @@ impl Secp256k1Blake160SighashAllSignerContext {
 
 impl SignContext for Secp256k1Blake160SighashAllSignerContext {}
 
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+// #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl CKBScriptSigner for Secp256k1Blake160SighashAllSigner {
     fn match_context(&self, context: &dyn SignContext) -> bool {
         context
             .as_any()
             .is::<Secp256k1Blake160SighashAllSignerContext>()
     }
+    #[cfg(target_arch = "wasm32")]
     async fn sign_transaction_async(
         &self,
         tx_view: &core::TransactionView,

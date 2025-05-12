@@ -111,8 +111,7 @@ pub fn minimal_unlock_point(
     } else {
         prepare_point.number() - deposit_point.number()
     };
-    let rest_epoch_cnt =
-        (passed_epoch_cnt + (LOCK_PERIOD_EPOCHES - 1)) / LOCK_PERIOD_EPOCHES * LOCK_PERIOD_EPOCHES;
+    let rest_epoch_cnt = passed_epoch_cnt.div_ceil(LOCK_PERIOD_EPOCHES) * LOCK_PERIOD_EPOCHES;
     EpochNumberWithFraction::new(
         deposit_point.number() + rest_epoch_cnt,
         deposit_point.index(),
@@ -166,7 +165,7 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
     H256::from_slice(r.as_slice()).expect("convert_keccak256_hash")
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test"))]
 mod tests {
     use super::*;
     use crate::test_util::MockRpcResult;

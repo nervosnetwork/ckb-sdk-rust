@@ -6,24 +6,26 @@ pub mod transfer;
 pub mod udt;
 
 use std::collections::{HashMap, HashSet};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
 use anyhow::anyhow;
+#[cfg(not(target_arch = "wasm32"))]
 use ckb_chain_spec::consensus::Consensus;
+#[cfg(not(target_arch = "wasm32"))]
 use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
+#[cfg(not(target_arch = "wasm32"))]
 use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
-use thiserror::Error;
-
+#[cfg(not(target_arch = "wasm32"))]
 use ckb_types::core::cell::{CellProvider, HeaderChecker};
-use ckb_types::core::HeaderView;
+#[cfg(not(target_arch = "wasm32"))]
+use ckb_types::core::{cell::resolve_transaction, HeaderView};
 use ckb_types::{
-    core::{
-        cell::resolve_transaction, error::OutPointError, Capacity, CapacityError, FeeRate,
-        TransactionView,
-    },
+    core::{error::OutPointError, Capacity, CapacityError, FeeRate, TransactionView},
     packed::{Byte32, CellInput, CellOutput, Script, WitnessArgs},
     prelude::*,
 };
+use thiserror::Error;
 
 use crate::types::ScriptGroup;
 use crate::types::{HumanCapacity, ScriptId};
@@ -81,7 +83,8 @@ pub enum TxBuilderError {
 }
 
 /// Transaction Builder interface
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait TxBuilder: Send + Sync {
     /// Build base transaction
     async fn build_base_async(
@@ -138,7 +141,8 @@ pub trait TxBuilder: Send + Sync {
             tx_dep_provider,
             cell_dep_resolver,
             header_dep_resolver,
-        ).await?)
+        )
+        .await?)
     }
     #[cfg(not(target_arch = "wasm32"))]
     fn build_balanced(
@@ -280,7 +284,7 @@ pub trait TxBuilder: Send + Sync {
         Ok((tx, unlocked_group))
     }
     // #[cfg(target_arch = "wasm32")]
-    #[cfg(not(target_arch="wasm32"))]
+    #[cfg(not(target_arch = "wasm32"))]
     async fn build_balance_unlocked_async(
         &self,
         cell_collector: &mut dyn CellCollector,
@@ -309,7 +313,8 @@ pub trait TxBuilder: Send + Sync {
             header_dep_resolver,
             0,
             None,
-        ).await?;
+        )
+        .await?;
         let (mut tx, unlocked_group) =
             unlock_tx_async(balanced_tx, tx_dep_provider, unlockers).await?;
         if unlocked_group.is_empty() {
@@ -319,14 +324,16 @@ pub trait TxBuilder: Send + Sync {
             while !ready && n < MAX_LOOP_TIMES {
                 n += 1;
 
-                let (new_tx, new_change_idx, ok) = balancer.check_cycle_fee_async(
-                    tx,
-                    cell_collector,
-                    tx_dep_provider,
-                    cell_dep_resolver,
-                    header_dep_resolver,
-                    change_idx,
-                ).await?;
+                let (new_tx, new_change_idx, ok) = balancer
+                    .check_cycle_fee_async(
+                        tx,
+                        cell_collector,
+                        tx_dep_provider,
+                        cell_dep_resolver,
+                        header_dep_resolver,
+                        change_idx,
+                    )
+                    .await?;
                 tx = new_tx;
                 ready = ok;
                 change_idx = new_change_idx;
@@ -802,7 +809,8 @@ impl CapacityBalancer {
                 .fee(output.as_slice().len() as u64 + output_header_extra)
                 .as_u64()
                 + 1;
-            let original_fee = tx_fee_async(tx.clone(), tx_dep_provider, header_dep_resolver).await?;
+            let original_fee =
+                tx_fee_async(tx.clone(), tx_dep_provider, header_dep_resolver).await?;
             if original_fee >= accepted_min_fee {
                 return Err(BalanceTxCapacityError::AlreadyBalance(
                     original_fee,
@@ -833,7 +841,8 @@ impl CapacityBalancer {
             header_dep_resolver,
             accepted_min_fee,
             change_index,
-        ).await
+        )
+        .await
     }
     #[cfg(not(target_arch = "wasm32"))]
     pub fn check_cycle_fee(
@@ -870,7 +879,7 @@ impl CapacityBalancer {
         )?;
         Ok((tx, idx, false))
     }
-    #[cfg(not(target_arch="wasm32"))]
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn check_cycle_fee_async(
         &self,
         tx: TransactionView,
@@ -896,15 +905,17 @@ impl CapacityBalancer {
             return Ok((tx, None, true));
         }
 
-        let (tx, idx) = self.rebalance_tx_capacity_async(
-            &tx,
-            cell_collector,
-            tx_dep_provider,
-            cell_dep_resolver,
-            header_dep_resolver,
-            cycle_fee,
-            change_index,
-        ).await?;
+        let (tx, idx) = self
+            .rebalance_tx_capacity_async(
+                &tx,
+                cell_collector,
+                tx_dep_provider,
+                cell_dep_resolver,
+                header_dep_resolver,
+                cycle_fee,
+                change_index,
+            )
+            .await?;
         Ok((tx, idx, false))
     }
 }
@@ -913,13 +924,13 @@ const DEFAULT_BYTES_PER_CYCLE: f64 = 0.000_170_571_4;
 pub const fn bytes_per_cycle() -> f64 {
     DEFAULT_BYTES_PER_CYCLE
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 pub struct CycleResolver<DL> {
     tx_dep_provider: DL,
     tip_header: HeaderView,
     consensus: Arc<Consensus>,
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 impl<
         DL: CellDataProvider
             + HeaderProvider
@@ -1722,7 +1733,6 @@ pub fn fill_placeholder_witnesses(
 /// Return value:
 ///   * The updated transaction
 ///   * The script groups that not matched by given `unlockers`
-#[cfg(target_arch = "wasm32")]
 pub async fn fill_placeholder_witnesses_async(
     balanced_tx: TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,
@@ -1792,7 +1802,6 @@ pub fn unlock_tx(
 /// Return value:
 ///   * The built transaction
 ///   * The script groups that not unlocked by given `unlockers`
-#[cfg(target_arch = "wasm32")]
 pub async fn unlock_tx_async(
     balanced_tx: TransactionView,
     tx_dep_provider: &dyn TransactionDependencyProvider,

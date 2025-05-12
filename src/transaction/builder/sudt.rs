@@ -10,15 +10,21 @@ use crate::{
 };
 use anyhow::anyhow;
 
+#[cfg(not(target_arch = "wasm32"))]
+use super::inner_build;
+#[cfg(target_arch = "wasm32")]
+use super::inner_build_async;
+#[cfg(target_arch = "wasm32")]
 use async_iterator::Iterator;
+
+use super::{CkbTransactionBuilder, DefaultChangeBuilder};
+
 use ckb_types::{
     core::{Capacity, ScriptHashType},
     h256,
     packed::{self, Bytes, CellOutput, Script},
     prelude::*,
 };
-
-use super::{inner_build_async, CkbTransactionBuilder, DefaultChangeBuilder};
 
 /// A sUDT transaction builder implementation
 pub struct SudtTransactionBuilder {
@@ -142,7 +148,8 @@ fn parse_u128(data: &[u8]) -> Result<u128, TxBuilderError> {
     Ok(u128::from_le_bytes(data_bytes.try_into().unwrap()))
 }
 
-#[async_trait::async_trait(?Send)]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl CkbTransactionBuilder for SudtTransactionBuilder {
     #[cfg(not(target_arch = "wasm32"))]
     fn build(
@@ -211,6 +218,7 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
             )
         }
     }
+    #[cfg(target_arch = "wasm32")]
     async fn build_async(
         mut self,
         contexts: &HandlerContexts,
@@ -267,7 +275,14 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
                         .to_le_bytes()
                         .pack();
                     tx.set_output_data(tx.outputs_data.len() - 1, change_output_data);
-                    return inner_build_async(tx, change_builder, input_iter, &configuration, contexts).await;
+                    return inner_build_async(
+                        tx,
+                        change_builder,
+                        input_iter,
+                        &configuration,
+                        contexts,
+                    )
+                    .await;
                 }
             }
 
