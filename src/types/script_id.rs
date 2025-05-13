@@ -11,7 +11,7 @@ pub struct ScriptId {
 }
 
 impl ScriptId {
-    pub fn new(code_hash: H256, hash_type: ScriptHashType) -> ScriptId {
+    pub const fn new(code_hash: H256, hash_type: ScriptHashType) -> ScriptId {
         ScriptId {
             code_hash,
             hash_type,
@@ -20,10 +20,10 @@ impl ScriptId {
     pub fn new_data(code_hash: H256) -> ScriptId {
         Self::new(code_hash, ScriptHashType::Data)
     }
-    pub fn new_data1(code_hash: H256) -> ScriptId {
+    pub const fn new_data1(code_hash: H256) -> ScriptId {
         Self::new(code_hash, ScriptHashType::Data1)
     }
-    pub fn new_type(code_hash: H256) -> ScriptId {
+    pub const fn new_type(code_hash: H256) -> ScriptId {
         Self::new(code_hash, ScriptHashType::Type)
     }
 
