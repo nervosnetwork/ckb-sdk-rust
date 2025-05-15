@@ -59,12 +59,11 @@ web-time = "1.1.0"
 tokio_with_wasm = { version = "0.8.2", features = ["time"] }
 
 [features]
-# default = ["default-tls"]
-default = []
+default = ["default-tls"]
 default-tls = ["reqwest/default-tls"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
 rustls-tls = ["reqwest/rustls-tls"]
-test = ["rce", "rand","default-tls"]
+test = ["rce", "rand", "default-tls"]
 rce = ["sparse-merkle-tree"]
 
 [dev-dependencies]
