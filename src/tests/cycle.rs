@@ -27,7 +27,8 @@ const CYCLE_BIN: &[u8] = include_bytes!("../test-data/cycle");
 pub struct CycleUnlocker {
     loops: u64,
 }
-#[async_trait::async_trait]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl ScriptUnlocker for CycleUnlocker {
     fn match_args(&self, _args: &[u8]) -> bool {
         true

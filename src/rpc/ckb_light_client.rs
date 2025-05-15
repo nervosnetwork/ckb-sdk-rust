@@ -135,7 +135,7 @@ pub struct PeerSyncState {
     /// Proved best known header of remote peer.
     pub proved_best_known_header: Option<HeaderView>,
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 crate::jsonrpc!(pub struct LightClientRpcClient {
     // BlockFilter
     pub fn set_scripts(&self, scripts: Vec<ScriptStatus>, command: Option<SetScriptsCommand>) -> ();
@@ -199,7 +199,7 @@ crate::jsonrpc_async!(pub struct LightClientRpcAsyncClient {
     pub fn get_peers(&self) -> Vec<RemoteNode>;
     pub fn local_node_info(&self) -> LocalNode;
 });
-
+#[cfg(not(target_arch = "wasm32"))]
 impl From<&LightClientRpcClient> for LightClientRpcAsyncClient {
     fn from(value: &LightClientRpcClient) -> Self {
         Self {

@@ -1,4 +1,5 @@
 pub mod transaction_input;
+
 use ckb_types::packed::Script;
 pub use transaction_input::TransactionInput;
 
@@ -72,6 +73,7 @@ impl InputIterator {
         self.buffer_inputs.push(input);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn collect_live_cells(&mut self) -> Result<(), CellCollectorError> {
         loop {
             if self.lock_scripts.is_empty() {
@@ -103,8 +105,42 @@ impl InputIterator {
         }
         Ok(())
     }
+    async fn collect_live_cells_async(&mut self) -> Result<(), CellCollectorError> {
+        loop {
+            if self.lock_scripts.is_empty() {
+                return Ok(());
+            }
+
+            if let Some(lock_script) = self.lock_scripts.last() {
+                let mut query = CellQueryOptions::new_lock(lock_script.clone());
+                query.script_search_mode = Some(SearchMode::Exact);
+                if let Some(type_script) = &self.type_script {
+                    query.secondary_script = Some(type_script.clone());
+                } else {
+                    query.secondary_script_len_range = Some(ValueRangeOption::new_exact(0));
+                    query.data_len_range = Some(ValueRangeOption::new_exact(0));
+                };
+                let (live_cells, _capacity) = self
+                    .cell_collector
+                    .collect_live_cells_async(&query, true)
+                    .await?;
+                if live_cells.is_empty() {
+                    self.lock_scripts.pop();
+                } else {
+                    self.buffer_inputs = live_cells
+                        .into_iter()
+                        .rev() // reverse the iter, so that the first cell will be consumed while pop
+                        .map(|live_cell| TransactionInput::new(live_cell, 0))
+                        .collect();
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Iterator for InputIterator {
     type Item = Result<TransactionInput, CellCollectorError>;
 
@@ -114,6 +150,22 @@ impl Iterator for InputIterator {
         }
 
         let status = self.collect_live_cells();
+        if let Err(status) = status {
+            Some(Err(status))
+        } else {
+            self.buffer_inputs.pop().map(Ok)
+        }
+    }
+}
+impl async_iterator::Iterator for InputIterator {
+    type Item = Result<TransactionInput, CellCollectorError>;
+
+    async fn next(&mut self) -> Option<Self::Item> {
+        if let Some(input) = self.buffer_inputs.pop() {
+            return Some(Ok(input));
+        }
+
+        let status = self.collect_live_cells_async().await;
         if let Err(status) = status {
             Some(Err(status))
         } else {
