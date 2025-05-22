@@ -3,14 +3,23 @@ pub mod ckb_indexer;
 pub mod ckb_light_client;
 
 use anyhow::anyhow;
-pub use ckb::{CkbRpcAsyncClient, CkbRpcClient};
-pub use ckb_indexer::{IndexerRpcAsyncClient, IndexerRpcClient};
-use ckb_jsonrpc_types::{JsonBytes, ResponseFormat};
-pub use ckb_light_client::{LightClientRpcAsyncClient, LightClientRpcClient};
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use ckb::CkbRpcClient;
+#[cfg(not(target_arch = "wasm32"))]
+pub use ckb_indexer::IndexerRpcClient;
+#[cfg(not(target_arch = "wasm32"))]
+pub use ckb_light_client::LightClientRpcClient;
+
+pub use ckb::CkbRpcAsyncClient;
+pub use ckb_indexer::IndexerRpcAsyncClient;
+use ckb_jsonrpc_types::{JsonBytes, ResponseFormat};
+pub use ckb_light_client::LightClientRpcAsyncClient;
+#[cfg(not(target_arch = "wasm32"))]
 use std::future::Future;
 use thiserror::Error;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn block_on<F: Send>(future: impl Future<Output = F> + Send) -> F {
     match tokio::runtime::Handle::try_current() {
         Ok(h)
@@ -55,6 +64,7 @@ pub enum RpcError {
     Other(#[from] anyhow::Error),
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[macro_export]
 macro_rules! jsonrpc {
     (
@@ -159,7 +169,7 @@ macro_rules! jsonrpc_async {
             pub fn new(uri: &str) -> Self {
                 $struct_name {  id: 0.into(), client: $crate::rpc::RpcClient::new(uri), }
             }
-
+            #[cfg(not(target_arch="wasm32"))]
             pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->impl std::future::Future<Output =Result<RET, $crate::rpc::RpcError>> + Send + 'static
             where
                 PARAM:serde::ser::Serialize + Send + 'static,
@@ -181,7 +191,28 @@ macro_rules! jsonrpc_async {
                 self.client.post(params_fn)
 
             }
+            #[cfg(target_arch="wasm32")]
+            pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->impl std::future::Future<Output =Result<RET, $crate::rpc::RpcError>> + 'static
+            where
+                PARAM:serde::ser::Serialize + Send + 'static,
+                RET: serde::de::DeserializeOwned + Send + 'static,
+            {
+                let id = self.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let method = serde_json::json!(method);
 
+                let params_fn = move || -> Result<_,_> {
+                    let params = serde_json::to_value(params)?;
+                    let mut req_json = serde_json::Map::new();
+                    req_json.insert("id".to_owned(), serde_json::json!(id));
+                    req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
+                    req_json.insert("method".to_owned(), method);
+                    req_json.insert("params".to_owned(), params);
+                    Ok(req_json)
+                };
+
+                self.client.post(params_fn)
+
+            }
             $(
                 $(#[$attr])*
                 pub fn $method(&$selff $(, $arg_name: $arg_ty)*) -> impl std::future::Future<Output =Result<$return_ty, $crate::rpc::RpcError>> {

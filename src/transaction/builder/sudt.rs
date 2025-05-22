@@ -10,14 +10,19 @@ use crate::{
 };
 use anyhow::anyhow;
 
+#[cfg(not(target_arch = "wasm32"))]
+use super::inner_build;
+// #[cfg(target_arch = "wasm32")]
+use super::inner_build_async;
+
+use super::{CkbTransactionBuilder, DefaultChangeBuilder};
+
 use ckb_types::{
     core::{Capacity, ScriptHashType},
     h256,
     packed::{self, Bytes, CellOutput, Script},
     prelude::*,
 };
-
-use super::{inner_build, CkbTransactionBuilder, DefaultChangeBuilder};
 
 /// A sUDT transaction builder implementation
 pub struct SudtTransactionBuilder {
@@ -141,7 +146,10 @@ fn parse_u128(data: &[u8]) -> Result<u128, TxBuilderError> {
     Ok(u128::from_le_bytes(data_bytes.try_into().unwrap()))
 }
 
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl CkbTransactionBuilder for SudtTransactionBuilder {
+    #[cfg(not(target_arch = "wasm32"))]
     fn build(
         mut self,
         contexts: &HandlerContexts,
@@ -199,6 +207,81 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
                         .pack();
                     tx.set_output_data(tx.outputs_data.len() - 1, change_output_data);
                     return inner_build(tx, change_builder, input_iter, &configuration, contexts);
+                }
+            }
+
+            Err(
+                BalanceTxCapacityError::CapacityNotEnough("can not find enough inputs".to_string())
+                    .into(),
+            )
+        }
+    }
+    async fn build_async(
+        mut self,
+        contexts: &HandlerContexts,
+    ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
+        if !self.owner_mode {
+            // Add change output for sudt with zero amount as placeholder
+            self.add_output(self.change_lock.clone(), 0);
+        }
+
+        let Self {
+            change_lock,
+            configuration,
+            mut input_iter,
+            sudt_owner_lock_script,
+            sudt_type_script,
+            owner_mode,
+            mut tx,
+            ..
+        } = self;
+
+        let change_builder = DefaultChangeBuilder {
+            configuration: &configuration,
+            change_lock,
+            inputs: Vec::new(),
+        };
+
+        if owner_mode {
+            inner_build_async(tx, change_builder, input_iter, &configuration, contexts).await
+        } else {
+            let sudt_type_script = build_sudt_type_script(
+                configuration.network_info(),
+                &sudt_owner_lock_script,
+                sudt_type_script,
+            );
+            let mut sudt_input_iter = input_iter.clone();
+            sudt_input_iter.set_type_script(Some(sudt_type_script));
+
+            let outputs_sudt_amount: u128 = tx
+                .outputs_data
+                .iter()
+                .map(|data| parse_u128(data.raw_data().as_ref()))
+                .collect::<Result<Vec<u128>, TxBuilderError>>()
+                .map(|u128_vec| u128_vec.iter().sum())?;
+
+            let mut inputs_sudt_amount = 0;
+
+            while let Some(input) =
+                <InputIterator as async_iterator::Iterator>::next(&mut sudt_input_iter).await
+            {
+                let input = input?;
+                let input_amount = parse_u128(input.live_cell.output_data.as_ref())?;
+                inputs_sudt_amount += input_amount;
+                input_iter.push_input(input);
+                if inputs_sudt_amount >= outputs_sudt_amount {
+                    let change_output_data: Bytes = (inputs_sudt_amount - outputs_sudt_amount)
+                        .to_le_bytes()
+                        .pack();
+                    tx.set_output_data(tx.outputs_data.len() - 1, change_output_data);
+                    return inner_build_async(
+                        tx,
+                        change_builder,
+                        input_iter,
+                        &configuration,
+                        contexts,
+                    )
+                    .await;
                 }
             }
 

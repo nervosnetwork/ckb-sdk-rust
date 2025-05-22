@@ -188,6 +188,10 @@ cargo build --examples
 
 For more use cases of building transactions with CKB node, please refer to [these examples](./examples/) and [unit tests](./src/tests/).
 
+## Wasm
+
+`ckb-sdk-rust` has limited support for `wasm32-unknown-unknown`. Some trait are not implemented on `wasm32`, such as `impl CellDataProvider for &dyn TransactionDependencyProvider`. To use on wasm, default features must be disabled
+
 ## License
 
 The SDK is available as open source under the terms of the [MIT License](./LICENSE).

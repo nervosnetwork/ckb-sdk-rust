@@ -1,3 +1,5 @@
+#[cfg(not(target_arch = "wasm32"))]
+use super::inner_build;
 use crate::{
     core::TransactionBuilder,
     transaction::{
@@ -12,7 +14,9 @@ use ckb_types::{
     prelude::{Builder, Entity, Pack},
 };
 
-use super::{inner_build, CkbTransactionBuilder, DefaultChangeBuilder};
+// #[cfg(target_arch = "wasm32")]
+use super::inner_build_async;
+use super::{CkbTransactionBuilder, DefaultChangeBuilder};
 
 /// A simple transaction builder implementation, it will build a transaction with enough capacity to pay for the outputs and the fee.
 pub struct SimpleTransactionBuilder {
@@ -61,7 +65,10 @@ impl SimpleTransactionBuilder {
     }
 }
 
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl CkbTransactionBuilder for SimpleTransactionBuilder {
+    #[cfg(not(target_arch = "wasm32"))]
     fn build(
         self,
         contexts: &HandlerContexts,
@@ -80,5 +87,25 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
         };
 
         inner_build(tx, change_builder, input_iter, &configuration, contexts)
+    }
+    // #[cfg(target_arch = "wasm32")]
+    async fn build_async(
+        self,
+        contexts: &HandlerContexts,
+    ) -> Result<TransactionWithScriptGroups, TxBuilderError> {
+        let Self {
+            change_lock,
+            configuration,
+            input_iter,
+            tx,
+        } = self;
+
+        let change_builder = DefaultChangeBuilder {
+            configuration: &configuration,
+            change_lock,
+            inputs: Vec::new(),
+        };
+
+        inner_build_async(tx, change_builder, input_iter, &configuration, contexts).await
     }
 }
