@@ -14,7 +14,7 @@ pub mod sighash;
 pub mod sudt;
 pub mod typeid;
 
-pub trait ScriptHandler {
+pub trait ScriptHandler: Send + Sync {
     /// Try to build transaction with the given script_group and context.
     ///
     /// Return true if script_group and context are matched, otherwise return false.
@@ -38,7 +38,7 @@ impl<T: 'static> Type2Any for T {
     }
 }
 
-pub trait HandlerContext: Type2Any {}
+pub trait HandlerContext: Type2Any + Send + Sync {}
 
 pub struct HandlerContexts {
     pub contexts: Vec<Box<dyn HandlerContext>>,

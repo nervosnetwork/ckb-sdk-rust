@@ -14,7 +14,7 @@ use ckb_types::{
     prelude::{Builder, Entity, Pack},
 };
 
-#[cfg(target_arch = "wasm32")]
+// #[cfg(target_arch = "wasm32")]
 use super::inner_build_async;
 use super::{CkbTransactionBuilder, DefaultChangeBuilder};
 
@@ -88,7 +88,7 @@ impl CkbTransactionBuilder for SimpleTransactionBuilder {
 
         inner_build(tx, change_builder, input_iter, &configuration, contexts)
     }
-    #[cfg(target_arch = "wasm32")]
+    // #[cfg(target_arch = "wasm32")]
     async fn build_async(
         self,
         contexts: &HandlerContexts,

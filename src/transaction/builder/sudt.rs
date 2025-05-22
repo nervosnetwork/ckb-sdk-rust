@@ -12,10 +12,8 @@ use anyhow::anyhow;
 
 #[cfg(not(target_arch = "wasm32"))]
 use super::inner_build;
-#[cfg(target_arch = "wasm32")]
+// #[cfg(target_arch = "wasm32")]
 use super::inner_build_async;
-#[cfg(target_arch = "wasm32")]
-use async_iterator::Iterator;
 
 use super::{CkbTransactionBuilder, DefaultChangeBuilder};
 
@@ -218,7 +216,6 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
             )
         }
     }
-    #[cfg(target_arch = "wasm32")]
     async fn build_async(
         mut self,
         contexts: &HandlerContexts,
@@ -265,7 +262,9 @@ impl CkbTransactionBuilder for SudtTransactionBuilder {
 
             let mut inputs_sudt_amount = 0;
 
-            while let Some(input) = sudt_input_iter.next().await {
+            while let Some(input) =
+                <InputIterator as async_iterator::Iterator>::next(&mut sudt_input_iter).await
+            {
                 let input = input?;
                 let input_amount = parse_u128(input.live_cell.output_data.as_ref())?;
                 inputs_sudt_amount += input_amount;

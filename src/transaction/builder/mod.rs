@@ -22,14 +22,14 @@ pub use simple::SimpleTransactionBuilder;
 
 /// CKB transaction builder trait.
 #[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-// #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait CkbTransactionBuilder {
     #[cfg(not(target_arch = "wasm32"))]
     fn build(
         self,
         contexts: &HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError>;
-    #[cfg(target_arch = "wasm32")]
+    // #[cfg(target_arch = "wasm32")]
     async fn build_async(
         self,
         contexts: &HandlerContexts,
@@ -218,7 +218,7 @@ fn inner_build<
 
     Err(BalanceTxCapacityError::CapacityNotEnough("can not find enough inputs".to_string()).into())
 }
-#[cfg(target_arch = "wasm32")]
+// #[cfg(target_arch = "wasm32")]
 async fn inner_build_async<
     CB: ChangeBuilder,
     I: async_iterator::Iterator<Item = Result<TransactionInput, CellCollectorError>>,
