@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use ckb_hash::blake2b_256;
 use ckb_jsonrpc_types as json_types;
 use ckb_sdk::{
-    constants::{MULTISIG_TYPE_HASH, SIGHASH_TYPE_HASH},
+    constants::{MultisigScript, SIGHASH_TYPE_HASH},
     rpc::CkbRpcClient,
     traits::{
         DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
@@ -144,7 +144,12 @@ fn main() -> Result<(), Box<dyn StdErr>> {
                     }
                     sighash_addresses.push(H160::from_slice(lock_args.as_ref()).unwrap());
                 }
-                MultisigConfig::new_with(sighash_addresses, args.require_first_n, args.threshold)?
+                MultisigConfig::new_with(
+                    ckb_sdk::constants::MultisigScript::V2,
+                    sighash_addresses,
+                    args.require_first_n,
+                    args.threshold,
+                )?
             };
             let tx = build_transfer_tx(&args, &multisig_config)?;
             let tx_info = TxInfo {
@@ -222,8 +227,8 @@ fn build_transfer_tx(
 ) -> Result<TransactionView, Box<dyn StdErr>> {
     // Build CapacityBalancer
     let sender = Script::new_builder()
-        .code_hash(MULTISIG_TYPE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .code_hash(MultisigScript::V2.script_id().code_hash.pack())
+        .hash_type(MultisigScript::V2.script_id().hash_type.into())
         .args(Bytes::from(multisig_config.hash160().as_bytes().to_vec()).pack())
         .build();
     let sender_addr = Address::new(args.receiver.network(), sender.clone().into(), true);
@@ -289,7 +294,7 @@ fn build_multisig_unlockers(
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(keys);
     let multisig_signer = SecpMultisigScriptSigner::new(Box::new(signer), config);
     let multisig_unlocker = SecpMultisigUnlocker::new(multisig_signer);
-    let multisig_script_id = ScriptId::new_type(MULTISIG_TYPE_HASH.clone());
+    let multisig_script_id = MultisigScript::V2.script_id();
     let mut unlockers = HashMap::default();
     unlockers.insert(
         multisig_script_id,

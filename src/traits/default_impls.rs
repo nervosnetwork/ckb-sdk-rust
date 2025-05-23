@@ -22,22 +22,30 @@ use super::{
     offchain_impls::CollectResult, OffchainCellCollector, OffchainCellDepResolver,
     OffchainTransactionDependencyProvider,
 };
-use crate::rpc::ckb_indexer::{Order, SearchKey, Tip};
-use crate::rpc::{CkbRpcAsyncClient, IndexerRpcAsyncClient};
-use crate::traits::{
-    CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
-    LiveCell, QueryOrder, Signer, SignerError, TransactionDependencyError,
-    TransactionDependencyProvider,
+use crate::{constants::MULTISIG_LEGACY_GROUP_OUTPUT_LOC, types::ScriptId};
+use crate::{constants::MULTISIG_LEGACY_OUTPUT_LOC, SECP256K1};
+use crate::{
+    constants::{MultisigScript, GENESIS_BLOCK_HASH_MAINNET, GENESIS_BLOCK_HASH_TESTNET},
+    rpc::ckb_indexer::{Order, SearchKey, Tip},
 };
-use crate::types::ScriptId;
-use crate::util::{get_max_mature_number_async, serialize_signature, zeroize_privkey};
-use crate::SECP256K1;
 use crate::{
     constants::{
-        DAO_OUTPUT_LOC, DAO_TYPE_HASH, MULTISIG_GROUP_OUTPUT_LOC, MULTISIG_OUTPUT_LOC,
-        MULTISIG_TYPE_HASH, SIGHASH_GROUP_OUTPUT_LOC, SIGHASH_OUTPUT_LOC, SIGHASH_TYPE_HASH,
+        DAO_OUTPUT_LOC, DAO_TYPE_HASH, SIGHASH_GROUP_OUTPUT_LOC, SIGHASH_OUTPUT_LOC,
+        SIGHASH_TYPE_HASH,
     },
     util::keccak160,
+};
+use crate::{
+    rpc::{CkbRpcAsyncClient, IndexerRpcAsyncClient},
+    traits::{
+        CellCollector, CellCollectorError, CellDepResolver, CellQueryOptions, HeaderDepResolver,
+        LiveCell, QueryOrder, Signer, SignerError, TransactionDependencyError,
+        TransactionDependencyProvider,
+    },
+};
+use crate::{
+    util::{get_max_mature_number_async, serialize_signature, zeroize_privkey},
+    NetworkInfo,
 };
 use ckb_resource::{
     CODE_HASH_DAO, CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL,
@@ -61,6 +69,9 @@ pub struct DefaultCellDepResolver {
     offchain: OffchainCellDepResolver,
 }
 impl DefaultCellDepResolver {
+    /// You can customize the multisig script's depgroup by these two env variables, for example:
+    /// 1. MULTISIG_LEGACY_DEP_GROUP=0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c,1
+    /// 2. MULTISIG_V2_DEP_GROUP=0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738,2
     pub fn from_genesis(
         genesis_block: &BlockView,
     ) -> Result<DefaultCellDepResolver, ParseGenesisInfoError> {
@@ -69,7 +80,7 @@ impl DefaultCellDepResolver {
             return Err(ParseGenesisInfoError::InvalidBlockNumber(header.number()));
         }
         let mut sighash_type_hash = None;
-        let mut multisig_type_hash = None;
+        let mut multisig_legacy_type_hash = None;
         let mut dao_type_hash = None;
         let out_points = genesis_block
             .transactions()
@@ -95,8 +106,8 @@ impl DefaultCellDepResolver {
                                 );
                             }
                         }
-                        if tx_index == MULTISIG_OUTPUT_LOC.0 && index == MULTISIG_OUTPUT_LOC.1 {
-                            multisig_type_hash = output
+                        if tx_index == MULTISIG_LEGACY_OUTPUT_LOC.0 && index == MULTISIG_LEGACY_OUTPUT_LOC.1 {
+                            multisig_legacy_type_hash = output
                                 .type_()
                                 .to_opt()
                                 .map(|script| script.calc_script_hash());
@@ -132,9 +143,6 @@ impl DefaultCellDepResolver {
         let sighash_type_hash = sighash_type_hash
             .ok_or_else(|| "No type hash(sighash) found in txs[0][1]".to_owned())
             .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
-        let multisig_type_hash = multisig_type_hash
-            .ok_or_else(|| "No type hash(multisig) found in txs[0][4]".to_owned())
-            .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
         let dao_type_hash = dao_type_hash
             .ok_or_else(|| "No type hash(dao) found in txs[0][2]".to_owned())
             .map_err(ParseGenesisInfoError::TypeHashNotFound)?;
@@ -143,10 +151,15 @@ impl DefaultCellDepResolver {
             .out_point(out_points[SIGHASH_GROUP_OUTPUT_LOC.0][SIGHASH_GROUP_OUTPUT_LOC.1].clone())
             .dep_type(DepType::DepGroup.into())
             .build();
-        let multisig_dep = CellDep::new_builder()
-            .out_point(out_points[MULTISIG_GROUP_OUTPUT_LOC.0][MULTISIG_GROUP_OUTPUT_LOC.1].clone())
+
+        let multisig_legacy_dep = CellDep::new_builder()
+            .out_point(
+                out_points[MULTISIG_LEGACY_GROUP_OUTPUT_LOC.0][MULTISIG_LEGACY_GROUP_OUTPUT_LOC.1]
+                    .clone(),
+            )
             .dep_type(DepType::DepGroup.into())
             .build();
+
         let dao_dep = CellDep::new_builder()
             .out_point(out_points[DAO_OUTPUT_LOC.0][DAO_OUTPUT_LOC.1].clone())
             .build();
@@ -156,9 +169,39 @@ impl DefaultCellDepResolver {
             ScriptId::new_type(sighash_type_hash.unpack()),
             (sighash_dep, "Secp256k1 blake160 sighash all".to_string()),
         );
+
+        {
+            let network_info: NetworkInfo =
+                if genesis_block.hash().eq(&GENESIS_BLOCK_HASH_MAINNET.pack()) {
+                    NetworkInfo::mainnet()
+                } else if genesis_block.hash().eq(&GENESIS_BLOCK_HASH_TESTNET.pack()) {
+                    NetworkInfo::testnet()
+                } else {
+                    NetworkInfo::devnet()
+                };
+
+            if let Some((v2_dep_hash, v2_dep_index)) = MultisigScript::V2.dep_group(network_info) {
+                let multisig_v2_dep = CellDep::new_builder()
+                    .out_point(OutPoint::new(v2_dep_hash.pack(), v2_dep_index))
+                    .dep_type(DepType::DepGroup.into())
+                    .build();
+
+                items.insert(
+                    MultisigScript::V2.script_id(),
+                    (
+                        multisig_v2_dep,
+                        "Secp256k1 blake160 multisig(v2) all".to_string(),
+                    ),
+                );
+            }
+        }
+
         items.insert(
-            ScriptId::new_type(multisig_type_hash.unpack()),
-            (multisig_dep, "Secp256k1 blake160 multisig all".to_string()),
+            MultisigScript::Legacy.script_id(),
+            (
+                multisig_legacy_dep,
+                "Secp256k1 blake160 multisig(legacy) all".to_string(),
+            ),
         );
         items.insert(
             ScriptId::new_type(dao_type_hash.unpack()),
@@ -167,6 +210,7 @@ impl DefaultCellDepResolver {
         let offchain = OffchainCellDepResolver { items };
         Ok(DefaultCellDepResolver { offchain })
     }
+
     pub fn insert(
         &mut self,
         script_id: ScriptId,
@@ -187,8 +231,10 @@ impl DefaultCellDepResolver {
     pub fn sighash_dep(&self) -> Option<&(CellDep, String)> {
         self.get(&ScriptId::new_type(SIGHASH_TYPE_HASH))
     }
-    pub fn multisig_dep(&self) -> Option<&(CellDep, String)> {
-        self.get(&ScriptId::new_type(MULTISIG_TYPE_HASH))
+    /// TODO: We have found MultisigScript::Legacy's dep from genesis block.
+    /// TODO: then need manually insert MultisigScript::V1's deps to self.
+    pub fn multisig_dep(&self, multisig_script: MultisigScript) -> Option<&(CellDep, String)> {
+        self.get(&multisig_script.script_id())
     }
     pub fn dao_dep(&self) -> Option<&(CellDep, String)> {
         self.get(&ScriptId::new_type(DAO_TYPE_HASH))

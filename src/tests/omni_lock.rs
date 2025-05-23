@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    constants::{ONE_CKB, SIGHASH_TYPE_HASH},
+    constants::{MultisigScript, ONE_CKB, SIGHASH_TYPE_HASH},
     test_util::random_out_point,
     tests::{
         build_sighash_script, init_context, omni_lock_util::generate_rc, ACCOUNT0_ARG,
@@ -586,7 +586,7 @@ fn test_omnilock_transfer_from_multisig() {
         ACCOUNT1_ARG.clone(),
         ACCOUNT2_ARG.clone(),
     ];
-    let multi_cfg = MultisigConfig::new_with(lock_args, 0, 2).unwrap();
+    let multi_cfg = MultisigConfig::new_with(MultisigScript::V2, lock_args, 0, 2).unwrap();
     let cfg = OmniLockConfig::new_multisig(multi_cfg);
 
     let sender = build_omnilock_script(&cfg);
@@ -665,7 +665,7 @@ fn test_omnilock_transfer_from_multisig_wl_commnon(unlock_mode: OmniUnlockMode) 
         ACCOUNT1_ARG.clone(),
         ACCOUNT2_ARG.clone(),
     ];
-    let multi_cfg = MultisigConfig::new_with(lock_args, 0, 2).unwrap();
+    let multi_cfg = MultisigConfig::new_with(MultisigScript::V2, lock_args, 0, 2).unwrap();
     let mut cfg = OmniLockConfig::new_multisig(multi_cfg);
 
     let lock_args = vec![
@@ -673,7 +673,7 @@ fn test_omnilock_transfer_from_multisig_wl_commnon(unlock_mode: OmniUnlockMode) 
         ACCOUNT1_ARG.clone(),
         ACCOUNT2_ARG.clone(),
     ];
-    let multi_cfg = MultisigConfig::new_with(lock_args, 0, 2).unwrap();
+    let multi_cfg = MultisigConfig::new_with(MultisigScript::V2, lock_args, 0, 2).unwrap();
     let admin_id = Identity::new_multisig(multi_cfg.clone());
     let mut ctx = init_context(vec![(OMNILOCK_BIN, true)], vec![]);
     let (proof_vec, rc_type_id, rce_cells) =

@@ -2,7 +2,7 @@ use ckb_types::{core, H256};
 use std::collections::HashMap;
 
 use crate::{
-    constants,
+    constants::{self, MultisigScript},
     unlock::{MultisigConfig, UnlockError},
     NetworkInfo, ScriptGroup, ScriptId, TransactionWithScriptGroups,
 };
@@ -88,11 +88,17 @@ impl TransactionSigner {
             Box::new(Secp256k1Blake160SighashAllSigner {}) as Box<_>,
         );
 
+        let multisig_script_id_legacy = MultisigScript::Legacy.script_id();
         unlockers.insert(
-            ScriptId::new_type(constants::MULTISIG_TYPE_HASH.clone()),
+            multisig_script_id_legacy,
             Box::new(multisig::Secp256k1Blake160MultisigAllSigner {}) as Box<_>,
         );
 
+        let multisig_script_id_v2 = MultisigScript::V2.script_id();
+        unlockers.insert(
+            multisig_script_id_v2,
+            Box::new(multisig::Secp256k1Blake160MultisigAllSigner {}) as Box<_>,
+        );
         Self { unlockers }
     }
 

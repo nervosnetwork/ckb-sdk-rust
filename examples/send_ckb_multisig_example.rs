@@ -1,4 +1,5 @@
 use ckb_sdk::{
+    constants::MultisigScript,
     transaction::{
         builder::{CkbTransactionBuilder, SimpleTransactionBuilder},
         handler::HandlerContexts,
@@ -17,6 +18,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
 
     let multisig_config = MultisigConfig::new_with(
+        MultisigScript::V2,
         vec![
             h160!("0x7336b0ba900684cb3cb00f0d46d4f64c0994a562"),
             h160!("0x5724c1e3925a5206944d753a6f3edaedf977d77f"),
@@ -24,15 +26,17 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         0,
         2,
     )?;
-    let sender = multisig_config.to_address(network_info.network_type, None);
+    let sender = multisig_config.to_address(network_info.network_type, MultisigScript::V2, None);
+    println!("sender: {}", sender);
     let receiver = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r")?;
 
     let iterator = InputIterator::new_with_address(&[sender], &network_info);
     let mut builder = SimpleTransactionBuilder::new(configuration, iterator);
-    builder.add_output(&receiver, Capacity::shannons(510_0000_0000u64));
+    builder.add_output(&receiver, Capacity::shannons(6100000000u64));
 
     let mut tx_with_groups =
         builder.build(&HandlerContexts::new_multisig(multisig_config.clone()))?;
+    println!("tx_with_groups:{:?}", &tx_with_groups);
 
     let json_tx = ckb_jsonrpc_types::TransactionView::from(tx_with_groups.get_tx_view().clone());
     println!("tx: {}", serde_json::to_string_pretty(&json_tx).unwrap());

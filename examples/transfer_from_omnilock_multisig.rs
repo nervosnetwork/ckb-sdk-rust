@@ -1,6 +1,6 @@
 use ckb_jsonrpc_types as json_types;
 use ckb_sdk::{
-    constants::SIGHASH_TYPE_HASH,
+    constants::{MultisigScript, SIGHASH_TYPE_HASH},
     rpc::CkbRpcClient,
     traits::{
         DefaultCellCollector, DefaultCellDepResolver, DefaultHeaderDepResolver,
@@ -11,8 +11,10 @@ use ckb_sdk::{
         unlock_tx, CapacityBalancer, TxBuilder,
     },
     types::NetworkType,
-    unlock::{MultisigConfig, OmniLockUnlocker, ScriptUnlocker},
-    unlock::{OmniLockConfig, OmniLockScriptSigner, OmniUnlockMode},
+    unlock::{
+        MultisigConfig, OmniLockConfig, OmniLockScriptSigner, OmniLockUnlocker, OmniUnlockMode,
+        ScriptUnlocker,
+    },
     Address, HumanCapacity, ScriptGroup, ScriptId,
 };
 use ckb_types::{
@@ -272,6 +274,7 @@ fn build_multisig_config(
         sighash_addresses.push(H160::from_slice(lock_args.as_ref()).unwrap());
     }
     Ok(MultisigConfig::new_with(
+        MultisigScript::V2,
         sighash_addresses,
         require_first_n,
         threshold,

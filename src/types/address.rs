@@ -15,7 +15,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use super::NetworkType;
 use crate::constants::{
-    ACP_TYPE_HASH_AGGRON, ACP_TYPE_HASH_LINA, MULTISIG_TYPE_HASH, SIGHASH_TYPE_HASH,
+    MultisigScript, ACP_TYPE_HASH_AGGRON, ACP_TYPE_HASH_LINA, SIGHASH_TYPE_HASH,
 };
 pub use old_addr::{Address as OldAddress, AddressFormat as OldAddressFormat};
 
@@ -145,7 +145,7 @@ impl AddressPayload {
         match self {
             AddressPayload::Short { index, .. } => match index {
                 CodeHashIndex::Sighash => SIGHASH_TYPE_HASH.clone().pack(),
-                CodeHashIndex::Multisig => MULTISIG_TYPE_HASH.clone().pack(),
+                CodeHashIndex::Multisig => MultisigScript::Legacy.script_id().code_hash.clone().pack(),
                 CodeHashIndex::Acp => match network {
                     Some(NetworkType::Mainnet) => ACP_TYPE_HASH_LINA.clone().pack(),
                     Some(NetworkType::Testnet) => ACP_TYPE_HASH_AGGRON.clone().pack(),
@@ -243,7 +243,7 @@ impl From<&AddressPayload> for Script {
 }
 
 impl From<Script> for AddressPayload {
-    #[allow(clippy::fallible_impl_from)]
+    #[allow(clippy::fallible_impl_from, clippy::if_same_then_else)]
     fn from(lock: Script) -> AddressPayload {
         let hash_type: ScriptHashType = lock.hash_type().try_into().expect("Invalid hash_type");
         let code_hash = lock.code_hash();
@@ -256,13 +256,23 @@ impl From<Script> for AddressPayload {
             let index = CodeHashIndex::Sighash;
             let hash = H160::from_slice(args.as_ref()).unwrap();
             AddressPayload::Short { index, hash }
-        } else if hash_type == ScriptHashType::Type
-            && code_hash_h256 == MULTISIG_TYPE_HASH
+        } else if hash_type == MultisigScript::Legacy.script_id().hash_type
+            && code_hash_h256 == MultisigScript::Legacy.script_id().code_hash
             && args.len() == 20
         {
             let index = CodeHashIndex::Multisig;
             let hash = H160::from_slice(args.as_ref()).unwrap();
             AddressPayload::Short { index, hash }
+        } else if hash_type == MultisigScript::V2.script_id().hash_type
+            && code_hash_h256 == MultisigScript::V2.script_id().code_hash
+            && args.len() == 20
+        {
+            // V2 has different code-hash from Legacy, use AddressPayload::Full
+            AddressPayload::Full {
+                hash_type,
+                code_hash,
+                args,
+            }
         } else if hash_type == ScriptHashType::Type
             && (code_hash_h256 == ACP_TYPE_HASH_LINA || code_hash_h256 == ACP_TYPE_HASH_AGGRON)
             && args.len() == 20

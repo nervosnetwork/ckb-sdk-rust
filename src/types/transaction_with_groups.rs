@@ -6,6 +6,7 @@ use ckb_types::{
 
 use crate::ScriptGroup;
 
+#[derive(Debug)]
 pub struct TransactionWithScriptGroups {
     pub(crate) tx_view: TransactionView,
     pub(crate) script_groups: Vec<ScriptGroup>,
