@@ -21,12 +21,21 @@ pub struct TransactionBuilderConfiguration {
 }
 
 impl TransactionBuilderConfiguration {
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Result<Self, TxBuilderError> {
         Self::new_with_network(NetworkInfo::mainnet())
     }
-
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new_testnet() -> Result<Self, TxBuilderError> {
         Self::new_with_network(NetworkInfo::testnet())
+    }
+
+    pub async fn new_async() -> Result<Self, TxBuilderError> {
+        Self::new_with_network_async(NetworkInfo::mainnet()).await
+    }
+
+    pub async fn new_testnet_async() -> Result<Self, TxBuilderError> {
+        Self::new_with_network_async(NetworkInfo::testnet()).await
     }
 
     pub fn new_devnet() -> Result<Self, TxBuilderError> {
@@ -38,6 +47,7 @@ impl TransactionBuilderConfiguration {
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new_with_network(network: NetworkInfo) -> Result<Self, TxBuilderError> {
         let script_handlers = Self::generate_system_handlers(&network)?;
         Ok(Self {
@@ -47,7 +57,17 @@ impl TransactionBuilderConfiguration {
             estimate_tx_size: 128000,
         })
     }
+    pub async fn new_with_network_async(network: NetworkInfo) -> Result<Self, TxBuilderError> {
+        let script_handlers = Self::generate_system_handlers_async(&network).await?;
+        Ok(Self {
+            network,
+            script_handlers,
+            fee_rate: 1000,
+            estimate_tx_size: 128000,
+        })
+    }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn generate_system_handlers(
         network: &NetworkInfo,
     ) -> Result<Vec<Box<dyn ScriptHandler>>, TxBuilderError> {
@@ -68,6 +88,33 @@ impl TransactionBuilderConfiguration {
                     network,
                     MultisigScript::V2,
                 )?,
+            ) as Box<_>,
+            Box::new(handler::sudt::SudtHandler::new_with_network(network)?) as Box<_>,
+            Box::new(handler::typeid::TypeIdHandler) as Box<_>,
+        ];
+        Ok(ret)
+    }
+    async fn generate_system_handlers_async(
+        network: &NetworkInfo,
+    ) -> Result<Vec<Box<dyn ScriptHandler>>, TxBuilderError> {
+        let ret =
+            vec![
+            Box::new(
+                handler::sighash::Secp256k1Blake160SighashAllScriptHandler::new_with_network_async(
+                    network,
+                ).await?,
+            ) as Box<_>,
+            Box::new(
+                handler::multisig::Secp256k1Blake160MultisigAllScriptHandler::new_async(
+                    network,
+                    MultisigScript::Legacy,
+                ).await?,
+            ) as Box<_>,
+            Box::new(
+                handler::multisig::Secp256k1Blake160MultisigAllScriptHandler::new_async(
+                    network,
+                    MultisigScript::V2,
+                ).await?,
             ) as Box<_>,
             Box::new(handler::sudt::SudtHandler::new_with_network(network)?) as Box<_>,
             Box::new(handler::typeid::TypeIdHandler) as Box<_>,
