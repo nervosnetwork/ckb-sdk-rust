@@ -21,8 +21,16 @@ pub use fee_calculator::FeeCalculator;
 pub use simple::SimpleTransactionBuilder;
 
 /// CKB transaction builder trait.
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait CkbTransactionBuilder {
+    #[cfg(not(target_arch = "wasm32"))]
     fn build(
+        self,
+        contexts: &HandlerContexts,
+    ) -> Result<TransactionWithScriptGroups, TxBuilderError>;
+    // #[cfg(target_arch = "wasm32")]
+    async fn build_async(
         self,
         contexts: &HandlerContexts,
     ) -> Result<TransactionWithScriptGroups, TxBuilderError>;
@@ -134,6 +142,7 @@ impl ChangeBuilder for DefaultChangeBuilder<'_> {
 }
 
 /// a helper fn to build a transaction with common logic
+#[cfg(not(target_arch = "wasm32"))]
 fn inner_build<
     CB: ChangeBuilder,
     I: Iterator<Item = Result<TransactionInput, CellCollectorError>>,
@@ -205,6 +214,84 @@ fn inner_build<
 
             return Ok(TransactionWithScriptGroups::new(tx_view, script_groups));
         }
+    }
+
+    Err(BalanceTxCapacityError::CapacityNotEnough("can not find enough inputs".to_string()).into())
+}
+// #[cfg(target_arch = "wasm32")]
+async fn inner_build_async<
+    CB: ChangeBuilder,
+    I: async_iterator::Iterator<Item = Result<TransactionInput, CellCollectorError>>,
+>(
+    mut tx: TransactionBuilder,
+    mut change_builder: CB,
+    mut input_iter: I,
+    configuration: &TransactionBuilderConfiguration,
+    contexts: &HandlerContexts,
+) -> Result<TransactionWithScriptGroups, TxBuilderError> {
+    let mut lock_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+    let mut type_groups: HashMap<Byte32, ScriptGroup> = HashMap::default();
+
+    // setup outputs' type script group
+    for (output_idx, output) in tx.get_outputs().clone().iter().enumerate() {
+        if let Some(type_script) = &output.type_().to_opt() {
+            type_groups
+                .entry(type_script.calc_script_hash())
+                .or_insert_with(|| ScriptGroup::from_type_script(type_script))
+                .output_indices
+                .push(output_idx);
+        }
+    }
+
+    // setup change output and data
+    change_builder.init(&mut tx);
+
+    // collect inputs
+    let mut input_index: usize = 0;
+    while let Some(input) = input_iter.next().await {
+        let input = input?;
+        tx.input(input.cell_input());
+        tx.witness(packed::Bytes::default());
+
+        let previous_output = input.previous_output();
+        let lock_script = previous_output.lock();
+        lock_groups
+            .entry(lock_script.calc_script_hash())
+            .or_insert_with(|| ScriptGroup::from_lock_script(&lock_script))
+            .input_indices
+            .push(input_index);
+
+        if let Some(type_script) = previous_output.type_().to_opt() {
+            type_groups
+                .entry(type_script.calc_script_hash())
+                .or_insert_with(|| ScriptGroup::from_type_script(&type_script))
+                .input_indices
+                .push(input_index);
+        }
+
+        // check if we have enough inputs
+        if change_builder.check_balance(input, &mut tx) {
+            // handle script groups
+            let mut script_groups: Vec<ScriptGroup> = lock_groups
+                .into_values()
+                .chain(type_groups.into_values())
+                .collect();
+
+            for script_group in script_groups.iter_mut() {
+                for handler in configuration.get_script_handlers() {
+                    for context in &contexts.contexts {
+                        if handler.build_transaction(&mut tx, script_group, context.as_ref())? {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let tx_view = change_builder.finalize(tx);
+
+            return Ok(TransactionWithScriptGroups::new(tx_view, script_groups));
+        }
+        input_index += 1;
     }
 
     Err(BalanceTxCapacityError::CapacityNotEnough("can not find enough inputs".to_string()).into())

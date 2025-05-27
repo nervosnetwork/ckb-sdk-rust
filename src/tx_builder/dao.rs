@@ -44,7 +44,8 @@ impl DaoDepositBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl TxBuilder for DaoDepositBuilder {
     async fn build_base_async(
         &self,
@@ -121,7 +122,8 @@ impl From<Vec<CellInput>> for DaoPrepareBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl TxBuilder for DaoPrepareBuilder {
     async fn build_base_async(
         &self,
@@ -242,7 +244,8 @@ impl DaoWithdrawBuilder {
     }
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl TxBuilder for DaoWithdrawBuilder {
     async fn build_base_async(
         &self,

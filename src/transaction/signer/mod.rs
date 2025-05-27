@@ -13,9 +13,19 @@ use super::handler::Type2Any;
 pub mod multisig;
 pub mod sighash;
 
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+// #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait CKBScriptSigner {
     fn match_context(&self, context: &dyn SignContext) -> bool;
+    #[cfg(not(target_arch = "wasm32"))]
     fn sign_transaction(
+        &self,
+        tx_view: &core::TransactionView,
+        script_group: &ScriptGroup,
+        context: &dyn SignContext,
+    ) -> Result<core::TransactionView, UnlockError>;
+    #[cfg(target_arch = "wasm32")]
+    async fn sign_transaction_async(
         &self,
         tx_view: &core::TransactionView,
         script_group: &ScriptGroup,
@@ -102,6 +112,7 @@ impl TransactionSigner {
         Self { unlockers }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn sign_transaction(
         &self,
         transaction: &mut TransactionWithScriptGroups,
@@ -120,6 +131,35 @@ impl TransactionSigner {
                         continue;
                     }
                     tx = unlocker.sign_transaction(&tx, script_group, context.as_ref())?;
+                    signed_groups_indices.push(idx);
+                    break;
+                }
+            }
+        }
+        transaction.set_tx_view(tx);
+        Ok(signed_groups_indices)
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub async fn sign_transaction_async(
+        &self,
+        transaction: &mut TransactionWithScriptGroups,
+        contexts: &SignContexts,
+    ) -> Result<Vec<usize>, UnlockError> {
+        let mut signed_groups_indices = vec![];
+        if contexts.is_empty() {
+            return Ok(signed_groups_indices);
+        }
+        let mut tx = transaction.get_tx_view().clone();
+        for (idx, script_group) in transaction.get_script_groups().iter().enumerate() {
+            let script_id = ScriptId::from(&script_group.script);
+            if let Some(unlocker) = self.unlockers.get(&script_id) {
+                for context in &contexts.contexts {
+                    if !unlocker.match_context(context.as_ref()) {
+                        continue;
+                    }
+                    tx = unlocker
+                        .sign_transaction_async(&tx, script_group, context.as_ref())
+                        .await?;
                     signed_groups_indices.push(idx);
                     break;
                 }
