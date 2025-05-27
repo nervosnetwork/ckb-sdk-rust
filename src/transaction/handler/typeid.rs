@@ -51,14 +51,13 @@ impl ScriptHandler for TypeIdHandler {
         }
         Ok(false)
     }
-    #[cfg(not(target_arch="wasm32"))]
+    #[cfg(not(target_arch = "wasm32"))]
     fn init(&mut self, _network: &NetworkInfo) -> Result<(), TxBuilderError> {
         Ok(())
     }
     async fn init_async(&mut self, _network: &NetworkInfo) -> Result<(), TxBuilderError> {
         Ok(())
     }
-    
 }
 
 fn calculate_type_id(first_cell_input: &CellInput, output_index: u64) -> [u8; 32] {

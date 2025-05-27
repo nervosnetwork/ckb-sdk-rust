@@ -29,7 +29,6 @@ pub trait ScriptHandler: Send + Sync {
     #[cfg(not(target_arch = "wasm32"))]
     fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError>;
     async fn init_async(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError>;
-    
 }
 
 pub trait Type2Any: 'static {
