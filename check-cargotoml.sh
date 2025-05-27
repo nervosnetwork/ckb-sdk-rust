@@ -154,7 +154,7 @@ function check_dependencies_for() {
             fi
             if [ "${depcnt}" -eq 0 ]; then
                 case "${dependency}" in
-                    phf)
+                    phf | async_trait)
                         # We cann't handle these crates.
                         printf "Warn: [%s::%s] in <%s>\n" \
                             "${deptype}" "${dependency}" "${pkgroot}"
@@ -178,7 +178,9 @@ function check_dependencies_for() {
 }
 
 function check_dependencies() {
+    echo "Checking dependencies..."
     check_dependencies_for "dependencies"
+    echo "Checking build-dependencies..."
     check_dependencies_for "build-dependencies"
     # TODO: uncomment this line when `async-global-executor` updated to >= v2.2.0
     # check_dependencies_for "dev-dependencies"

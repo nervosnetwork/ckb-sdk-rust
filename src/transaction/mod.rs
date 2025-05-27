@@ -1,4 +1,4 @@
-use crate::{tx_builder::TxBuilderError, NetworkInfo};
+use crate::{constants::MultisigScript, tx_builder::TxBuilderError, NetworkInfo};
 
 use self::{builder::FeeCalculator, handler::ScriptHandler};
 
@@ -58,8 +58,15 @@ impl TransactionBuilderConfiguration {
                 )?,
             ) as Box<_>,
             Box::new(
-                handler::multisig::Secp256k1Blake160MultisigAllScriptHandler::new_with_network(
+                handler::multisig::Secp256k1Blake160MultisigAllScriptHandler::new(
                     network,
+                    MultisigScript::Legacy,
+                )?,
+            ) as Box<_>,
+            Box::new(
+                handler::multisig::Secp256k1Blake160MultisigAllScriptHandler::new(
+                    network,
+                    MultisigScript::V2,
                 )?,
             ) as Box<_>,
             Box::new(handler::sudt::SudtHandler::new_with_network(network)?) as Box<_>,

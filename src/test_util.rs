@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use crate::{
     constants::{
-        MULTISIG_GROUP_OUTPUT_LOC, MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_GROUP_OUTPUT_LOC,
+        MultisigScript, MULTISIG_LEGACY_GROUP_OUTPUT_LOC, ONE_CKB, SIGHASH_GROUP_OUTPUT_LOC,
         SIGHASH_TYPE_HASH,
     },
     traits::{
@@ -91,26 +91,35 @@ impl Context {
                 SIGHASH_GROUP_OUTPUT_LOC,
             ),
             (
-                cell_dep_resolver.multisig_dep().unwrap().clone().0,
-                MULTISIG_GROUP_OUTPUT_LOC,
+                cell_dep_resolver
+                    .multisig_dep(MultisigScript::Legacy)
+                    .unwrap()
+                    .clone()
+                    .0,
+                MULTISIG_LEGACY_GROUP_OUTPUT_LOC,
             ),
         ] {
             let tx = block.transaction(tx_idx).expect("get tx");
             let (output, data) = tx.output_with_data(output_idx).expect("get output+data");
             ctx.add_cell_dep(cell_dep, output, data, Some(block_hash.clone()));
         }
-        for (code_hash, cell_dep) in [
-            (
-                SIGHASH_TYPE_HASH,
-                cell_dep_resolver.sighash_dep().unwrap().0.clone(),
-            ),
-            (
-                MULTISIG_TYPE_HASH,
-                cell_dep_resolver.multisig_dep().unwrap().0.clone(),
-            ),
-        ] {
-            ctx.add_cell_dep_map(ScriptId::new_type(code_hash), cell_dep);
+        ctx.add_cell_dep_map(
+            ScriptId::new_type(SIGHASH_TYPE_HASH),
+            cell_dep_resolver.sighash_dep().unwrap().0.clone(),
+        );
+
+        ctx.add_cell_dep_map(
+            MultisigScript::Legacy.script_id(),
+            cell_dep_resolver
+                .multisig_dep(MultisigScript::Legacy)
+                .unwrap()
+                .0
+                .clone(),
+        );
+        if let Some(cell_deps) = cell_dep_resolver.multisig_dep(MultisigScript::V2) {
+            ctx.add_cell_dep_map(MultisigScript::V2.script_id(), cell_deps.0.clone());
         }
+
         for tx in block.transactions().iter() {
             for (idx, (output, data)) in tx
                 .outputs()
