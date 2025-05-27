@@ -14,6 +14,8 @@ pub mod sighash;
 pub mod sudt;
 pub mod typeid;
 
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait ScriptHandler: Send + Sync {
     /// Try to build transaction with the given script_group and context.
     ///
@@ -24,8 +26,10 @@ pub trait ScriptHandler: Send + Sync {
         script_group: &mut ScriptGroup,
         context: &dyn HandlerContext,
     ) -> Result<bool, TxBuilderError>;
-
+    #[cfg(not(target_arch = "wasm32"))]
     fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError>;
+    async fn init_async(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError>;
+    
 }
 
 pub trait Type2Any: 'static {

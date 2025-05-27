@@ -16,7 +16,8 @@ pub struct TypeIdHandler;
 pub struct TypeIdContext;
 
 impl HandlerContext for TypeIdContext {}
-
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl ScriptHandler for TypeIdHandler {
     fn build_transaction(
         &self,
@@ -50,10 +51,14 @@ impl ScriptHandler for TypeIdHandler {
         }
         Ok(false)
     }
-
+    #[cfg(not(target_arch="wasm32"))]
     fn init(&mut self, _network: &NetworkInfo) -> Result<(), TxBuilderError> {
         Ok(())
     }
+    async fn init_async(&mut self, _network: &NetworkInfo) -> Result<(), TxBuilderError> {
+        Ok(())
+    }
+    
 }
 
 fn calculate_type_id(first_cell_input: &CellInput, output_index: u64) -> [u8; 32] {

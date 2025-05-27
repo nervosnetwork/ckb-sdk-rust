@@ -72,7 +72,16 @@ impl DefaultCellDepResolver {
     /// You can customize the multisig script's depgroup by these two env variables, for example:
     /// 1. MULTISIG_LEGACY_DEP_GROUP=0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c,1
     /// 2. MULTISIG_V2_DEP_GROUP=0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738,2
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_genesis(
+        genesis_block: &BlockView,
+    ) -> Result<DefaultCellDepResolver, ParseGenesisInfoError> {
+        crate::rpc::block_on(Self::from_genesis_async(genesis_block))
+    }
+    /// You can customize the multisig script's depgroup by these two env variables, for example:
+    /// 1. MULTISIG_LEGACY_DEP_GROUP=0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c,1
+    /// 2. MULTISIG_V2_DEP_GROUP=0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738,2
+    pub async fn from_genesis_async(
         genesis_block: &BlockView,
     ) -> Result<DefaultCellDepResolver, ParseGenesisInfoError> {
         let header = genesis_block.header();
@@ -180,7 +189,9 @@ impl DefaultCellDepResolver {
                     NetworkInfo::devnet()
                 };
 
-            if let Some((v2_dep_hash, v2_dep_index)) = MultisigScript::V2.dep_group(network_info) {
+            if let Some((v2_dep_hash, v2_dep_index)) =
+                MultisigScript::V2.dep_group_async(network_info).await
+            {
                 let multisig_v2_dep = CellDep::new_builder()
                     .out_point(OutPoint::new(v2_dep_hash.pack(), v2_dep_index))
                     .dep_type(DepType::DepGroup.into())

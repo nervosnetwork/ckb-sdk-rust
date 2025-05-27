@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use crate::{CkbRpcClient, NetworkInfo, NetworkType, ScriptId};
+use crate::{CkbRpcAsyncClient, NetworkInfo, NetworkType, ScriptId};
 use ckb_system_scripts_v0_5_4::{
     CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL as CODE_HASH_SECP256K1_BLAKE160_MULTISIG_ALL_LEGACY,
     CODE_HASH_SECP256K1_DATA,
@@ -122,12 +122,23 @@ impl MultisigScript {
     /// 2. MULTISIG_V2_DEP_GROUP=0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738,2
     ///
     /// If env not set, then get it from dep_group_inner
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn dep_group(&self, network: NetworkInfo) -> Option<(H256, u32)> {
         self.dep_group_from_env(network.clone())
-            .or(self.dep_group_inner(network))
+            .or(crate::rpc::block_on(self.dep_group_inner(network)))
     }
 
-    pub fn dep_group_inner(&self, network: NetworkInfo) -> Option<(H256, u32)> {
+    /// Get dep group from env first:
+    /// 1. MULTISIG_LEGACY_DEP_GROUP=0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c,1
+    /// 2. MULTISIG_V2_DEP_GROUP=0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738,2
+    ///
+    /// If env not set, then get it from dep_group_inner
+    pub async fn dep_group_async(&self, network: NetworkInfo) -> Option<(H256, u32)> {
+        self.dep_group_from_env(network.clone())
+            .or(self.dep_group_inner(network).await)
+    }
+
+    async fn dep_group_inner(&self, network: NetworkInfo) -> Option<(H256, u32)> {
         match network.network_type {
             NetworkType::Mainnet => Some(match self {
                 MultisigScript::Legacy => (
@@ -150,8 +161,8 @@ impl MultisigScript {
                 ),
             }),
             NetworkType::Staging | NetworkType::Preview | NetworkType::Dev => {
-                let client = CkbRpcClient::new(network.url.as_str());
-                let json_genesis_block = client.get_block_by_number(0_u64.into()).ok()??;
+                let client = CkbRpcAsyncClient::new(network.url.as_str());
+                let json_genesis_block = client.get_block_by_number(0_u64.into()).await.ok()??;
                 let genesis_block: ckb_types::core::BlockView = json_genesis_block.into();
 
                 let secp256k1_data_outpoint =

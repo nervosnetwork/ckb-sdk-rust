@@ -72,7 +72,8 @@ impl SudtHandler {
         }
     }
 }
-
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl ScriptHandler for SudtHandler {
     fn build_transaction(
         &self,
@@ -91,8 +92,11 @@ impl ScriptHandler for SudtHandler {
         }
         Ok(false)
     }
-
+    #[cfg(not(target_arch = "wasm32"))]
     fn init(&mut self, _network: &NetworkInfo) -> Result<(), TxBuilderError> {
+        Ok(())
+    }
+    async fn init_async(&mut self, _network: &NetworkInfo) -> Result<(), TxBuilderError> {
         Ok(())
     }
 }

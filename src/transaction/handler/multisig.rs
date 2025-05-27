@@ -36,6 +36,7 @@ impl Secp256k1Blake160MultisigAllScriptHandler {
             && script.hash_type() == multisig_script_id.hash_type.into()
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(
         network: &NetworkInfo,
         multisig_script: MultisigScript,
@@ -48,6 +49,18 @@ impl Secp256k1Blake160MultisigAllScriptHandler {
         Ok(ret)
     }
 
+    pub async fn new_async(
+        network: &NetworkInfo,
+        multisig_script: MultisigScript,
+    ) -> Result<Self, TxBuilderError> {
+        let mut ret = Self {
+            multisig_script,
+            cell_deps: vec![],
+        };
+        ret.init_async(network).await?;
+        Ok(ret)
+    }
+
     pub fn new_with_customize(multisig_script: MultisigScript, cell_deps: Vec<CellDep>) -> Self {
         Self {
             multisig_script,
@@ -55,7 +68,8 @@ impl Secp256k1Blake160MultisigAllScriptHandler {
         }
     }
 }
-
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
     fn build_transaction(
         &self,
@@ -80,6 +94,7 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[allow(clippy::if_same_then_else)]
     fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError> {
         let dep_group =
@@ -89,6 +104,27 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
                     "not found multisig dep on network: {:?}",
                     network
                 )))?;
+        let out_point = OutPoint::new_builder()
+            .tx_hash(dep_group.0.pack())
+            .index(dep_group.1.pack())
+            .build();
+
+        let cell_dep = CellDep::new_builder()
+            .out_point(out_point)
+            .dep_type(DepType::DepGroup.into())
+            .build();
+        self.cell_deps.push(cell_dep);
+        Ok(())
+    }
+    async fn init_async(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError> {
+        let dep_group = self
+            .multisig_script
+            .dep_group_async(network.to_owned())
+            .await
+            .ok_or(TxBuilderError::Other(anyhow!(
+                "not found multisig dep on network: {:?}",
+                network
+            )))?;
         let out_point = OutPoint::new_builder()
             .tx_hash(dep_group.0.pack())
             .index(dep_group.1.pack())
