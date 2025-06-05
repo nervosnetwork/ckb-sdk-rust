@@ -189,8 +189,9 @@ impl DefaultCellDepResolver {
                     NetworkInfo::devnet()
                 };
 
-            if let Some((v2_dep_hash, v2_dep_index)) =
-                MultisigScript::V2.dep_group_async(network_info).await
+            if let Some((v2_dep_hash, v2_dep_index)) = MultisigScript::V2
+                .dep_group_async(network_info, Some(genesis_block.to_owned()))
+                .await
             {
                 let multisig_v2_dep = CellDep::new_builder()
                     .out_point(OutPoint::new(v2_dep_hash.pack(), v2_dep_index))
