@@ -97,13 +97,13 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
     #[cfg(not(target_arch = "wasm32"))]
     #[allow(clippy::if_same_then_else)]
     fn init(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError> {
-        let dep_group =
-            self.multisig_script
-                .dep_group(network.to_owned())
-                .ok_or(TxBuilderError::Other(anyhow!(
-                    "not found multisig dep on network: {:?}",
-                    network
-                )))?;
+        let dep_group = self
+            .multisig_script
+            .dep_group(network.to_owned(), None)
+            .ok_or(TxBuilderError::Other(anyhow!(
+                "not found multisig dep on network: {:?}",
+                network
+            )))?;
         let out_point = OutPoint::new_builder()
             .tx_hash(dep_group.0.pack())
             .index(dep_group.1.pack())
@@ -119,7 +119,7 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
     async fn init_async(&mut self, network: &NetworkInfo) -> Result<(), TxBuilderError> {
         let dep_group = self
             .multisig_script
-            .dep_group_async(network.to_owned())
+            .dep_group_async(network.to_owned(), None)
             .await
             .ok_or(TxBuilderError::Other(anyhow!(
                 "not found multisig dep on network: {:?}",

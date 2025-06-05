@@ -122,10 +122,17 @@ impl MultisigScript {
     /// 2. MULTISIG_V2_DEP_GROUP=0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738,2
     ///
     /// If env not set, then get it from dep_group_inner
+    /// If genesis_block is None, it will fetch the genesis block from the network.
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn dep_group(&self, network: NetworkInfo) -> Option<(H256, u32)> {
+    pub fn dep_group(
+        &self,
+        network: NetworkInfo,
+        genesis_block: Option<ckb_types::core::BlockView>,
+    ) -> Option<(H256, u32)> {
         self.dep_group_from_env(network.clone())
-            .or(crate::rpc::block_on(self.dep_group_inner(network)))
+            .or(crate::rpc::block_on(
+                self.dep_group_inner(network, genesis_block),
+            ))
     }
 
     /// Get dep group from env first:
@@ -133,12 +140,21 @@ impl MultisigScript {
     /// 2. MULTISIG_V2_DEP_GROUP=0x6888aa39ab30c570c2c30d9d5684d3769bf77265a7973211a3c087fe8efbf738,2
     ///
     /// If env not set, then get it from dep_group_inner
-    pub async fn dep_group_async(&self, network: NetworkInfo) -> Option<(H256, u32)> {
+    /// If genesis_block is None, it will fetch the genesis block from the network.
+    pub async fn dep_group_async(
+        &self,
+        network: NetworkInfo,
+        genesis_block: Option<ckb_types::core::BlockView>,
+    ) -> Option<(H256, u32)> {
         self.dep_group_from_env(network.clone())
-            .or(self.dep_group_inner(network).await)
+            .or(self.dep_group_inner(network, genesis_block).await)
     }
 
-    async fn dep_group_inner(&self, network: NetworkInfo) -> Option<(H256, u32)> {
+    async fn dep_group_inner(
+        &self,
+        network: NetworkInfo,
+        genesis_block: Option<ckb_types::core::BlockView>,
+    ) -> Option<(H256, u32)> {
         match network.network_type {
             NetworkType::Mainnet => Some(match self {
                 MultisigScript::Legacy => (
@@ -161,9 +177,16 @@ impl MultisigScript {
                 ),
             }),
             NetworkType::Staging | NetworkType::Preview | NetworkType::Dev => {
-                let client = CkbRpcAsyncClient::new(network.url.as_str());
-                let json_genesis_block = client.get_block_by_number(0_u64.into()).await.ok()??;
-                let genesis_block: ckb_types::core::BlockView = json_genesis_block.into();
+                let genesis_block = if let Some(genesis_block) = genesis_block {
+                    genesis_block
+                } else {
+                    let client = CkbRpcAsyncClient::new(network.url.as_str());
+                    let json_genesis_block =
+                        client.get_block_by_number(0_u64.into()).await.ok()??;
+
+                    let genesis_block: ckb_types::core::BlockView = json_genesis_block.into();
+                    genesis_block
+                };
 
                 let secp256k1_data_outpoint =
                     find_cell_match_data_hash(&genesis_block, CODE_HASH_SECP256K1_DATA.pack())?;
@@ -284,12 +307,16 @@ mod test {
         );
 
         let mainnet = NetworkInfo::mainnet();
-        assert!(MultisigScript::Legacy.dep_group(mainnet.clone()).is_some());
-        assert!(MultisigScript::V2.dep_group(mainnet).is_some());
+        assert!(MultisigScript::Legacy
+            .dep_group(mainnet.clone(), None)
+            .is_some());
+        assert!(MultisigScript::V2.dep_group(mainnet, None).is_some());
 
         let testnet = NetworkInfo::testnet();
-        assert!(MultisigScript::Legacy.dep_group(testnet.clone()).is_some());
-        assert!(MultisigScript::V2.dep_group(testnet).is_some());
+        assert!(MultisigScript::Legacy
+            .dep_group(testnet.clone(), None)
+            .is_some());
+        assert!(MultisigScript::V2.dep_group(testnet, None).is_some());
 
         // TODO: start ckb devchain in this unit test
         // let devnet = NetworkInfo::devnet();
