@@ -377,15 +377,12 @@ impl Context {
         let tip = HeaderBuilder::default().number(0.pack()).build();
         let tx_verify_env = TxVerifyEnv::new_submit(&tip);
 
-        let mut verifier = TransactionScriptsVerifier::new(
+        let verifier = TransactionScriptsVerifier::new(
             Arc::new(rtx),
             resource,
             Arc::new(consensus),
             Arc::new(tx_verify_env),
         );
-        verifier.set_debug_printer(|script_hash, message| {
-            println!("script: {:x}, debug: {}", script_hash, message);
-        });
         verifier
             .verify(u64::MAX)
             .map_err(|err| Error::VerifyScript(format!("Verify script error: {:?}", err)))
