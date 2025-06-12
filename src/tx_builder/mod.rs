@@ -962,15 +962,12 @@ impl<
             BalanceTxCapacityError::VerifyScript(format!("Resolve transaction error: {:?}", err))
         })?;
 
-        let mut verifier = TransactionScriptsVerifier::new(
+        let verifier = TransactionScriptsVerifier::new(
             Arc::new(rtx),
             self.tx_dep_provider.clone(),
             Arc::clone(&self.consensus),
             Arc::new(TxVerifyEnv::new_submit(&self.tip_header)),
         );
-        verifier.set_debug_printer(|script_hash, message| {
-            println!("script: {:x}, debug: {}", script_hash, message);
-        });
         verifier.verify(u64::MAX).map_err(|err| {
             BalanceTxCapacityError::VerifyScript(format!("Verify script error : {:?}", err))
         })
