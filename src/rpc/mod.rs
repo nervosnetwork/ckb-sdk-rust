@@ -95,6 +95,10 @@ macro_rules! jsonrpc {
                 $struct_name {  id: 0.into(), client: $crate::rpc::RpcClient::new(uri), }
             }
 
+            pub fn new_with_cookie(uri: &str) -> Self {
+                $struct_name { id: 0.into(), client: $crate::rpc::RpcClient::new_with_cookie(uri), }
+            }
+
             pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->Result<RET, $crate::rpc::RpcError>
             where
                 PARAM:serde::ser::Serialize + Send + 'static,
@@ -168,6 +172,11 @@ macro_rules! jsonrpc_async {
         impl $struct_name {
             pub fn new(uri: &str) -> Self {
                 $struct_name {  id: 0.into(), client: $crate::rpc::RpcClient::new(uri), }
+            }
+
+            #[cfg(not(target_arch="wasm32"))]
+            pub fn new_with_cookie(uri: &str) -> Self {
+                $struct_name { id: 0.into(), client: $crate::rpc::RpcClient::new_with_cookie(uri), }
             }
             #[cfg(not(target_arch="wasm32"))]
             pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->impl std::future::Future<Output =Result<RET, $crate::rpc::RpcError>> + Send + 'static
@@ -247,6 +256,19 @@ impl RpcClient {
         let url = reqwest::Url::parse(uri).expect("ckb uri, e.g. \"http://127.0.0.1:8114\"");
         Self {
             client: reqwest::Client::new(),
+            url,
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn new_with_cookie(uri: &str) -> Self {
+        let url = reqwest::Url::parse(uri).expect("ckb uri, e.g. \"http://127.0.0.1:8114\"");
+        let mut client_builder = reqwest::Client::builder();
+        client_builder = client_builder.cookie_store(true);
+        Self {
+            client: client_builder
+                .build()
+                .expect("failed to build reqwest client"),
             url,
         }
     }
