@@ -1,0 +1,16 @@
+release:
+    types: [created]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - name: Publish ckb-sdk-rust
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
