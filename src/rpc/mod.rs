@@ -99,6 +99,14 @@ macro_rules! jsonrpc {
                 $struct_name { id: 0.into(), client: $crate::rpc::RpcClient::new_with_cookie(uri), }
             }
 
+            pub fn with_builder<F>(uri: &str, f: F) -> Result<Self, anyhow::Error>
+            where
+                F: FnOnce(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
+            {
+                let client = $crate::rpc::RpcClient::with_builder(uri, f)?;
+                Ok($struct_name { id: 0.into(), client })
+            }
+
             pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->Result<RET, $crate::rpc::RpcError>
             where
                 PARAM:serde::ser::Serialize + Send + 'static,
@@ -178,6 +186,15 @@ macro_rules! jsonrpc_async {
             pub fn new_with_cookie(uri: &str) -> Self {
                 $struct_name { id: 0.into(), client: $crate::rpc::RpcClient::new_with_cookie(uri), }
             }
+
+            pub fn with_builder<F>(uri: &str, f: F) -> Result<Self, anyhow::Error>
+            where
+                F: FnOnce(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
+            {
+                let client = $crate::rpc::RpcClient::with_builder(uri, f)?;
+                Ok($struct_name { id: 0.into(), client })
+            }
+
             #[cfg(not(target_arch="wasm32"))]
             pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->impl std::future::Future<Output =Result<RET, $crate::rpc::RpcError>> + Send + 'static
             where
@@ -258,6 +275,17 @@ impl RpcClient {
             client: reqwest::Client::new(),
             url,
         }
+    }
+
+    pub fn with_builder<F>(uri: &str, f: F) -> Result<Self, anyhow::Error>
+    where
+        F: FnOnce(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
+    {
+        let url = reqwest::Url::parse(uri)?;
+        let client = f(reqwest::Client::builder())
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to build HTTP client: {}", e))?;
+        Ok(Self { client, url })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
