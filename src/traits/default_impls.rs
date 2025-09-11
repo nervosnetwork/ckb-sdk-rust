@@ -261,7 +261,7 @@ impl CellDepResolver for DefaultCellDepResolver {
 
 /// A header_dep resolver use ckb jsonrpc client as backend
 pub struct DefaultHeaderDepResolver {
-    ckb_client: CkbRpcAsyncClient,
+    pub ckb_client: CkbRpcAsyncClient,
 }
 impl DefaultHeaderDepResolver {
     pub fn new(ckb_client: &str) -> DefaultHeaderDepResolver {
@@ -310,10 +310,10 @@ impl HeaderDepResolver for DefaultHeaderDepResolver {
 /// A cell collector use ckb-indexer as backend
 #[derive(Clone)]
 pub struct DefaultCellCollector {
-    indexer_client: IndexerRpcAsyncClient,
-    ckb_client: CkbRpcAsyncClient,
-    offchain: OffchainCellCollector,
-    acceptable_indexer_leftbehind: u64,
+    pub indexer_client: IndexerRpcAsyncClient,
+    pub ckb_client: CkbRpcAsyncClient,
+    pub offchain: OffchainCellCollector,
+    pub acceptable_indexer_leftbehind: u64,
 }
 
 impl DefaultCellCollector {
@@ -326,6 +326,23 @@ impl DefaultCellCollector {
             offchain: OffchainCellCollector::default(),
             acceptable_indexer_leftbehind: 1,
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn new_with_timeout(
+        ckb_client: &str,
+        timeout: std::time::Duration,
+    ) -> Result<Self, anyhow::Error> {
+        let indexer_client =
+            IndexerRpcAsyncClient::with_builder(ckb_client, |builder| builder.timeout(timeout))?;
+        let ckb_client =
+            CkbRpcAsyncClient::with_builder(ckb_client, |builder| builder.timeout(timeout))?;
+        Ok(DefaultCellCollector {
+            indexer_client,
+            ckb_client,
+            offchain: OffchainCellCollector::default(),
+            acceptable_indexer_leftbehind: 1,
+        })
     }
 
     /// THe acceptable ckb-indexer leftbehind block number (default = 1)
@@ -486,8 +503,8 @@ impl CellCollector for DefaultCellCollector {
     }
 }
 
-struct DefaultTxDepProviderInner {
-    rpc_client: CkbRpcAsyncClient,
+pub struct DefaultTxDepProviderInner {
+    pub rpc_client: CkbRpcAsyncClient,
     tx_cache: LruCache<Byte32, TransactionView>,
     cell_cache: LruCache<OutPoint, (CellOutput, Bytes)>,
     header_cache: LruCache<Byte32, HeaderView>,
@@ -497,7 +514,7 @@ struct DefaultTxDepProviderInner {
 /// A transaction dependency provider use ckb rpc client as backend, and with LRU cache supported
 pub struct DefaultTransactionDependencyProvider {
     // since we will mainly deal with LruCache, so use Mutex here
-    inner: Arc<Mutex<DefaultTxDepProviderInner>>,
+    pub inner: Arc<Mutex<DefaultTxDepProviderInner>>,
 }
 
 impl Clone for DefaultTransactionDependencyProvider {
