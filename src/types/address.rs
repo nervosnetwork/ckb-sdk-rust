@@ -105,12 +105,9 @@ impl AddressPayload {
         match self {
             AddressPayload::Short { .. } => AddressType::Short,
             AddressPayload::Full { hash_type, .. } => match (hash_type, is_new) {
-                (ScriptHashType::Data, true) => AddressType::Full,
-                (ScriptHashType::Type, true) => AddressType::Full,
-                (ScriptHashType::Data1, _) => AddressType::Full,
-                (ScriptHashType::Data2, _) => AddressType::Full,
                 (ScriptHashType::Data, false) => AddressType::FullData,
                 (ScriptHashType::Type, false) => AddressType::FullType,
+                _ => AddressType::Full,
             },
         }
     }
@@ -223,6 +220,7 @@ impl fmt::Debug for AddressPayload {
             ScriptHashType::Data => "data",
             ScriptHashType::Data1 => "data1",
             ScriptHashType::Data2 => "data2",
+            _ => "unsupported hash_type",
         };
         f.debug_struct("AddressPayload")
             .field("hash_type", &hash_type)
@@ -329,6 +327,7 @@ impl fmt::Debug for Address {
             ScriptHashType::Data => "data",
             ScriptHashType::Data1 => "data1",
             ScriptHashType::Data2 => "data2",
+            _ => "unsupported hash_type",
         };
         f.debug_struct("Address")
             .field("network", &self.network)

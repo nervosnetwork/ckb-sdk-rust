@@ -67,7 +67,7 @@ fn build_output_and_data(deployer: &Address) -> (CellOutput, Bytes) {
     let type_script =
         ScriptId::new_type(constants::TYPE_ID_CODE_HASH.clone()).dummy_type_id_script();
     let dummy_output = CellOutput::new_builder()
-        .lock(deployer.into())
+        .lock(deployer)
         .type_(Some(type_script).pack())
         .build();
     let required_capacity = dummy_output

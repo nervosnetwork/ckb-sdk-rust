@@ -11,7 +11,7 @@ use crate::{
 use ckb_types::{
     core::{Capacity, TransactionView},
     packed::{self, Byte32, CellOutput, Script},
-    prelude::{Builder, Entity, Pack, Unpack},
+    prelude::{Builder, Entity, Unpack},
 };
 pub mod fee_calculator;
 pub mod simple;

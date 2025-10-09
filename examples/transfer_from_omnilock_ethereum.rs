@@ -273,7 +273,7 @@ fn build_transfer_tx(
     // Build CapacityBalancer
     let sender = Script::new_builder()
         .code_hash(cell.type_hash.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(omnilock_config.build_args().pack())
         .build();
     let placeholder_witness = omnilock_config.placeholder_witness(OmniUnlockMode::Normal)?;
@@ -297,7 +297,7 @@ fn build_transfer_tx(
     let unlockers = build_omnilock_unlockers(Vec::new(), omnilock_config.clone(), cell.type_hash);
     let output = CellOutput::new_builder()
         .lock(Script::from(&args.receiver))
-        .capacity(args.capacity.0.pack())
+        .capacity(args.capacity.0)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
 

@@ -399,10 +399,7 @@ impl TxBuilder for DaoWithdrawBuilder {
                     input_total
                 };
                 let final_capacity = std::cmp::max(occupied_capacity, capacity);
-                let output = tmp_output
-                    .as_builder()
-                    .capacity(final_capacity)
-                    .build();
+                let output = tmp_output.as_builder().capacity(final_capacity).build();
                 (vec![output], vec![Bytes::new().pack()])
             }
             DaoWithdrawReceiver::Custom {

@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
         let hash160 = blake2b_256(&pubkey.serialize()[..])[0..20].to_vec();
         Script::new_builder()
             .code_hash(SIGHASH_TYPE_HASH.pack())
-            .hash_type(ScriptHashType::Type.into())
+            .hash_type(ScriptHashType::Type)
             .args(Bytes::from(hash160).pack())
             .build()
     };
@@ -116,7 +116,7 @@ fn build_transfer_tx(
     // Build the transaction
     let output = CellOutput::new_builder()
         .lock(Script::from(&args.receiver))
-        .capacity(args.capacity.0.pack())
+        .capacity(args.capacity.0)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
     let (tx, still_locked_groups) = builder.build_unlocked(

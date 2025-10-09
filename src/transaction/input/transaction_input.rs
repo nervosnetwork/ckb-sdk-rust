@@ -1,6 +1,6 @@
 use ckb_types::{
     packed,
-    prelude::{Builder, Entity, Pack},
+    prelude::{Builder, Entity},
 };
 
 use crate::traits::LiveCell;

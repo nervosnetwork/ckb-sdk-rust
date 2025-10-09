@@ -129,10 +129,7 @@ impl UdtTargetReceiver {
                 } else {
                     base_occupied_capacity
                 };
-                let output = base_output
-                    .as_builder()
-                    .capacity(final_capacity)
-                    .build();
+                let output = base_output.as_builder().capacity(final_capacity).build();
                 Ok(ReceiverBuildOutput {
                     input: None,
                     output,
