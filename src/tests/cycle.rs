@@ -71,7 +71,7 @@ fn build_script(loops: u64) -> Script {
     let cycle_data_hash = H256::from(blake2b_256(CYCLE_BIN));
     Script::new_builder()
         .code_hash(cycle_data_hash.pack())
-        .hash_type(ScriptHashType::Data.into())
+        .hash_type(ScriptHashType::Data)
         .args(build_args(loops).pack())
         .build()
 }
@@ -107,7 +107,7 @@ fn test_change_enough(loops: u64) {
     )));
 
     let output = CellOutput::new_builder()
-        .capacity((140 * ONE_CKB).pack())
+        .capacity(140 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
@@ -153,7 +153,7 @@ fn vsize_big_and_fee_enough() {
     )));
 
     let output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
@@ -199,7 +199,7 @@ fn vsize_big_and_fee_not_enough() {
     )));
 
     let output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
@@ -235,7 +235,7 @@ fn vsize_big_and_can_find_more_capacity() {
     )));
 
     let output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
@@ -325,7 +325,7 @@ fn vsize_big_and_cannot_find_more_capacity() {
     )));
 
     let output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);

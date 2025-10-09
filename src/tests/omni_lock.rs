@@ -45,7 +45,7 @@ fn build_omnilock_script(cfg: &OmniLockConfig) -> Script {
     let omnilock_data_hash = H256::from(blake2b_256(OMNILOCK_BIN));
     Script::new_builder()
         .code_hash(omnilock_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(cfg.build_args().pack())
         .build()
 }
@@ -106,7 +106,7 @@ fn test_omnilock_simple_hash(cfg: OmniLockConfig) {
     );
 
     let output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder =
@@ -220,7 +220,7 @@ fn test_omnilock_simple_hash_rc_input(mut cfg: OmniLockConfig) {
     }
 
     let output = CellOutput::new_builder()
-        .capacity((110 * ONE_CKB).pack())
+        .capacity(110 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = OmniLockTransferBuilder::new(
@@ -412,7 +412,7 @@ fn test_omnilock_simple_hash_rc(mut cfg: OmniLockConfig, unlock_mode: OmniUnlock
     }
 
     let output = CellOutput::new_builder()
-        .capacity((110 * ONE_CKB).pack())
+        .capacity(110 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = OmniLockTransferBuilder::new(
@@ -522,7 +522,7 @@ fn test_omnilock_simple_hash_rc2(mut cfg: OmniLockConfig) {
     }
 
     let output = CellOutput::new_builder()
-        .capacity((110 * ONE_CKB).pack())
+        .capacity(110 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = OmniLockTransferBuilder::new(
@@ -602,7 +602,7 @@ fn test_omnilock_transfer_from_multisig() {
     );
 
     let output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder =
@@ -696,7 +696,7 @@ fn test_omnilock_transfer_from_multisig_wl_commnon(unlock_mode: OmniUnlockMode) 
 
     let receiver = build_sighash_script(ACCOUNT2_ARG);
     let output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = OmniLockTransferBuilder::new(
@@ -782,7 +782,7 @@ fn test_omnilock_transfer_from_ownerlock() {
     );
 
     let output = CellOutput::new_builder()
-        .capacity((110 * ONE_CKB).pack())
+        .capacity(110 * ONE_CKB)
         .lock(receiver.clone())
         .build();
     let builder =
@@ -879,7 +879,7 @@ fn test_omnilock_transfer_from_ownerlock_wl_admin() {
     }
 
     let output = CellOutput::new_builder()
-        .capacity((110 * ONE_CKB).pack())
+        .capacity(110 * ONE_CKB)
         .lock(receiver.clone())
         .build();
     let builder = OmniLockTransferBuilder::new(
@@ -988,7 +988,7 @@ fn test_omnilock_transfer_from_acp() {
         ],
     );
     let output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(receiver)
         .build();
 
@@ -1091,7 +1091,7 @@ fn test_omnilock_transfer_to_acp() {
     assert_eq!(tx.cell_deps().len(), 2);
     assert_eq!(tx.inputs().len(), 2);
     let acp_output = CellOutput::new_builder()
-        .capacity(((61 + 10) * ONE_CKB).pack())
+        .capacity((61 + 10) * ONE_CKB)
         .lock(receiver)
         .build();
     assert_eq!(tx.outputs().len(), 2);
@@ -1140,7 +1140,7 @@ fn test_omnilock_udt_transfer() {
     let owner = build_sighash_script(H160::default());
     let type_script = Script::new_builder()
         .code_hash(sudt_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(owner.calc_script_hash().as_bytes().pack())
         .build();
     let mut ctx = init_context(
@@ -1153,7 +1153,7 @@ fn test_omnilock_udt_transfer() {
 
     let sender_input = CellInput::new(random_out_point(), 0);
     let sender_output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(sender.clone())
         .type_(Some(type_script.clone()).pack())
         .build();
@@ -1163,7 +1163,7 @@ fn test_omnilock_udt_transfer() {
     let receiver_acp_lock = build_omnilock_script(&receiver_cfg);
     let receiver_input = CellInput::new(random_out_point(), 0);
     let receiver_output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(receiver_acp_lock.clone())
         .type_(Some(type_script.clone()).pack())
         .build();
@@ -1258,13 +1258,13 @@ fn test_omnilock_simple_hash_timelock(mut cfg: OmniLockConfig) {
     let prepare_out_point = random_out_point();
     let prepare_input = CellInput::new(prepare_out_point, since.value());
     let prepare_output = CellOutput::new_builder()
-        .capacity((300 * ONE_CKB + 1000).pack())
+        .capacity(300 * ONE_CKB + 1000)
         .lock(sender.clone())
         .build();
     ctx.add_live_cell(prepare_input, prepare_output, Bytes::default(), None);
 
     let output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder =
@@ -1318,7 +1318,7 @@ fn build_sudt_script(omnilock_hash: Byte32) -> Script {
     let sudt_data_hash = H256::from(blake2b_256(SUDT_BIN));
     Script::new_builder()
         .code_hash(sudt_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(omnilock_hash.as_bytes().pack())
         .build()
 }
@@ -1330,7 +1330,7 @@ fn build_info_cell_type_script() -> (Script, H256) {
     rng.fill(&mut args[..]);
     let script = Script::new_builder()
         .code_hash(data_hash.pack())
-        .hash_type(ScriptHashType::Data.into())
+        .hash_type(ScriptHashType::Data)
         .args(Bytes::from(args).pack())
         .build();
     let script_hash = script.calc_script_hash();
@@ -1371,7 +1371,7 @@ fn test_omnilock_sudt_supply() {
     );
     let input = CellInput::new(random_out_point(), 0);
     let output = CellOutput::new_builder()
-        .capacity((1000 * ONE_CKB + 1000).pack())
+        .capacity(1000 * ONE_CKB + 1000)
         .lock(sender.clone())
         .type_(Some(info_cell_type_script.clone()).pack())
         .build();
@@ -1381,14 +1381,14 @@ fn test_omnilock_sudt_supply() {
     info_cell.current_supply = 3000u128;
     let output_supply_data = info_cell.pack();
     let output_supply = CellOutput::new_builder()
-        .capacity(((1000 - 16) * ONE_CKB).pack())
+        .capacity((1000 - 16) * ONE_CKB)
         .lock(sender.clone())
         .type_(Some(info_cell_type_script).pack())
         .build();
 
     let mint_receiver = build_sighash_script(ACCOUNT1_ARG);
     let mint_output = CellOutput::new_builder()
-        .capacity((16 * ONE_CKB).pack())
+        .capacity(16 * ONE_CKB)
         .type_(Some(sudt_script).pack())
         .lock(mint_receiver.clone())
         .build();

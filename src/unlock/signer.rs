@@ -197,7 +197,7 @@ impl MultisigConfig {
         self.lock_code_hash.clone()
     }
     pub fn lock_hash_type(&self) -> ScriptHashType {
-        self.lock_hash_type.clone()
+        self.lock_hash_type
     }
     pub fn require_first_n(&self) -> u8 {
         self.require_first_n

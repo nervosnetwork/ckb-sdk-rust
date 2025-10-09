@@ -37,7 +37,7 @@ fn test_cells_search_mode_default_partitial() {
     // default with partitial args
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[0..2].pack())
         .build();
 
@@ -60,7 +60,7 @@ fn test_cells_search_mode_prefix_partitial() {
     // prefix with partitial args
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[0..2].pack())
         .build();
 
@@ -82,7 +82,7 @@ fn test_cells_search_mode_exact_partitial() {
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[0..2].pack())
         .build();
     // exact with partitial args
@@ -104,7 +104,7 @@ fn test_cells_search_mode_exact() {
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[..].pack())
         .build();
 
@@ -127,7 +127,7 @@ fn test_get_transactions_search_mode_default() {
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[0..2].pack())
         .build();
 
@@ -150,7 +150,7 @@ fn test_get_transactions_search_mode_prefix_partial() {
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[0..2].pack())
         .build();
 
@@ -172,7 +172,7 @@ fn test_get_transactions_search_mode_exact_partitial() {
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[0..2].pack())
         .build();
 
@@ -195,7 +195,7 @@ fn test_get_transactions_search_mode_exact_full() {
     // exact search
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[..].pack())
         .build();
 
@@ -217,7 +217,7 @@ fn test_get_cells_capacity_search_mode_default() {
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[0..2].pack())
         .build();
 
@@ -238,7 +238,7 @@ fn test_get_cells_capacity_search_mode_prefix_partial() {
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[0..2].pack())
         .build();
 
@@ -259,7 +259,7 @@ fn test_get_cells_capacity_search_mode_exact_partital() {
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[0..2].pack())
         .build();
     // exact with partitial args
@@ -280,7 +280,7 @@ fn test_get_cells_capacity_search_mode_exact() {
     let block_range = Some(ValueRangeOption::new(0, 1));
     let script = ckb_types::packed::Script::new_builder()
         .code_hash(CODE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(ARGS[..].pack())
         .build();
 

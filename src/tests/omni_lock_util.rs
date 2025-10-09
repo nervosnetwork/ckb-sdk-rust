@@ -38,7 +38,7 @@ pub fn build_always_success_script() -> Script {
     let data_hash = CellOutput::calc_data_hash(ALWAYS_SUCCESS_BIN);
     Script::new_builder()
         .code_hash(data_hash)
-        .hash_type(ScriptHashType::Data.into())
+        .hash_type(ScriptHashType::Data)
         .build()
 }
 //
@@ -76,7 +76,7 @@ fn build_script(
             Script::new_builder()
                 .args(args.pack())
                 .code_hash(hash.pack())
-                .hash_type(ScriptHashType::Type.into())
+                .hash_type(ScriptHashType::Type)
                 .build()
         }
     };
@@ -85,7 +85,7 @@ fn build_script(
     // it not needed to set "type script" when is_type is false
     let capacity = bin.len() as u64 * ONE_CKB;
     let output = CellOutput::new_builder()
-        .capacity(capacity.pack())
+        .capacity(capacity)
         .lock(lock_script)
         .type_(Some(type_script_in_code.clone()).pack())
         .build();
@@ -96,7 +96,7 @@ fn build_script(
     } else {
         let cell_dep = CellDep::new_builder()
             .out_point(out_point.clone())
-            .dep_type(DepType::Code.into())
+            .dep_type(DepType::Code)
             .build();
         ctx.add_cell_dep(cell_dep, output, bin.clone(), None);
     }
@@ -117,7 +117,7 @@ fn build_script(
     Script::new_builder()
         .args(args.pack())
         .code_hash(code_hash.pack())
-        .hash_type(hash_type.into())
+        .hash_type(hash_type)
         .build()
 }
 

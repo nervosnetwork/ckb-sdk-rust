@@ -207,10 +207,10 @@ mod tests {
                 EpochNumberWithFraction::new(prepare_point.0, prepare_point.1, prepare_point.2);
             let expected = EpochNumberWithFraction::new(expected.0, expected.1, expected.2);
             let deposit_header = HeaderBuilder::default()
-                .epoch(deposit_point.full_value().pack())
+                .epoch(deposit_point.full_value())
                 .build();
             let prepare_header = HeaderBuilder::default()
-                .epoch(prepare_point.full_value().pack())
+                .epoch(prepare_point.full_value())
                 .build();
             let actual = minimal_unlock_point(&deposit_header, &prepare_header);
             assert_eq!(
@@ -236,8 +236,8 @@ mod tests {
         let prepare_point =
             EpochNumberWithFraction::new(prepare_point.0, prepare_point.1, prepare_point.2);
         let deposit_header = HeaderBuilder::default()
-            .epoch(deposit_point.full_value().pack())
-            .number(deposit_number.pack())
+            .epoch(deposit_point.full_value())
+            .number(deposit_number)
             .dao(pack_dao_data(
                 10_000_000_000_123_456,
                 Default::default(),
@@ -246,8 +246,8 @@ mod tests {
             ))
             .build();
         let prepare_header = HeaderBuilder::default()
-            .epoch(prepare_point.full_value().pack())
-            .number(prepare_number.pack())
+            .epoch(prepare_point.full_value())
+            .number(prepare_number)
             .dao(pack_dao_data(
                 10_000_000_001_123_456,
                 Default::default(),
@@ -284,7 +284,7 @@ mod tests {
                 .epoch(
                     EpochNumberWithFraction::new(3, 200, 400)
                         .full_value()
-                        .pack(),
+                        ,
                 )
                 .build()
                 .into();
@@ -316,7 +316,7 @@ mod tests {
                 .epoch(
                     EpochNumberWithFraction::new(3, 300, 600)
                         .full_value()
-                        .pack(),
+                        ,
                 )
                 .build()
                 .into();
@@ -362,7 +362,7 @@ mod tests {
                 .epoch(
                     EpochNumberWithFraction::new(105, 300, 600)
                         .full_value()
-                        .pack(),
+                        ,
                 )
                 .build()
                 .into();
