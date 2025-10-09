@@ -37,7 +37,7 @@ impl UdtType {
         };
         Script::new_builder()
             .code_hash(script_id.code_hash.pack())
-            .hash_type(script_id.hash_type.into())
+            .hash_type(script_id.hash_type)
             .args(type_script_args.pack())
             .build()
     }
@@ -131,7 +131,7 @@ impl UdtTargetReceiver {
                 };
                 let output = base_output
                     .as_builder()
-                    .capacity(final_capacity.pack())
+                    .capacity(final_capacity)
                     .build();
                 Ok(ReceiverBuildOutput {
                     input: None,

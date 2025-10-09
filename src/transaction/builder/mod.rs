@@ -134,7 +134,7 @@ impl ChangeBuilder for DefaultChangeBuilder<'_> {
             .unwrap()
             .clone()
             .as_builder()
-            .capacity(change_capacity.pack())
+            .capacity(change_capacity)
             .build();
         tx.set_output(tx.outputs.len() - 1, change_output);
         tx.build()

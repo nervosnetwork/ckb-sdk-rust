@@ -89,7 +89,7 @@ impl TxBuilder for OmniLockTransferBuilder {
                     for cell in rce_cells {
                         let cell_dep = CellDep::new_builder()
                             .out_point(cell.clone())
-                            .dep_type(DepType::Code.into())
+                            .dep_type(DepType::Code)
                             .build();
                         cell_deps.insert(cell_dep);
                     }

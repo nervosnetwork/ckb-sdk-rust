@@ -31,7 +31,7 @@ impl SudtHandler {
                         h256!("0xc7813f6a415144643970c2e88e0bb6ca6a8edc5dd7c1022746f628284a9936d5")
                             .pack(),
                     )
-                    .index(0u32.pack())
+                    .index(0u32)
                     .build(),
                 ScriptId::new_type(h256!(
                     "0x5e7a36a77e68eecc013dfa2fe6a23f3b6c344b04005808694ae6dd45eea4cfd5"
@@ -44,7 +44,7 @@ impl SudtHandler {
                         h256!("0xe12877ebd2c3c364dc46c5c992bcfaf4fee33fa13eebdf82c591fc9825aab769")
                             .pack(),
                     )
-                    .index(0u32.pack())
+                    .index(0u32)
                     .build(),
                 ScriptId::new_type(h256!(
                     "0xc5e5dcf215925f7ef4dfaf5f4b4f105bc321c02776d6e7d52a1db3fcd9d011a4"
@@ -56,7 +56,7 @@ impl SudtHandler {
 
         let cell_dep = CellDep::new_builder()
             .out_point(out_point)
-            .dep_type(DepType::Code.into())
+            .dep_type(DepType::Code)
             .build();
 
         Ok(Self {

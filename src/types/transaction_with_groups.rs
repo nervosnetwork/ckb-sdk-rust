@@ -74,7 +74,7 @@ impl TransactionWithScriptGroupsBuilder {
         let script = Script::new_builder()
             .code_hash(code_hash.pack())
             .args(args.pack())
-            .hash_type(ScriptHashType::Type.into())
+            .hash_type(ScriptHashType::Type)
             .build();
         self.add_lock_script_group(&script, input_indices)
     }
