@@ -1009,10 +1009,7 @@ fn test_udt_issue() {
         .occupied_capacity(Capacity::bytes(16).unwrap())
         .unwrap()
         .as_u64();
-    let output = output
-        .as_builder()
-        .capacity(occupied_capacity)
-        .build();
+    let output = output.as_builder().capacity(occupied_capacity).build();
     assert_eq!(tx.output(0).unwrap(), output);
     assert_eq!(tx.output(1).unwrap().lock(), owner);
     let expected_outputs_data = vec![

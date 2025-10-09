@@ -281,11 +281,7 @@ mod tests {
             });
 
             let tip_header: HeaderView = HeaderBuilder::default()
-                .epoch(
-                    EpochNumberWithFraction::new(3, 200, 400)
-                        .full_value()
-                        ,
-                )
+                .epoch(EpochNumberWithFraction::new(3, 200, 400).full_value())
                 .build()
                 .into();
             server.mock(|when, then| {
@@ -313,11 +309,7 @@ mod tests {
             });
 
             let tip_header: HeaderView = HeaderBuilder::default()
-                .epoch(
-                    EpochNumberWithFraction::new(3, 300, 600)
-                        .full_value()
-                        ,
-                )
+                .epoch(EpochNumberWithFraction::new(3, 300, 600).full_value())
                 .build()
                 .into();
             server.mock(|when, then| {
@@ -359,11 +351,7 @@ mod tests {
             });
 
             let tip_header: HeaderView = HeaderBuilder::default()
-                .epoch(
-                    EpochNumberWithFraction::new(105, 300, 600)
-                        .full_value()
-                        ,
-                )
+                .epoch(EpochNumberWithFraction::new(105, 300, 600).full_value())
                 .build()
                 .into();
             server.mock(|when, then| {
