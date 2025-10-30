@@ -162,7 +162,7 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
     hasher.update(eth_prefix);
     hasher.update(message);
     let r = hasher.finalize();
-    H256::from_slice(r.as_slice()).expect("convert_keccak256_hash")
+    H256::from_slice(&r).expect("convert_keccak256_hash")
 }
 
 #[cfg(all(test, feature = "test"))]
