@@ -1,6 +1,6 @@
 [package]
 name = "ckb-sdk"
-version = "4.4.0"
+version = "5.0.0"
 authors = [
     "Linfeng Qian <thewawar@gmail.com>",
     "Nervos Core Dev <dev@nervos.org>",
