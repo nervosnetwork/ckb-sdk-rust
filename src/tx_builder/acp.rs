@@ -70,7 +70,7 @@ impl TxBuilder for AcpTransferBuilder {
                 .output
                 .clone()
                 .as_builder()
-                .capacity(output_capacity.pack())
+                .capacity(output_capacity)
                 .build();
             let output_data = input_cell.output_data.clone();
 

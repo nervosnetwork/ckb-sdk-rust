@@ -66,7 +66,7 @@ const ALWAYS_SUCCESS_BIN: &[u8] = include_bytes!("../test-data/always_success");
 fn build_sighash_script(args: H160) -> Script {
     Script::new_builder()
         .code_hash(SIGHASH_TYPE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(Bytes::from(args.0.to_vec()).pack())
         .build()
 }
@@ -83,7 +83,7 @@ fn build_multisig_script(cfg: &MultisigConfig) -> Script {
         .script_id();
     Script::new_builder()
         .code_hash(multisig_script.code_hash.pack())
-        .hash_type(multisig_script.hash_type.into())
+        .hash_type(multisig_script.hash_type)
         .args(Bytes::from(cfg.hash160().0.to_vec()).pack())
         .build()
 }
@@ -91,7 +91,7 @@ fn build_multisig_script(cfg: &MultisigConfig) -> Script {
 fn build_dao_script() -> Script {
     Script::new_builder()
         .code_hash(DAO_TYPE_HASH.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .build()
 }
 
@@ -103,7 +103,7 @@ fn build_cheque_script(sender: &Script, receiver: &Script, cheque_data_hash: H25
     script_args[20..40].copy_from_slice(&sender_script_hash.as_slice()[0..20]);
     Script::new_builder()
         .code_hash(cheque_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(Bytes::from(script_args).pack())
         .build()
 }
@@ -157,7 +157,7 @@ fn test_transfer_from_sighash() {
     );
 
     let output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
@@ -208,7 +208,7 @@ fn test_transfer_capacity_overflow() {
 
     let large_amount: u64 = u64::MAX;
     let output = CellOutput::new_builder()
-        .capacity((large_amount).pack())
+        .capacity(large_amount)
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
@@ -251,7 +251,7 @@ fn test_transfer_from_multisig() {
     );
 
     let output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
@@ -301,7 +301,7 @@ fn test_transfer_from_acp() {
     let data_hash = H256::from(blake2b_256(ACP_BIN));
     let sender = Script::new_builder()
         .code_hash(data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(Bytes::from(ACCOUNT1_ARG.0.to_vec()).pack())
         .build();
     let receiver = build_sighash_script(ACCOUNT2_ARG);
@@ -315,7 +315,7 @@ fn test_transfer_from_acp() {
     );
 
     let output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(receiver)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output.clone(), Bytes::default())]);
@@ -363,7 +363,7 @@ fn test_transfer_to_acp() {
     let sender = build_sighash_script(ACCOUNT1_ARG);
     let receiver = Script::new_builder()
         .code_hash(data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(Bytes::from(ACCOUNT2_ARG.0.to_vec()).pack())
         .build();
     let ctx = init_context(
@@ -406,15 +406,15 @@ fn test_transfer_to_acp() {
     assert_eq!(tx.inputs().len(), 3);
     let input_cells = [
         CellOutput::new_builder()
-            .capacity((99 * ONE_CKB).pack())
+            .capacity(99 * ONE_CKB)
             .lock(receiver.clone())
             .build(),
         CellOutput::new_builder()
-            .capacity((100 * ONE_CKB).pack())
+            .capacity(100 * ONE_CKB)
             .lock(sender.clone())
             .build(),
         CellOutput::new_builder()
-            .capacity((200 * ONE_CKB).pack())
+            .capacity(200 * ONE_CKB)
             .lock(sender.clone())
             .build(),
     ];
@@ -423,7 +423,7 @@ fn test_transfer_to_acp() {
     }
     assert_eq!(tx.outputs().len(), 2);
     let acp_output = CellOutput::new_builder()
-        .capacity(((99 + 150) * ONE_CKB).pack())
+        .capacity((99 + 150) * ONE_CKB)
         .lock(receiver)
         .build();
     assert_eq!(tx.output(0).unwrap(), acp_output);
@@ -449,7 +449,7 @@ fn test_cheque_claim() {
     let cheque_script = build_cheque_script(&sender, &receiver, cheque_data_hash.clone());
     let type_script = Script::new_builder()
         .code_hash(sudt_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(Bytes::from(vec![9u8; 32]).pack())
         .build();
     let mut ctx = init_context(
@@ -462,7 +462,7 @@ fn test_cheque_claim() {
 
     let receiver_input = CellInput::new(random_out_point(), 0);
     let receiver_output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(receiver.clone())
         .type_(Some(type_script.clone()).pack())
         .build();
@@ -476,7 +476,7 @@ fn test_cheque_claim() {
 
     let cheque_input = CellInput::new(random_out_point(), 0);
     let cheque_output = CellOutput::new_builder()
-        .capacity((220 * ONE_CKB).pack())
+        .capacity(220 * ONE_CKB)
         .lock(cheque_script)
         .type_(Some(type_script).pack())
         .build();
@@ -522,7 +522,7 @@ fn test_cheque_claim() {
         cheque_output,
         receiver_output.clone(),
         CellOutput::new_builder()
-            .capacity((100 * ONE_CKB).pack())
+            .capacity(100 * ONE_CKB)
             .lock(receiver.clone())
             .build(),
     ];
@@ -532,7 +532,7 @@ fn test_cheque_claim() {
     assert_eq!(tx.outputs().len(), 3);
     assert_eq!(tx.output(0).unwrap(), receiver_output);
     let sender_output = CellOutput::new_builder()
-        .capacity((220 * ONE_CKB).pack())
+        .capacity(220 * ONE_CKB)
         .lock(sender)
         .build();
     assert_eq!(tx.output(1).unwrap(), sender_output);
@@ -569,7 +569,7 @@ fn test_cheque_withdraw() {
     let cheque_script = build_cheque_script(&sender, &receiver, cheque_data_hash.clone());
     let type_script = Script::new_builder()
         .code_hash(sudt_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(Bytes::from(vec![9u8; 32]).pack())
         .build();
     let mut ctx = init_context(
@@ -583,7 +583,7 @@ fn test_cheque_withdraw() {
     let cheque_out_point = random_out_point();
     let cheque_input = CellInput::new(cheque_out_point.clone(), CHEQUE_CELL_SINCE);
     let cheque_output = CellOutput::new_builder()
-        .capacity((220 * ONE_CKB).pack())
+        .capacity(220 * ONE_CKB)
         .lock(cheque_script)
         .type_(Some(type_script).pack())
         .build();
@@ -624,7 +624,7 @@ fn test_cheque_withdraw() {
     let input_cells = [
         cheque_output.clone(),
         CellOutput::new_builder()
-            .capacity((100 * ONE_CKB).pack())
+            .capacity(100 * ONE_CKB)
             .lock(sender.clone())
             .build(),
     ];
@@ -697,7 +697,7 @@ fn test_dao_deposit() {
     }
     assert_eq!(tx.outputs().len(), 2);
     let deposit_output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(sender.clone())
         .type_(Some(build_dao_script()).pack())
         .build();
@@ -738,13 +738,13 @@ fn test_dao_prepare() {
 
     let deposit_input = CellInput::new(random_out_point(), 0);
     let deposit_output = CellOutput::new_builder()
-        .capacity((220 * ONE_CKB).pack())
+        .capacity(220 * ONE_CKB)
         .lock(sender.clone())
         .type_(Some(build_dao_script()).pack())
         .build();
     let deposit_header = HeaderBuilder::default()
-        .epoch(deposit_point.full_value().pack())
-        .number(deposit_number.pack())
+        .epoch(deposit_point.full_value())
+        .number(deposit_number)
         .build();
     let deposit_block_hash = deposit_header.hash();
     ctx.add_live_cell(
@@ -828,8 +828,8 @@ fn test_dao_withdraw() {
     let prepare_point =
         EpochNumberWithFraction::new(prepare_point.0, prepare_point.1, prepare_point.2);
     let deposit_header = HeaderBuilder::default()
-        .epoch(deposit_point.full_value().pack())
-        .number(deposit_number.pack())
+        .epoch(deposit_point.full_value())
+        .number(deposit_number)
         .dao(pack_dao_data(
             10_000_000_000_123_456,
             Default::default(),
@@ -838,8 +838,8 @@ fn test_dao_withdraw() {
         ))
         .build();
     let prepare_header = HeaderBuilder::default()
-        .epoch(prepare_point.full_value().pack())
-        .number(prepare_number.pack())
+        .epoch(prepare_point.full_value())
+        .number(prepare_number)
         .dao(pack_dao_data(
             10_000_000_001_123_456,
             Default::default(),
@@ -859,7 +859,7 @@ fn test_dao_withdraw() {
     let prepare_out_point = random_out_point();
     let prepare_input = CellInput::new(prepare_out_point.clone(), since.value());
     let prepare_output = CellOutput::new_builder()
-        .capacity((220 * ONE_CKB).pack())
+        .capacity(220 * ONE_CKB)
         .lock(sender.clone())
         .type_(Some(build_dao_script()).pack())
         .build();
@@ -921,7 +921,7 @@ fn test_dao_withdraw() {
     );
     let expected_output = prepare_output
         .as_builder()
-        .capacity(expected_capacity.pack())
+        .capacity(expected_capacity)
         .type_(ScriptOpt::default())
         .build();
     assert_eq!(tx.output(0).unwrap(), expected_output);
@@ -998,7 +998,7 @@ fn test_udt_issue() {
     assert_eq!(tx.outputs().len(), 2);
     let type_script = Script::new_builder()
         .code_hash(sudt_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(owner.calc_script_hash().as_bytes().pack())
         .build();
     let output = CellOutput::new_builder()
@@ -1009,10 +1009,7 @@ fn test_udt_issue() {
         .occupied_capacity(Capacity::bytes(16).unwrap())
         .unwrap()
         .as_u64();
-    let output = output
-        .as_builder()
-        .capacity(occupied_capacity.pack())
-        .build();
+    let output = output.as_builder().capacity(occupied_capacity).build();
     assert_eq!(tx.output(0).unwrap(), output);
     assert_eq!(tx.output(1).unwrap().lock(), owner);
     let expected_outputs_data = vec![
@@ -1042,7 +1039,7 @@ fn test_udt_transfer() {
     let owner = build_sighash_script(H160::default());
     let type_script = Script::new_builder()
         .code_hash(sudt_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(owner.calc_script_hash().as_bytes().pack())
         .build();
     let mut ctx = init_context(
@@ -1055,7 +1052,7 @@ fn test_udt_transfer() {
 
     let sender_input = CellInput::new(random_out_point(), 0);
     let sender_output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(sender.clone())
         .type_(Some(type_script.clone()).pack())
         .build();
@@ -1064,12 +1061,12 @@ fn test_udt_transfer() {
 
     let receiver_acp_lock = Script::new_builder()
         .code_hash(acp_data_hash.pack())
-        .hash_type(ScriptHashType::Data1.into())
+        .hash_type(ScriptHashType::Data1)
         .args(Bytes::from(ACCOUNT2_ARG.0.to_vec()).pack())
         .build();
     let receiver_input = CellInput::new(random_out_point(), 0);
     let receiver_output = CellOutput::new_builder()
-        .capacity((200 * ONE_CKB).pack())
+        .capacity(200 * ONE_CKB)
         .lock(receiver_acp_lock.clone())
         .type_(Some(type_script.clone()).pack())
         .build();

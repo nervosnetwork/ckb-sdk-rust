@@ -162,7 +162,7 @@ pub fn convert_keccak256_hash(message: &[u8]) -> H256 {
     hasher.update(eth_prefix);
     hasher.update(message);
     let r = hasher.finalize();
-    H256::from_slice(r.as_slice()).expect("convert_keccak256_hash")
+    H256::from_slice(&r).expect("convert_keccak256_hash")
 }
 
 #[cfg(all(test, feature = "test"))]
@@ -207,10 +207,10 @@ mod tests {
                 EpochNumberWithFraction::new(prepare_point.0, prepare_point.1, prepare_point.2);
             let expected = EpochNumberWithFraction::new(expected.0, expected.1, expected.2);
             let deposit_header = HeaderBuilder::default()
-                .epoch(deposit_point.full_value().pack())
+                .epoch(deposit_point.full_value())
                 .build();
             let prepare_header = HeaderBuilder::default()
-                .epoch(prepare_point.full_value().pack())
+                .epoch(prepare_point.full_value())
                 .build();
             let actual = minimal_unlock_point(&deposit_header, &prepare_header);
             assert_eq!(
@@ -236,8 +236,8 @@ mod tests {
         let prepare_point =
             EpochNumberWithFraction::new(prepare_point.0, prepare_point.1, prepare_point.2);
         let deposit_header = HeaderBuilder::default()
-            .epoch(deposit_point.full_value().pack())
-            .number(deposit_number.pack())
+            .epoch(deposit_point.full_value())
+            .number(deposit_number)
             .dao(pack_dao_data(
                 10_000_000_000_123_456,
                 Default::default(),
@@ -246,8 +246,8 @@ mod tests {
             ))
             .build();
         let prepare_header = HeaderBuilder::default()
-            .epoch(prepare_point.full_value().pack())
-            .number(prepare_number.pack())
+            .epoch(prepare_point.full_value())
+            .number(prepare_number)
             .dao(pack_dao_data(
                 10_000_000_001_123_456,
                 Default::default(),
@@ -281,11 +281,7 @@ mod tests {
             });
 
             let tip_header: HeaderView = HeaderBuilder::default()
-                .epoch(
-                    EpochNumberWithFraction::new(3, 200, 400)
-                        .full_value()
-                        .pack(),
-                )
+                .epoch(EpochNumberWithFraction::new(3, 200, 400).full_value())
                 .build()
                 .into();
             server.mock(|when, then| {
@@ -313,11 +309,7 @@ mod tests {
             });
 
             let tip_header: HeaderView = HeaderBuilder::default()
-                .epoch(
-                    EpochNumberWithFraction::new(3, 300, 600)
-                        .full_value()
-                        .pack(),
-                )
+                .epoch(EpochNumberWithFraction::new(3, 300, 600).full_value())
                 .build()
                 .into();
             server.mock(|when, then| {
@@ -359,11 +351,7 @@ mod tests {
             });
 
             let tip_header: HeaderView = HeaderBuilder::default()
-                .epoch(
-                    EpochNumberWithFraction::new(105, 300, 600)
-                        .full_value()
-                        .pack(),
-                )
+                .epoch(EpochNumberWithFraction::new(105, 300, 600).full_value())
                 .build()
                 .into();
             server.mock(|when, then| {

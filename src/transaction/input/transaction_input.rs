@@ -1,6 +1,6 @@
 use ckb_types::{
     packed,
-    prelude::{Builder, Entity, Pack},
+    prelude::{Builder, Entity},
 };
 
 use crate::traits::LiveCell;
@@ -23,7 +23,7 @@ impl TransactionInput {
 
     pub fn cell_input(&self) -> packed::CellInput {
         packed::CellInput::new_builder()
-            .since(self.since.pack())
+            .since(self.since)
             .previous_output(self.live_cell.out_point.clone())
             .build()
     }

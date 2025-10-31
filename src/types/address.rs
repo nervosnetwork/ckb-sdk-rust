@@ -105,12 +105,9 @@ impl AddressPayload {
         match self {
             AddressPayload::Short { .. } => AddressType::Short,
             AddressPayload::Full { hash_type, .. } => match (hash_type, is_new) {
-                (ScriptHashType::Data, true) => AddressType::Full,
-                (ScriptHashType::Type, true) => AddressType::Full,
-                (ScriptHashType::Data1, _) => AddressType::Full,
-                (ScriptHashType::Data2, _) => AddressType::Full,
                 (ScriptHashType::Data, false) => AddressType::FullData,
                 (ScriptHashType::Type, false) => AddressType::FullType,
+                _ => AddressType::Full,
             },
         }
     }
@@ -223,6 +220,7 @@ impl fmt::Debug for AddressPayload {
             ScriptHashType::Data => "data",
             ScriptHashType::Data1 => "data1",
             ScriptHashType::Data2 => "data2",
+            _ => "unsupported hash_type",
         };
         f.debug_struct("AddressPayload")
             .field("hash_type", &hash_type)
@@ -235,7 +233,7 @@ impl fmt::Debug for AddressPayload {
 impl From<&AddressPayload> for Script {
     fn from(payload: &AddressPayload) -> Script {
         Script::new_builder()
-            .hash_type(payload.hash_type().into())
+            .hash_type(payload.hash_type())
             .code_hash(payload.code_hash(None))
             .args(payload.args().pack())
             .build()
@@ -329,6 +327,7 @@ impl fmt::Debug for Address {
             ScriptHashType::Data => "data",
             ScriptHashType::Data1 => "data1",
             ScriptHashType::Data2 => "data2",
+            _ => "unsupported hash_type",
         };
         f.debug_struct("Address")
             .field("network", &self.network)
@@ -343,7 +342,7 @@ impl fmt::Debug for Address {
 impl From<&Address> for Script {
     fn from(addr: &Address) -> Script {
         Script::new_builder()
-            .hash_type(addr.payload.hash_type().into())
+            .hash_type(addr.payload.hash_type())
             .code_hash(addr.payload.code_hash(Some(addr.network)))
             .args(addr.payload.args().pack())
             .build()
@@ -505,7 +504,7 @@ mod old_addr {
             Script::new_builder()
                 .args(self.hash.as_bytes().pack())
                 .code_hash(code_hash.pack())
-                .hash_type(ScriptHashType::Data.into())
+                .hash_type(ScriptHashType::Data)
                 .build()
         }
 

@@ -158,7 +158,7 @@ impl DefaultCellDepResolver {
 
         let sighash_dep = CellDep::new_builder()
             .out_point(out_points[SIGHASH_GROUP_OUTPUT_LOC.0][SIGHASH_GROUP_OUTPUT_LOC.1].clone())
-            .dep_type(DepType::DepGroup.into())
+            .dep_type(DepType::DepGroup)
             .build();
 
         let multisig_legacy_dep = CellDep::new_builder()
@@ -166,7 +166,7 @@ impl DefaultCellDepResolver {
                 out_points[MULTISIG_LEGACY_GROUP_OUTPUT_LOC.0][MULTISIG_LEGACY_GROUP_OUTPUT_LOC.1]
                     .clone(),
             )
-            .dep_type(DepType::DepGroup.into())
+            .dep_type(DepType::DepGroup)
             .build();
 
         let dao_dep = CellDep::new_builder()
@@ -195,7 +195,7 @@ impl DefaultCellDepResolver {
             {
                 let multisig_v2_dep = CellDep::new_builder()
                     .out_point(OutPoint::new(v2_dep_hash.pack(), v2_dep_index))
-                    .dep_type(DepType::DepGroup.into())
+                    .dep_type(DepType::DepGroup)
                     .build();
 
                 items.insert(

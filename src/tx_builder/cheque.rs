@@ -168,7 +168,7 @@ impl TxBuilder for ChequeClaimBuilder {
         };
         let sender_output = CellOutput::new_builder()
             .lock(self.sender_lock_script.clone())
-            .capacity(cheque_total_capacity.pack())
+            .capacity(cheque_total_capacity)
             .build();
         let sender_output_data = Bytes::new();
 
@@ -309,7 +309,7 @@ impl TxBuilder for ChequeWithdrawBuilder {
             if let Some(script_id) = self.acp_script_id.as_ref() {
                 let acp_lock = Script::new_builder()
                     .code_hash(script_id.code_hash.pack())
-                    .hash_type(script_id.hash_type.into())
+                    .hash_type(script_id.hash_type)
                     .args(self.sender_lock_script.args())
                     .build();
                 let mut query = CellQueryOptions::new_lock(acp_lock.clone());
@@ -354,7 +354,7 @@ impl TxBuilder for ChequeWithdrawBuilder {
         let sender_output = CellOutput::new_builder()
             .lock(sender_lock)
             .type_(Some(type_script).pack())
-            .capacity(total_capacity.pack())
+            .capacity(total_capacity)
             .build();
         let sender_output_data = Bytes::from(total_amount.to_le_bytes().to_vec());
 

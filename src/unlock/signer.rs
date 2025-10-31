@@ -197,7 +197,7 @@ impl MultisigConfig {
         self.lock_code_hash.clone()
     }
     pub fn lock_hash_type(&self) -> ScriptHashType {
-        self.lock_hash_type.clone()
+        self.lock_hash_type
     }
     pub fn require_first_n(&self) -> u8 {
         self.require_first_n
@@ -277,7 +277,7 @@ impl From<&MultisigConfig> for Script {
             .script_id();
         Script::new_builder()
             .code_hash(multisig_script.code_hash.pack())
-            .hash_type(multisig_script.hash_type.into())
+            .hash_type(multisig_script.hash_type)
             .args(Bytes::from(value.hash160().as_bytes().to_vec()).pack())
             .build()
     }

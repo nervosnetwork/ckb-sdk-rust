@@ -22,7 +22,7 @@ fn test_deploy_id() {
         ScriptId::new_type(constants::TYPE_ID_CODE_HASH.clone()).dummy_type_id_script();
 
     let output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(sender.clone())
         .type_(Some(type_script).pack())
         .build();

@@ -30,7 +30,7 @@ fn test_transfer_from_sighash() {
     let network_info = NetworkInfo::testnet();
 
     let output = CellOutput::new_builder()
-        .capacity((120 * ONE_CKB).pack())
+        .capacity(120 * ONE_CKB)
         .lock(receiver)
         .build();
     let configuration =

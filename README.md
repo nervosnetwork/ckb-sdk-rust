@@ -15,7 +15,7 @@ These features allow for seamless interaction with CKB and facilitate the develo
 ```toml
 # Cargo.toml
 [dependencies]
-ckb-sdk = "4.4.0"
+ckb-sdk = "5"
 ```
 
 ## Build
@@ -124,7 +124,7 @@ let tx_dep_provider = DefaultTransactionDependencyProvider::new(ckb_rpc, 10);
 // Build the transaction
 let output = CellOutput::new_builder()
     .lock(Script::from(&receiver))
-    .capacity(capacity.0.pack())
+    .capacity(capacity.0)
     .build();
 let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
 let (_tx, _) = builder

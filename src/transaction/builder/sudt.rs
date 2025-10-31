@@ -317,7 +317,7 @@ fn build_sudt_type_script(
 
     Script::new_builder()
         .code_hash(code_hash.pack())
-        .hash_type(ScriptHashType::Type.into())
+        .hash_type(ScriptHashType::Type)
         .args(sudt_owner_lock_script.calc_script_hash().as_bytes().pack())
         .build()
 }

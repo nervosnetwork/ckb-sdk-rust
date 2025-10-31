@@ -228,7 +228,7 @@ fn build_transfer_tx(
     // Build CapacityBalancer
     let sender = Script::new_builder()
         .code_hash(MultisigScript::V2.script_id().code_hash.pack())
-        .hash_type(MultisigScript::V2.script_id().hash_type.into())
+        .hash_type(MultisigScript::V2.script_id().hash_type)
         .args(Bytes::from(multisig_config.hash160().as_bytes().to_vec()).pack())
         .build();
     let sender_addr = Address::new(args.receiver.network(), sender.clone().into(), true);
@@ -254,7 +254,7 @@ fn build_transfer_tx(
     let unlockers = build_multisig_unlockers(Vec::new(), multisig_config.clone());
     let output = CellOutput::new_builder()
         .lock(Script::from(&args.receiver))
-        .capacity(args.capacity.0.pack())
+        .capacity(args.capacity.0)
         .build();
     let builder = CapacityTransferBuilder::new(vec![(output, Bytes::default())]);
     let tx = builder.build_balanced(

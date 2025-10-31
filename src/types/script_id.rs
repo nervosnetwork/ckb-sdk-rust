@@ -39,7 +39,7 @@ impl ScriptId {
     pub fn dummy_type_id_script(&self) -> Script {
         Script::new_builder()
             .code_hash(self.code_hash.pack())
-            .hash_type(self.hash_type.into())
+            .hash_type(self.hash_type)
             .args(<[u8]>::pack(&[0u8; 32]))
             .build()
     }

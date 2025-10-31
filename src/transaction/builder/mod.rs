@@ -11,7 +11,7 @@ use crate::{
 use ckb_types::{
     core::{Capacity, TransactionView},
     packed::{self, Byte32, CellOutput, Script},
-    prelude::{Builder, Entity, Pack, Unpack},
+    prelude::{Builder, Entity, Unpack},
 };
 pub mod fee_calculator;
 pub mod simple;
@@ -134,7 +134,7 @@ impl ChangeBuilder for DefaultChangeBuilder<'_> {
             .unwrap()
             .clone()
             .as_builder()
-            .capacity(change_capacity.pack())
+            .capacity(change_capacity)
             .build();
         tx.set_output(tx.outputs.len() - 1, change_output);
         tx.build()

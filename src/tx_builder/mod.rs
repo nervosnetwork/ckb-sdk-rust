@@ -762,7 +762,7 @@ impl CapacityBalancer {
             if original_capacity >= base_change_occupied_capacity + extra_min_fee + extra_fee {
                 let output = output
                     .as_builder()
-                    .capacity((original_capacity - extra_fee).pack())
+                    .capacity(original_capacity - extra_fee)
                     .build();
                 let mut outputs: Vec<_> = tx.outputs().into_iter().collect();
                 outputs[idx] = output;
@@ -823,7 +823,7 @@ impl CapacityBalancer {
             if original_capacity >= base_change_occupied_capacity + extra_min_fee + extra_fee {
                 let output = output
                     .as_builder()
-                    .capacity((original_capacity - extra_fee).pack())
+                    .capacity(original_capacity - extra_fee)
                     .build();
                 let mut outputs: Vec<_> = tx.outputs().into_iter().collect();
                 outputs[idx] = output;
@@ -1126,7 +1126,9 @@ fn rebalance_tx_capacity(
                 .set_witnesses(all_witnesses);
             if let Some(output) = change_output.clone() {
                 ret_change_index = Some(output_len);
-                builder = builder.output(output).output_data(Default::default());
+                builder = builder
+                    .output(output)
+                    .output_data(ckb_types::packed::Bytes::default());
             }
             builder.build()
         };
@@ -1148,7 +1150,7 @@ fn rebalance_tx_capacity(
                         .checked_add(delta)
                         .expect("change cell capacity add overflow");
                     // next loop round must return new_tx;
-                    change_output = Some(output.as_builder().capacity(new_capacity.pack()).build());
+                    change_output = Some(output.as_builder().capacity(new_capacity).build());
                     need_more_capacity = 0;
                 } else {
                     // If change cell not exists, add a change cell.
@@ -1171,7 +1173,7 @@ fn rebalance_tx_capacity(
                             base_change_output
                                 .clone()
                                 .as_builder()
-                                .capacity((delta - extra_min_fee).pack())
+                                .capacity(delta - extra_min_fee)
                                 .build(),
                         );
                         need_more_capacity = 0;
@@ -1203,7 +1205,7 @@ fn rebalance_tx_capacity(
                                 base_change_output
                                     .clone()
                                     .as_builder()
-                                    .capacity(base_change_occupied_capacity.pack())
+                                    .capacity(base_change_occupied_capacity)
                                     .build(),
                             );
                         }
@@ -1424,7 +1426,9 @@ async fn rebalance_tx_capacity_async(
                 .set_witnesses(all_witnesses);
             if let Some(output) = change_output.clone() {
                 ret_change_index = Some(output_len);
-                builder = builder.output(output).output_data(Default::default());
+                builder = builder
+                    .output(output)
+                    .output_data(ckb_types::packed::Bytes::default());
             }
             builder.build()
         };
@@ -1446,7 +1450,7 @@ async fn rebalance_tx_capacity_async(
                         .checked_add(delta)
                         .expect("change cell capacity add overflow");
                     // next loop round must return new_tx;
-                    change_output = Some(output.as_builder().capacity(new_capacity.pack()).build());
+                    change_output = Some(output.as_builder().capacity(new_capacity).build());
                     need_more_capacity = 0;
                 } else {
                     // If change cell not exists, add a change cell.
@@ -1469,7 +1473,7 @@ async fn rebalance_tx_capacity_async(
                             base_change_output
                                 .clone()
                                 .as_builder()
-                                .capacity((delta - extra_min_fee).pack())
+                                .capacity(delta - extra_min_fee)
                                 .build(),
                         );
                         need_more_capacity = 0;
@@ -1502,7 +1506,7 @@ async fn rebalance_tx_capacity_async(
                                 base_change_output
                                     .clone()
                                     .as_builder()
-                                    .capacity(base_change_occupied_capacity.pack())
+                                    .capacity(base_change_occupied_capacity)
                                     .build(),
                             );
                         }

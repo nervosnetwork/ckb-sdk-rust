@@ -106,12 +106,12 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
             )))?;
         let out_point = OutPoint::new_builder()
             .tx_hash(dep_group.0.pack())
-            .index(dep_group.1.pack())
+            .index(dep_group.1)
             .build();
 
         let cell_dep = CellDep::new_builder()
             .out_point(out_point)
-            .dep_type(DepType::DepGroup.into())
+            .dep_type(DepType::DepGroup)
             .build();
         self.cell_deps.push(cell_dep);
         Ok(())
@@ -127,12 +127,12 @@ impl ScriptHandler for Secp256k1Blake160MultisigAllScriptHandler {
             )))?;
         let out_point = OutPoint::new_builder()
             .tx_hash(dep_group.0.pack())
-            .index(dep_group.1.pack())
+            .index(dep_group.1)
             .build();
 
         let cell_dep = CellDep::new_builder()
             .out_point(out_point)
-            .dep_type(DepType::DepGroup.into())
+            .dep_type(DepType::DepGroup)
             .build();
         self.cell_deps.push(cell_dep);
         Ok(())
