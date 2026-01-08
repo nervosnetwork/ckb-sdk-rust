@@ -107,6 +107,11 @@ macro_rules! jsonrpc {
                 Ok($struct_name { id: 0.into(), client })
             }
 
+            pub fn new_with_timeout(uri: &str, timeout: std::time::Duration) -> Result<Self, anyhow::Error> {
+                let client = $crate::rpc::RpcClient::new_with_timeout(uri, timeout)?;
+                Ok($struct_name { id: 0.into(), client })
+            }
+
             pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->Result<RET, $crate::rpc::RpcError>
             where
                 PARAM:serde::ser::Serialize + Send + 'static,
@@ -192,6 +197,12 @@ macro_rules! jsonrpc_async {
                 F: FnOnce(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
             {
                 let client = $crate::rpc::RpcClient::with_builder(uri, f)?;
+                Ok($struct_name { id: 0.into(), client })
+            }
+
+            #[cfg(not(target_arch="wasm32"))]
+            pub fn new_with_timeout(uri: &str, timeout: std::time::Duration) -> Result<Self, anyhow::Error> {
+                let client = $crate::rpc::RpcClient::new_with_timeout(uri, timeout)?;
                 Ok($struct_name { id: 0.into(), client })
             }
 
@@ -286,6 +297,14 @@ impl RpcClient {
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to build HTTP client: {}", e))?;
         Ok(Self { client, url })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn new_with_timeout(
+        uri: &str,
+        timeout: std::time::Duration,
+    ) -> Result<Self, anyhow::Error> {
+        Self::with_builder(uri, |builder| builder.timeout(timeout))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
