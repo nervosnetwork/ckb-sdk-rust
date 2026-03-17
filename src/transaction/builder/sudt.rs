@@ -142,7 +142,7 @@ fn parse_u128(data: &[u8]) -> Result<u128, TxBuilderError> {
     }
 
     let mut data_bytes: Vec<u8> = data.into();
-    data_bytes.extend(std::iter::repeat(0_u8).take(std::mem::size_of::<u128>() - data.len()));
+    data_bytes.extend(std::iter::repeat_n(0_u8, std::mem::size_of::<u128>() - data.len()));
     Ok(u128::from_le_bytes(data_bytes.try_into().unwrap()))
 }
 

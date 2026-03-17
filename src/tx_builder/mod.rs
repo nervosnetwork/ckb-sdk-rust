@@ -1,3 +1,5 @@
+#![allow(clippy::doc_overindented_list_items)]
+
 pub mod acp;
 pub mod cheque;
 pub mod dao;
