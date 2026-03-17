@@ -116,7 +116,7 @@ fn test_parse_u128_from_sudt_tx_output_data() {
 
     let sender = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r").unwrap();
 
-    let iterator = InputIterator::new_with_address(&[sender.clone()], &network_info);
+    let iterator = InputIterator::new_with_address(std::slice::from_ref(&sender), &network_info);
 
     let test_sudt_amount = 9999_u128;
     let mut builder = SudtTransactionBuilder::new(configuration, iterator, &sender, false).unwrap();

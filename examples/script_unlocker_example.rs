@@ -113,7 +113,7 @@ impl ScriptUnlocker for CapacityDiffUnlocker {
 }
 
 fn other_unlock_error(message: &str) -> UnlockError {
-    UnlockError::Other(std::io::Error::new(std::io::ErrorKind::Other, message).into())
+    UnlockError::Other(std::io::Error::other(message).into())
 }
 
 fn main() {
