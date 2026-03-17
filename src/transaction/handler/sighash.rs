@@ -40,8 +40,7 @@ impl Secp256k1Blake160SighashAllScriptHandler {
         Self { cell_deps }
     }
 }
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl ScriptHandler for Secp256k1Blake160SighashAllScriptHandler {
     fn build_transaction(
         &self,

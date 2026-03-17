@@ -17,8 +17,7 @@ use std::collections::HashMap;
 /// [CapacityDiff]: https://github.com/doitian/ckb-sdk-examples-capacity-diff
 struct CapacityDiffUnlocker {}
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl ScriptUnlocker for CapacityDiffUnlocker {
     // This works for any args
     fn match_args(&self, _args: &[u8]) -> bool {

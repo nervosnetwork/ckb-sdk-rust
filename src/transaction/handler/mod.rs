@@ -14,8 +14,7 @@ pub mod sighash;
 pub mod sudt;
 pub mod typeid;
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 pub trait ScriptHandler: Send + Sync {
     /// Try to build transaction with the given script_group and context.
     ///

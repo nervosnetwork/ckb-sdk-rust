@@ -146,8 +146,7 @@ fn parse_u128(data: &[u8]) -> Result<u128, TxBuilderError> {
     Ok(u128::from_le_bytes(data_bytes.try_into().unwrap()))
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl CkbTransactionBuilder for SudtTransactionBuilder {
     #[cfg(not(target_arch = "wasm32"))]
     fn build(

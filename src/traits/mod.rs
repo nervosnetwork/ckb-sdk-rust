@@ -93,8 +93,7 @@ pub enum TransactionDependencyError {
 ///   * inputs
 ///   * cell_deps
 ///   * header_deps
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 pub trait TransactionDependencyProvider: Sync + Send {
     async fn get_transaction_async(
         &self,
@@ -433,8 +432,7 @@ impl CellQueryOptions {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 pub trait CellCollector: DynClone + Send + Sync {
     /// Collect live cells by query options, if `apply_changes` is true will
     /// mark all collected cells as dead cells.
@@ -478,8 +476,7 @@ pub trait CellDepResolver: Send + Sync {
     fn resolve(&self, script: &Script) -> Option<CellDep>;
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 pub trait HeaderDepResolver: Send + Sync {
     /// Resolve header dep by trancation hash
     async fn resolve_by_tx_async(
