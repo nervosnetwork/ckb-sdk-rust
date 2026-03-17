@@ -68,10 +68,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - uses: cargo-bins/cargo-binstall@main
     - name: Security Audit & Licenses
       run: |
         rustup toolchain install stable --profile minimal
-        cargo deny --version || cargo install cargo-deny@0.17.0 --locked
+        cargo deny --version || cargo binstall cargo-deny@0.18.9 --no-confirm
         make security-audit
         make check-crates
         make check-licenses
