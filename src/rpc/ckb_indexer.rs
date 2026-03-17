@@ -31,7 +31,6 @@ pub enum SearchMode {
     Partial,
 }
 
-
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct SearchKeyFilter {
     pub script: Option<Script>,
