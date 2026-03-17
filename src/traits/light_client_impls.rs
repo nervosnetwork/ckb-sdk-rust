@@ -42,8 +42,7 @@ impl LightClientHeaderDepResolver {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl HeaderDepResolver for LightClientHeaderDepResolver {
     async fn resolve_by_tx_async(
         &self,
@@ -120,8 +119,7 @@ impl LightClientTransactionDependencyProvider {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl TransactionDependencyProvider for LightClientTransactionDependencyProvider {
     async fn get_transaction_async(
         &self,
@@ -272,8 +270,7 @@ impl LightClientCellCollector {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl CellCollector for LightClientCellCollector {
     async fn collect_live_cells_async(
         &mut self,

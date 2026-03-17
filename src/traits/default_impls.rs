@@ -270,8 +270,7 @@ impl DefaultHeaderDepResolver {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl HeaderDepResolver for DefaultHeaderDepResolver {
     async fn resolve_by_tx_async(
         &self,
@@ -380,7 +379,14 @@ impl DefaultCellCollector {
                         #[cfg(not(target_arch = "wasm32"))]
                         tokio::time::sleep(Duration::from_millis(50)).await;
                         #[cfg(target_arch = "wasm32")]
-                        tokio_with_wasm::time::sleep(Duration::from_millis(50)).await;
+                        {
+                            let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+                            tokio_with_wasm::spawn(async move {
+                                tokio_with_wasm::time::sleep(Duration::from_millis(50)).await;
+                                let _ = tx.send(());
+                            });
+                            let _ = rx.await;
+                        }
                     } else {
                         return Ok(());
                     }
@@ -398,8 +404,7 @@ impl DefaultCellCollector {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl CellCollector for DefaultCellCollector {
     async fn collect_live_cells_async(
         &mut self,
@@ -597,8 +602,7 @@ impl DefaultTransactionDependencyProvider {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl TransactionDependencyProvider for DefaultTransactionDependencyProvider {
     async fn get_transaction_async(
         &self,

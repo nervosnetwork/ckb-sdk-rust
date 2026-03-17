@@ -116,7 +116,7 @@ fn test_parse_u128_from_sudt_tx_output_data() {
 
     let sender = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r").unwrap();
 
-    let iterator = InputIterator::new_with_address(&[sender.clone()], &network_info);
+    let iterator = InputIterator::new_with_address(std::slice::from_ref(&sender), &network_info);
 
     let test_sudt_amount = 9999_u128;
     let mut builder = SudtTransactionBuilder::new(configuration, iterator, &sender, false).unwrap();
@@ -142,12 +142,14 @@ fn parse_u128(data: &[u8]) -> Result<u128, TxBuilderError> {
     }
 
     let mut data_bytes: Vec<u8> = data.into();
-    data_bytes.extend(std::iter::repeat(0_u8).take(std::mem::size_of::<u128>() - data.len()));
+    data_bytes.extend(std::iter::repeat_n(
+        0_u8,
+        std::mem::size_of::<u128>() - data.len(),
+    ));
     Ok(u128::from_le_bytes(data_bytes.try_into().unwrap()))
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl CkbTransactionBuilder for SudtTransactionBuilder {
     #[cfg(not(target_arch = "wasm32"))]
     fn build(

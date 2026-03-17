@@ -62,6 +62,8 @@ pub enum RpcError {
     Rpc(#[from] jsonrpc_core::Error),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+    #[error("oneshot channel closed")]
+    ChannelClosed,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -206,30 +208,7 @@ macro_rules! jsonrpc_async {
                 Ok($struct_name { id: 0.into(), client })
             }
 
-            #[cfg(not(target_arch="wasm32"))]
             pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->impl std::future::Future<Output =Result<RET, $crate::rpc::RpcError>> + Send + 'static
-            where
-                PARAM:serde::ser::Serialize + Send + 'static,
-                RET: serde::de::DeserializeOwned + Send + 'static,
-            {
-                let id = self.id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let method = serde_json::json!(method);
-
-                let params_fn = move || -> Result<_,_> {
-                    let params = serde_json::to_value(params)?;
-                    let mut req_json = serde_json::Map::new();
-                    req_json.insert("id".to_owned(), serde_json::json!(id));
-                    req_json.insert("jsonrpc".to_owned(), serde_json::json!("2.0"));
-                    req_json.insert("method".to_owned(), method);
-                    req_json.insert("params".to_owned(), params);
-                    Ok(req_json)
-                };
-
-                self.client.post(params_fn)
-
-            }
-            #[cfg(target_arch="wasm32")]
-            pub fn post<PARAM, RET>(&self, method:&str, params: PARAM)->impl std::future::Future<Output =Result<RET, $crate::rpc::RpcError>> + 'static
             where
                 PARAM:serde::ser::Serialize + Send + 'static,
                 RET: serde::de::DeserializeOwned + Send + 'static,
@@ -320,7 +299,7 @@ impl RpcClient {
         }
     }
 
-    pub fn post<PARAM, RET, T>(
+    fn post_inner<PARAM, RET, T>(
         &self,
         json_post_params: T,
     ) -> impl std::future::Future<Output = Result<RET, crate::rpc::RpcError>>
@@ -342,6 +321,40 @@ impl RpcClient {
                 jsonrpc_core::response::Output::Failure(failure) => Err(failure.error.into()),
             }
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn post<PARAM, RET, T>(
+        &self,
+        json_post_params: T,
+    ) -> impl std::future::Future<Output = Result<RET, crate::rpc::RpcError>> + Send
+    where
+        PARAM: serde::ser::Serialize + Send + 'static,
+        RET: serde::de::DeserializeOwned + Send + 'static,
+        T: FnOnce() -> Result<PARAM, crate::rpc::RpcError> + Send,
+    {
+        self.post_inner(json_post_params)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn post<PARAM, RET, T>(
+        &self,
+        json_post_params: T,
+    ) -> impl std::future::Future<Output = Result<RET, crate::rpc::RpcError>> + Send
+    where
+        PARAM: serde::ser::Serialize + Send + 'static,
+        RET: serde::de::DeserializeOwned + Send + 'static,
+        T: FnOnce() -> Result<PARAM, crate::rpc::RpcError> + Send + 'static,
+    {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let future = self.post_inner(json_post_params);
+
+        tokio_with_wasm::spawn(async move {
+            let result = future.await;
+            let _ = tx.send(result);
+        });
+
+        async move { rx.await.map_err(|_| crate::rpc::RpcError::ChannelClosed)? }
     }
 }
 

@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn StdErr>> {
     let configuration = TransactionBuilderConfiguration::new_with_network(network_info.clone())?;
 
     let issuer = Address::from_str("ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsq2qf8keemy2p5uu0g0gn8cd4ju23s5269qk8rg4r")?;
-    let iterator = InputIterator::new_with_address(&[issuer.clone()], &network_info);
+    let iterator = InputIterator::new_with_address(std::slice::from_ref(&issuer), &network_info);
     let mut builder = SudtTransactionBuilder::new(configuration, iterator, &issuer, true)?;
     builder.add_output(&issuer, 42);
 

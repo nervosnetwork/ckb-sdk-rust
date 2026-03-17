@@ -59,7 +59,7 @@ impl fmt::Display for HumanCapacity {
         let mut base = 10;
         let mut suffix_zero = 7;
         for i in 0..8 {
-            if shannon_part % base > 0 {
+            if !shannon_part.is_multiple_of(base) {
                 suffix_zero = i;
                 break;
             }

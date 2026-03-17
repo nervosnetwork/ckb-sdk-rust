@@ -1,3 +1,5 @@
+#![allow(clippy::doc_overindented_list_items)]
+
 pub mod acp;
 pub mod cheque;
 pub mod dao;
@@ -83,8 +85,7 @@ pub enum TxBuilderError {
 }
 
 /// Transaction Builder interface
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 pub trait TxBuilder: Send + Sync {
     /// Build base transaction
     async fn build_base_async(

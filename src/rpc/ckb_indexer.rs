@@ -20,19 +20,15 @@ pub struct SearchKey {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SearchMode {
     // search with prefix
+    #[default]
     Prefix,
     // search with exact match
     Exact,
     // search with partial match
     Partial,
-}
-
-impl Default for SearchMode {
-    fn default() -> Self {
-        Self::Prefix
-    }
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]

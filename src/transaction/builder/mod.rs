@@ -21,8 +21,7 @@ pub use fee_calculator::FeeCalculator;
 pub use simple::SimpleTransactionBuilder;
 
 /// CKB transaction builder trait.
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 pub trait CkbTransactionBuilder {
     #[cfg(not(target_arch = "wasm32"))]
     fn build(

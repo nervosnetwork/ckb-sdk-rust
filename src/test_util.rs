@@ -397,8 +397,7 @@ impl Context {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl TransactionDependencyProvider for Context {
     // For verify certain cell belong to certain transaction
     async fn get_transaction_async(
@@ -458,8 +457,7 @@ impl TransactionDependencyProvider for Context {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl HeaderDepResolver for Context {
     async fn resolve_by_tx_async(
         &self,
@@ -528,8 +526,7 @@ impl CellDepResolver for Context {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl CellCollector for LiveCellsContext {
     async fn collect_live_cells_async(
         &mut self,

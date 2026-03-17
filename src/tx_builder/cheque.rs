@@ -43,8 +43,7 @@ impl ChequeClaimBuilder {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl TxBuilder for ChequeClaimBuilder {
     async fn build_base_async(
         &self,
@@ -211,8 +210,7 @@ impl ChequeWithdrawBuilder {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[async_trait::async_trait]
 impl TxBuilder for ChequeWithdrawBuilder {
     async fn build_base_async(
         &self,
